@@ -24,8 +24,11 @@ def create_user(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role(["owner"]))
 ):
+    # Emails are stored lowercased so lookups are case-insensitive.
+    email = user.email.lower()
+
     # Check if user already exists
-    existing = db.query(User).filter(User.email == user.email).first()
+    existing = db.query(User).filter(User.email == email).first()
     if existing:
         raise HTTPException(status_code=400, detail="User with this email already exists")
 
@@ -34,7 +37,7 @@ def create_user(
         raise HTTPException(status_code=400, detail="Invalid role")
 
     db_user = User(
-        email=user.email,
+        email=email,
         password_hash=get_password_hash(user.password),
         full_name=user.full_name,
         role=user.role

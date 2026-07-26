@@ -7,7 +7,7 @@ Type=simple
 User=www-data
 WorkingDirectory=/var/www/agenticai-dashboard/api
 Environment="PATH=/var/www/agenticai-dashboard/api/venv/bin"
-ExecStart=/var/www/agenticai-dashboard/api/venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 5003 --workers 2
+ExecStart=/var/www/agenticai-dashboard/api/venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 5004 --workers 2
 Restart=always
 RestartSec=10
 

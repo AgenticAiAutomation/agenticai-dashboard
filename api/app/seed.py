@@ -202,10 +202,11 @@ def seed_database():
         print("Starting database seed...")
 
         # 1. Create owner user
-        existing_owner = db.query(User).filter(User.email == settings.INITIAL_OWNER_EMAIL).first()
+        owner_email = settings.INITIAL_OWNER_EMAIL.lower()
+        existing_owner = db.query(User).filter(User.email == owner_email).first()
         if not existing_owner:
             owner = User(
-                email=settings.INITIAL_OWNER_EMAIL,
+                email=owner_email,
                 password_hash=get_password_hash(settings.INITIAL_OWNER_PASSWORD),
                 full_name="Jai (Owner)",
                 role="owner"

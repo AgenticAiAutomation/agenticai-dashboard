@@ -10,7 +10,9 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 @router.post("/login", response_model=TokenResponse)
 def login(request: LoginRequest, db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.email == request.email).first()
+    # Emails are stored lowercased; EmailStr also lowercases the domain part,
+    # so normalise both sides before comparing.
+    user = db.query(User).filter(User.email == request.email.lower()).first()
     if not user or not verify_password(request.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
@@ -31,7 +33,7 @@ def refresh(request: RefreshRequest, db: Session = Depends(get_db)):
     if not email:
         raise HTTPException(status_code=401, detail="Invalid refresh token")
 
-    user = db.query(User).filter(User.email == email).first()
+    user = db.query(User).filter(User.email == email.lower()).first()
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
 
