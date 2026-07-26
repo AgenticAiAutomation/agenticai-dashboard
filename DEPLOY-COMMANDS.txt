@@ -1,0 +1,428 @@
+=============================================================================
+AGENTICAI DASHBOARD - DEPLOYMENT COMMANDS
+Copy and paste these commands step-by-step
+=============================================================================
+
+PHASE 1: PUSH TO GITHUB (Local Machine - Windows)
+=============================================================================
+
+# Navigate to project
+cd C:\Users\hp\Documents\agenticai-dashboard
+
+# Create GitHub repo first (go to github.com):
+# - Click "New Repository"
+# - Name: agenticai-dashboard
+# - Private or Public (your choice)
+# - Don't initialize with README
+# - Copy the repo URL
+
+# Add remote (replace with your actual URL)
+git remote add origin https://github.com/YOUR_USERNAME/agenticai-dashboard.git
+
+# Push to GitHub
+git push -u origin main
+
+# Verify on GitHub that files are visible
+
+
+=============================================================================
+PHASE 2: VPS DATABASE SETUP
+=============================================================================
+
+# SSH to VPS
+ssh your-user@your-vps-ip
+
+# Create database
+sudo -u postgres psql <<EOF
+CREATE DATABASE agenticai_dashboard;
+CREATE USER dashboard_user WITH PASSWORD 'YourSecurePassword123';
+GRANT ALL PRIVILEGES ON DATABASE agenticai_dashboard TO dashboard_user;
+ALTER DATABASE agenticai_dashboard OWNER TO dashboard_user;
+\q
+EOF
+
+# Test connection (should prompt for password, then show psql prompt)
+psql -U dashboard_user -d agenticai_dashboard -h localhost
+# Type \q to exit
+
+# If connection test succeeds, database is ready ✓
+
+
+=============================================================================
+PHASE 3: CLONE CODE TO VPS
+=============================================================================
+
+# Still on VPS, navigate to web root
+cd /var/www
+
+# Clone repository (replace with your GitHub URL)
+sudo git clone https://github.com/YOUR_USERNAME/agenticai-dashboard.git
+
+# Set permissions
+sudo chown -R $USER:$USER /var/www/agenticai-dashboard
+cd /var/www/agenticai-dashboard
+
+# Verify files
+ls -la
+# You should see: api/, web/, infra/, scripts/, README.md, etc.
+
+
+=============================================================================
+PHASE 4: CONFIGURE BACKEND
+=============================================================================
+
+cd /var/www/agenticai-dashboard/api
+
+# Copy .env template
+cp .env.example .env
+
+# Edit .env file
+nano .env
+
+# UPDATE THESE VALUES:
+# - DATABASE_URL password (replace 'YourSecurePassword123')
+# - JWT_SECRET_KEY (generate with: openssl rand -hex 32)
+# - INITIAL_OWNER_PASSWORD (choose secure password)
+# - CORS_ORIGINS (should be: https://dashboard.agenticaiautomation.co,http://localhost:3000)
+
+# Save: Ctrl+O, Enter, Ctrl+X
+
+# Create virtual environment
+python3 -m venv venv
+
+# Activate venv
+source venv/bin/activate
+
+# Install dependencies
+pip install -r requirements.txt
+
+# This takes 2-3 minutes, be patient
+
+
+=============================================================================
+PHASE 5: RUN MIGRATIONS & SEED DATABASE
+=============================================================================
+
+# Still in /var/www/agenticai-dashboard/api with venv activated
+cd /var/www/agenticai-dashboard/api
+source venv/bin/activate
+
+# Run migrations
+alembic upgrade head
+
+# You should see: "Running upgrade -> 001, initial_schema"
+
+# Seed database
+python -m app.seed
+
+# You should see:
+# ✓ Created owner user: Contact@agenticAiAutomation.co
+# ✓ Imported X tasks from SEO_CONTENT_TASKS.md
+# ✓ Imported X keywords from keyword-cluster.md
+# ✓ Created 46 article placeholders
+
+# Test API manually
+uvicorn app.main:app --host 127.0.0.1 --port 5003
+
+# In another terminal, test:
+curl http://127.0.0.1:5003/health
+# Should return: {"status":"healthy"}
+
+# Stop test server: Ctrl+C
+
+
+=============================================================================
+PHASE 6: SETUP SYSTEMD SERVICE
+=============================================================================
+
+# Copy service file
+sudo cp /var/www/agenticai-dashboard/infra/dashboard-api.service /etc/systemd/system/
+
+# Reload systemd
+sudo systemctl daemon-reload
+
+# Enable service (auto-start on boot)
+sudo systemctl enable dashboard-api
+
+# Start service
+sudo systemctl start dashboard-api
+
+# Check status
+sudo systemctl status dashboard-api
+
+# Should show: "Active: active (running)"
+
+# View logs
+sudo journalctl -u dashboard-api -n 50
+
+# Test API
+curl http://127.0.0.1:5003/health
+# Should return: {"status":"healthy"}
+
+
+=============================================================================
+PHASE 7: CONFIGURE NGINX
+=============================================================================
+
+# Copy nginx config
+sudo cp /var/www/agenticai-dashboard/infra/nginx-dashboard.conf /etc/nginx/sites-available/dashboard
+
+# IMPORTANT: Before enabling, comment out SSL lines since cert doesn't exist yet
+sudo nano /etc/nginx/sites-available/dashboard
+
+# Comment out these lines (add # at start):
+# ssl_certificate /etc/letsencrypt/...
+# ssl_certificate_key /etc/letsencrypt/...
+# include /etc/letsencrypt/...
+# ssl_dhparam /etc/letsencrypt/...
+
+# Keep the "listen 443 ssl http2;" line but rest can be commented
+
+# Save and exit
+
+# Create symlink
+sudo ln -sf /etc/nginx/sites-available/dashboard /etc/nginx/sites-enabled/
+
+# Test nginx config
+sudo nginx -t
+
+# Should say: "syntax is ok" and "test is successful"
+
+# Reload nginx
+sudo systemctl reload nginx
+
+
+=============================================================================
+PHASE 8: CLOUDFLARE DNS SETUP
+=============================================================================
+
+# Go to Cloudflare Dashboard
+# Select domain: agenticaiautomation.co
+# Go to DNS settings
+
+# Add A record for API:
+Type: A
+Name: api.dashboard
+IPv4 address: <YOUR VPS IP>
+Proxy status: Proxied (orange cloud)
+TTL: Auto
+
+# Save
+
+# Wait 2-3 minutes for DNS propagation
+
+# Test DNS:
+nslookup api.dashboard.agenticaiautomation.co
+
+# Should return your VPS IP
+
+
+=============================================================================
+PHASE 9: SSL CERTIFICATE
+=============================================================================
+
+# On VPS, install certbot if needed
+sudo apt update
+sudo apt install certbot python3-certbot-nginx -y
+
+# Get SSL certificate
+sudo certbot --nginx -d api.dashboard.agenticaiautomation.co
+
+# Follow prompts:
+# - Enter email
+# - Agree to terms
+# - Choose whether to redirect HTTP to HTTPS (recommend: Yes)
+
+# Certbot will automatically update nginx config
+
+# Test renewal
+sudo certbot renew --dry-run
+
+# Should say: "Congratulations, all simulated renewals succeeded"
+
+# Test HTTPS
+curl https://api.dashboard.agenticaiautomation.co/health
+
+# Should return: {"status":"healthy"}
+
+
+=============================================================================
+PHASE 10: FRONTEND DEPLOYMENT (Cloudflare Pages)
+=============================================================================
+
+# Go to Cloudflare Dashboard
+# Pages → Create a project → Connect to Git
+
+# Connect GitHub account (if not already)
+
+# Select repository: YOUR_USERNAME/agenticai-dashboard
+
+# Configure build:
+Framework preset: Next.js
+Build command: cd web && npm install && npm run build
+Build output directory: web/.next
+Root directory: (leave blank)
+
+# Environment variables → Add variable:
+Variable name: NEXT_PUBLIC_API_URL
+Value: https://api.dashboard.agenticaiautomation.co
+
+# Click "Save and Deploy"
+
+# Wait 5-10 minutes for build
+
+# Once deployed, note the Cloudflare Pages URL (something like):
+# https://agenticai-dashboard-xxx.pages.dev
+
+
+=============================================================================
+PHASE 11: CUSTOM DOMAIN FOR FRONTEND
+=============================================================================
+
+# In Cloudflare Pages project
+# Settings → Custom domains → Set up a custom domain
+
+# Enter: dashboard.agenticaiautomation.co
+
+# Click "Continue"
+
+# Cloudflare will automatically add DNS records
+
+# Wait 2-3 minutes
+
+# Visit: https://dashboard.agenticaiautomation.co
+
+# Should see login page!
+
+
+=============================================================================
+PHASE 12: VERIFICATION & TESTING
+=============================================================================
+
+# Backend API Test
+curl https://api.dashboard.agenticaiautomation.co/health
+# Expected: {"status":"healthy"}
+
+# Login Test
+curl -X POST https://api.dashboard.agenticaiautomation.co/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"Contact@agenticAiAutomation.co","password":"YOUR_INITIAL_PASSWORD"}'
+
+# Should return access_token and refresh_token
+
+# Frontend Test
+# Visit: https://dashboard.agenticaiautomation.co
+# Login with:
+#   Email: Contact@agenticAiAutomation.co
+#   Password: (from your .env INITIAL_OWNER_PASSWORD)
+
+# Verify all screens:
+# 1. Dashboard - shows keyword/article counts
+# 2. Keywords - table with imported data
+# 3. Articles - kanban board
+# 4. Countries - 10 country pages
+# 5. Tasks - imported tasks from phases
+# 6. Settings/Users - user management
+
+
+=============================================================================
+PHASE 13: POST-DEPLOYMENT
+=============================================================================
+
+# Change initial password
+# Login to dashboard → Settings → Users → Create new owner with secure password
+# Or via CLI:
+
+cd /var/www/agenticai-dashboard/api
+source venv/bin/activate
+python3 <<EOF
+from app.database import SessionLocal
+from app.models import User
+from app.auth import get_password_hash
+
+db = SessionLocal()
+user = db.query(User).filter(User.email == "Contact@agenticAiAutomation.co").first()
+user.password_hash = get_password_hash("NewSecurePassword123!")
+db.commit()
+print("Password updated")
+EOF
+
+# Create database backup
+pg_dump -U dashboard_user agenticai_dashboard > ~/dashboard-backup-$(date +%Y%m%d).sql
+
+# Setup automated backups (optional)
+crontab -e
+# Add line: 0 2 * * * pg_dump -U dashboard_user agenticai_dashboard > ~/backups/dashboard-$(date +\%Y\%m\%d).sql
+
+
+=============================================================================
+TROUBLESHOOTING COMMANDS
+=============================================================================
+
+# View API logs
+sudo journalctl -u dashboard-api -f
+
+# Restart API
+sudo systemctl restart dashboard-api
+
+# Check API status
+sudo systemctl status dashboard-api
+
+# View nginx error logs
+sudo tail -f /var/log/nginx/error.log
+
+# View nginx access logs
+sudo tail -f /var/log/nginx/access.log
+
+# Test database connection
+psql -U dashboard_user -d agenticai_dashboard
+
+# Check which process is using port 5003
+sudo lsof -i :5003
+
+# Update code from GitHub
+cd /var/www/agenticai-dashboard
+git pull origin main
+sudo systemctl restart dashboard-api
+
+# Re-run migrations
+cd /var/www/agenticai-dashboard/api
+source venv/bin/activate
+alembic upgrade head
+
+
+=============================================================================
+SUCCESS CHECKLIST
+=============================================================================
+
+[ ] Code pushed to GitHub
+[ ] Database created on VPS
+[ ] Code cloned to /var/www/agenticai-dashboard
+[ ] .env configured with secure values
+[ ] Dependencies installed
+[ ] Migrations run successfully
+[ ] Database seeded (keywords, articles, tasks visible)
+[ ] Systemd service running
+[ ] Nginx configured
+[ ] DNS A record added
+[ ] SSL certificate issued
+[ ] Frontend deployed to Cloudflare Pages
+[ ] Custom domain configured
+[ ] Can login to dashboard
+[ ] All 7 screens working
+[ ] Initial password changed
+[ ] Database backup created
+
+=============================================================================
+
+DEPLOYED URLS:
+- Frontend: https://dashboard.agenticaiautomation.co
+- API: https://api.dashboard.agenticaiautomation.co
+
+INITIAL LOGIN:
+Email: Contact@agenticAiAutomation.co
+Password: (from your .env file)
+
+⚠️ CHANGE PASSWORD IMMEDIATELY AFTER FIRST LOGIN!
+
+=============================================================================
