@@ -1,0 +1,15 @@
+[Unit]
+Description=AgenticAI Dashboard API
+After=network.target postgresql.service
+
+[Service]
+Type=simple
+User=www-data
+WorkingDirectory=/var/www/agenticai-dashboard/api
+Environment="PATH=/var/www/agenticai-dashboard/api/venv/bin"
+ExecStart=/var/www/agenticai-dashboard/api/venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 5003 --workers 2
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
