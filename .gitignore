@@ -14,7 +14,8 @@ build/
 # Environment
 .env
 .env.local
-.env.production
+# web/.env.production is committed on purpose: it holds only the public API URL,
+# and the VPS build needs it to bake NEXT_PUBLIC_API_URL into the static export.
 
 # Database
 *.db
@@ -46,3 +47,4 @@ logs/
 
 # Alembic
 alembic/versions/__pycache__/
+error_git.png
