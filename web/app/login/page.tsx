@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import api from '@/lib/api';
+import { apiError } from '@/lib/seo';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -17,30 +18,37 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      const response = await api.post('/auth/login', { email, password });
-      const { access_token, refresh_token } = response.data;
+      const { data } = await api.post('/auth/login', { email, password });
+      localStorage.setItem('access_token', data.access_token);
+      localStorage.setItem('refresh_token', data.refresh_token);
+      localStorage.setItem('role', data.role ?? '');
 
-      localStorage.setItem('access_token', access_token);
-      localStorage.setItem('refresh_token', refresh_token);
-
-      router.push('/dashboard');
-    } catch (err: any) {
-      setError(err.response?.data?.detail || 'Login failed');
+      // The API flags accounts provisioned with a generated password.
+      router.push(data.must_change_password ? '/account/password' : '/dashboard');
+    } catch (err) {
+      setError(apiError(err, 'Login failed'));
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-100">
-      <div className="bg-white p-8 rounded-lg shadow-md w-full max-w-md">
-        <h1 className="text-2xl font-bold mb-6 text-center">AgenticAI SEO Dashboard</h1>
+    <div className="flex min-h-screen items-center justify-center bg-bg px-4">
+      <div className="w-full max-w-md rounded-xl border border-line bg-surface p-8">
+        <h1 className="text-center text-xl font-bold text-white">
+          AgenticAI <span className="text-primary">SEO</span> Dashboard
+        </h1>
+        <p className="mt-1 text-center text-sm text-muted">Sign in to continue</p>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="mt-6 space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+            <label className="label" htmlFor="email">
+              Email
+            </label>
             <input
+              id="email"
               type="email"
+              autoComplete="username"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className="input-field"
@@ -49,9 +57,13 @@ export default function LoginPage() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
+            <label className="label" htmlFor="password">
+              Password
+            </label>
             <input
+              id="password"
               type="password"
+              autoComplete="current-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               className="input-field"
@@ -60,19 +72,22 @@ export default function LoginPage() {
           </div>
 
           {error && (
-            <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm">
+            <div
+              role="alert"
+              className="rounded-lg border border-danger/40 bg-danger/10 p-3 text-sm text-danger"
+            >
               {error}
             </div>
           )}
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="btn-primary w-full"
-          >
-            {loading ? 'Logging in...' : 'Login'}
+          <button type="submit" disabled={loading} className="btn-primary w-full">
+            {loading ? 'Signing in…' : 'Sign in'}
           </button>
         </form>
+
+        <p className="mt-6 text-center text-xs text-muted">
+          Sessions expire after 8 hours of inactivity.
+        </p>
       </div>
     </div>
   );

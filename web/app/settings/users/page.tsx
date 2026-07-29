@@ -1,178 +1,336 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useCallback, useEffect, useState } from 'react';
 import api from '@/lib/api';
-import Nav from '@/components/Nav';
+import Shell from '@/components/Shell';
+import { Card, EmptyState, ErrorBanner, ScoreBadge, Skeleton } from '@/components/ui';
+import { apiError, COUNTRY_LABELS, VERTICAL_LABELS } from '@/lib/seo';
 
-interface User {
+interface ManagedUser {
   id: number;
   email: string;
   full_name: string;
   role: string;
+  is_active: boolean;
+  must_change_password: boolean;
+  totp_enabled: boolean;
+  assigned_verticals: string[] | null;
+  assigned_countries: string[] | null;
+  last_login_at: string | null;
   created_at: string;
+  articles_drafted_this_week: number;
+  avg_score: number | null;
 }
 
+const ROLES = [
+  { value: 'admin', label: 'Admin — full access, including publishing and users' },
+  { value: 'seo_lead', label: 'SEO lead — create and edit articles' },
+  { value: 'viewer', label: 'Viewer — read only' },
+];
+
 export default function UsersPage() {
-  const [users, setUsers] = useState<User[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [users, setUsers] = useState<ManagedUser[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
-  const [formData, setFormData] = useState({ email: '', password: '', full_name: '', role: 'seo' });
-  const router = useRouter();
+  const [credential, setCredential] = useState<{ email: string; password: string } | null>(
+    null,
+  );
+  const [form, setForm] = useState({
+    email: '',
+    full_name: '',
+    role: 'seo_lead',
+    assigned_verticals: [] as string[],
+    assigned_countries: [] as string[],
+  });
+  const [saving, setSaving] = useState(false);
+
+  const load = useCallback(async () => {
+    try {
+      const { data } = await api.get<ManagedUser[]>('/users');
+      setUsers(data);
+      setError(null);
+    } catch (err) {
+      setError(apiError(err, 'You do not have permission to manage users.'));
+      setUsers([]);
+    }
+  }, []);
 
   useEffect(() => {
-    const token = localStorage.getItem('access_token');
-    if (!token) {
-      router.push('/login');
-      return;
-    }
+    load();
+  }, [load]);
 
-    fetchUsers();
-  }, [router]);
-
-  const fetchUsers = async () => {
-    try {
-      const response = await api.get('/users');
-      setUsers(response.data);
-    } catch (error) {
-      console.error('Failed to fetch users', error);
-      alert('You do not have permission to view users');
-      router.push('/dashboard');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleCreateUser = async (e: React.FormEvent) => {
+  const createUser = async (e: React.FormEvent) => {
     e.preventDefault();
+    setSaving(true);
+    setError(null);
     try {
-      await api.post('/users', formData);
-      setFormData({ email: '', password: '', full_name: '', role: 'seo' });
+      // Omitting `password` makes the API generate a compliant one and return
+      // it exactly once.
+      const { data } = await api.post('/users', form);
+      if (data.generated_password) {
+        setCredential({ email: data.email, password: data.generated_password });
+      }
+      setForm({
+        email: '',
+        full_name: '',
+        role: 'seo_lead',
+        assigned_verticals: [],
+        assigned_countries: [],
+      });
       setShowForm(false);
-      fetchUsers();
-    } catch (error: any) {
-      alert(error.response?.data?.detail || 'Failed to create user');
+      await load();
+    } catch (err) {
+      setError(apiError(err, 'Could not create the user.'));
+    } finally {
+      setSaving(false);
     }
   };
 
-  const handleDeleteUser = async (id: number) => {
-    if (!confirm('Are you sure you want to delete this user?')) return;
-
+  const resetPassword = async (user: ManagedUser) => {
+    if (
+      !confirm(
+        `Reset the password for ${user.email}? Their active sessions will be ended.`,
+      )
+    )
+      return;
     try {
-      await api.delete(`/users/${id}`);
-      fetchUsers();
-    } catch (error: any) {
-      alert(error.response?.data?.detail || 'Failed to delete user');
+      const { data } = await api.post(`/users/${user.id}/reset-password`, {});
+      if (data.generated_password) {
+        setCredential({ email: data.email, password: data.generated_password });
+      }
+      await load();
+    } catch (err) {
+      setError(apiError(err, 'Could not reset the password.'));
     }
   };
+
+  const toggleActive = async (user: ManagedUser) => {
+    try {
+      await api.patch(`/users/${user.id}`, { is_active: !user.is_active });
+      await load();
+    } catch (err) {
+      setError(apiError(err, 'Could not update the account.'));
+    }
+  };
+
+  const toggleScope = (field: 'assigned_verticals' | 'assigned_countries', key: string) =>
+    setForm((prev) => ({
+      ...prev,
+      [field]: prev[field].includes(key)
+        ? prev[field].filter((v) => v !== key)
+        : [...prev[field], key],
+    }));
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <Nav />
-      <div className="max-w-7xl mx-auto px-4 py-8">
-        <div className="flex justify-between items-center mb-8">
-          <h1 className="text-3xl font-bold">User Management</h1>
-          <button onClick={() => setShowForm(!showForm)} className="btn-primary">
-            {showForm ? 'Cancel' : '+ Add User'}
+    <Shell
+      title="User management"
+      subtitle="Admin only. Every action here is written to the audit log."
+      actions={
+        <button className="btn-primary" onClick={() => setShowForm((v) => !v)}>
+          {showForm ? 'Cancel' : 'Add user'}
+        </button>
+      }
+    >
+      <ErrorBanner message={error} />
+
+      {credential && (
+        <Card title="Password — shown once" className="mb-4 border-primary/50">
+          <p className="text-sm text-slate-300">
+            Send this to <span className="font-medium text-white">{credential.email}</span>{' '}
+            over a channel they already control. It is not recoverable, and they will be
+            asked to change it on first login.
+          </p>
+          <code className="mt-3 block break-all rounded-lg bg-raised p-3 font-mono text-sm text-white">
+            {credential.password}
+          </code>
+          <button className="btn-secondary mt-3" onClick={() => setCredential(null)}>
+            I have saved it
           </button>
-        </div>
+        </Card>
+      )}
 
-        {/* Add User Form */}
-        {showForm && (
-          <div className="card mb-6">
-            <h2 className="text-xl font-semibold mb-4">Create New User</h2>
-            <form onSubmit={handleCreateUser} className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium mb-1">Email</label>
-                  <input
-                    type="email"
-                    value={formData.email}
-                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                    className="input-field"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1">Full Name</label>
-                  <input
-                    type="text"
-                    value={formData.full_name}
-                    onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
-                    className="input-field"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1">Password</label>
-                  <input
-                    type="password"
-                    value={formData.password}
-                    onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                    className="input-field"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1">Role</label>
-                  <select
-                    value={formData.role}
-                    onChange={(e) => setFormData({ ...formData, role: e.target.value })}
-                    className="input-field"
-                  >
-                    <option value="seo">SEO</option>
-                    <option value="writer">Writer</option>
-                    <option value="viewer">Viewer</option>
-                    <option value="owner">Owner</option>
-                  </select>
-                </div>
+      {showForm && (
+        <Card title="Create user" className="mb-4">
+          <form onSubmit={createUser} className="space-y-4">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+              <div>
+                <label className="label">Email</label>
+                <input
+                  type="email"
+                  className="input-field"
+                  value={form.email}
+                  onChange={(e) => setForm({ ...form, email: e.target.value })}
+                  required
+                />
               </div>
-              <button type="submit" className="btn-primary">Create User</button>
-            </form>
-          </div>
-        )}
+              <div>
+                <label className="label">Full name</label>
+                <input
+                  className="input-field"
+                  value={form.full_name}
+                  onChange={(e) => setForm({ ...form, full_name: e.target.value })}
+                  required
+                />
+              </div>
+              <div>
+                <label className="label">Role</label>
+                <select
+                  className="input-field"
+                  value={form.role}
+                  onChange={(e) => setForm({ ...form, role: e.target.value })}
+                >
+                  {ROLES.map((role) => (
+                    <option key={role.value} value={role.value}>
+                      {role.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
 
-        {/* Users List */}
-        <div className="card">
-          {loading ? (
-            <p>Loading users...</p>
-          ) : (
-            <table className="table-auto">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <fieldset>
+                <legend className="label">Assigned verticals (empty means all)</legend>
+                <div className="flex flex-wrap gap-2">
+                  {Object.entries(VERTICAL_LABELS).map(([key, label]) => (
+                    <Chip
+                      key={key}
+                      label={label}
+                      active={form.assigned_verticals.includes(key)}
+                      onClick={() => toggleScope('assigned_verticals', key)}
+                    />
+                  ))}
+                </div>
+              </fieldset>
+              <fieldset>
+                <legend className="label">Assigned countries (empty means all)</legend>
+                <div className="flex flex-wrap gap-2">
+                  {Object.entries(COUNTRY_LABELS).map(([key, label]) => (
+                    <Chip
+                      key={key}
+                      label={label}
+                      active={form.assigned_countries.includes(key)}
+                      onClick={() => toggleScope('assigned_countries', key)}
+                    />
+                  ))}
+                </div>
+              </fieldset>
+            </div>
+
+            <button type="submit" className="btn-primary" disabled={saving}>
+              {saving ? 'Creating…' : 'Create user and generate password'}
+            </button>
+          </form>
+        </Card>
+      )}
+
+      <Card>
+        {!users ? (
+          <Skeleton className="h-40 w-full" />
+        ) : users.length === 0 ? (
+          <EmptyState
+            title="No users yet"
+            description="Create the two seo_lead accounts so the team can start drafting."
+          />
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="data-table">
               <thead>
                 <tr>
-                  <th>Email</th>
-                  <th>Full Name</th>
+                  <th>Name</th>
                   <th>Role</th>
-                  <th>Created</th>
-                  <th>Actions</th>
+                  <th>Drafted this week</th>
+                  <th>Avg score</th>
+                  <th>Last login</th>
+                  <th>State</th>
+                  <th />
                 </tr>
               </thead>
               <tbody>
                 {users.map((user) => (
                   <tr key={user.id}>
-                    <td>{user.email}</td>
-                    <td>{user.full_name}</td>
                     <td>
-                      <span className="px-2 py-1 bg-purple-100 text-purple-800 text-xs rounded uppercase">
+                      <div className="font-medium text-white">{user.full_name}</div>
+                      <div className="text-xs text-muted">{user.email}</div>
+                    </td>
+                    <td>
+                      <span className="badge border-line bg-raised text-slate-200">
                         {user.role}
                       </span>
                     </td>
-                    <td>{new Date(user.created_at).toLocaleDateString()}</td>
+                    <td className="tabular-nums">{user.articles_drafted_this_week}</td>
                     <td>
+                      <ScoreBadge score={user.avg_score} />
+                    </td>
+                    <td className="whitespace-nowrap text-xs text-muted">
+                      {user.last_login_at
+                        ? new Date(user.last_login_at).toLocaleString()
+                        : 'Never'}
+                    </td>
+                    <td>
+                      <div className="flex flex-col gap-1">
+                        <span
+                          className={`badge ${
+                            user.is_active
+                              ? 'border-success/40 bg-success/10 text-success'
+                              : 'border-danger/40 bg-danger/10 text-danger'
+                          }`}
+                        >
+                          {user.is_active ? 'active' : 'deactivated'}
+                        </span>
+                        {user.must_change_password && (
+                          <span className="badge border-warning/40 bg-warning/10 text-warning">
+                            must change password
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="whitespace-nowrap">
                       <button
-                        onClick={() => handleDeleteUser(user.id)}
-                        className="text-red-600 hover:text-red-800 text-sm"
+                        className="text-xs text-primary hover:underline"
+                        onClick={() => resetPassword(user)}
                       >
-                        Delete
+                        Reset password
+                      </button>
+                      <span className="mx-2 text-line">|</span>
+                      <button
+                        className="text-xs text-primary hover:underline"
+                        onClick={() => toggleActive(user)}
+                      >
+                        {user.is_active ? 'Deactivate' : 'Reactivate'}
                       </button>
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
-          )}
-        </div>
-      </div>
-    </div>
+          </div>
+        )}
+      </Card>
+    </Shell>
+  );
+}
+
+function Chip({
+  label,
+  active,
+  onClick,
+}: {
+  label: string;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`rounded-md border px-2.5 py-1 text-xs transition-colors ${
+        active
+          ? 'border-primary bg-primary/15 text-white'
+          : 'border-line bg-raised text-muted hover:text-slate-200'
+      }`}
+    >
+      {label}
+    </button>
   );
 }

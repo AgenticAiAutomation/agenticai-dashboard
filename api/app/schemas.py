@@ -14,29 +14,19 @@ class TokenResponse(BaseModel):
     access_token: str
     refresh_token: str
     token_type: str = "bearer"
+    # Drives the forced password change and 2FA enrolment prompt on first login.
+    must_change_password: bool = False
+    totp_enrolled: bool = False
+    role: Optional[str] = None
+    full_name: Optional[str] = None
 
 
 class RefreshRequest(BaseModel):
     refresh_token: str
 
 
-# User schemas
-class UserCreate(BaseModel):
-    email: EmailStr
-    password: str
-    full_name: str
-    role: str
-
-
-class UserResponse(BaseModel):
-    id: int
-    email: str
-    full_name: str
-    role: str
-    created_at: datetime
-
-    class Config:
-        from_attributes = True
+# User schemas live in app/routes/users.py alongside the user-management routes,
+# since they carry role/scope validation that belongs with those endpoints.
 
 
 # Keyword schemas

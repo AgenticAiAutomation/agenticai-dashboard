@@ -48,3 +48,10 @@ logs/
 # Alembic
 alembic/versions/__pycache__/
 error_git.png
+
+# SEO Operations — secrets and generated artefacts that must never be committed
+secrets/
+CREDENTIALS_JAI.md
+SEO_LIVE_APPROVED.txt
+uploads/
+*service-account*.json

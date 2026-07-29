@@ -2,34 +2,80 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Dark-first. The dashboard is reviewed on laptops, so contrast is tuned for
+   a bright room rather than maximum darkness. */
+html {
+  color-scheme: dark;
+}
+
 body {
-  @apply bg-gray-50 text-gray-900;
+  @apply bg-bg text-slate-100 antialiased;
 }
 
-.btn-primary {
-  @apply bg-primary text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors;
-}
+@layer components {
+  .card {
+    @apply bg-surface border border-line rounded-xl p-5;
+  }
 
-.btn-secondary {
-  @apply bg-gray-200 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-300 transition-colors;
-}
+  .card-title {
+    @apply text-label uppercase font-semibold text-muted;
+  }
 
-.input-field {
-  @apply w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent;
-}
+  .kpi-value {
+    @apply text-kpi font-semibold tabular-nums text-white;
+  }
 
-.card {
-  @apply bg-white rounded-lg shadow-sm p-6;
-}
+  .btn-primary {
+    @apply bg-primary text-white px-4 py-2 rounded-lg text-sm font-medium
+           hover:bg-primary-hover disabled:opacity-40 disabled:cursor-not-allowed
+           transition-colors;
+  }
 
-.table-auto {
-  @apply w-full text-left border-collapse;
-}
+  .btn-secondary {
+    @apply bg-raised text-slate-200 border border-line px-4 py-2 rounded-lg text-sm
+           font-medium hover:bg-line disabled:opacity-40 disabled:cursor-not-allowed
+           transition-colors;
+  }
 
-.table-auto th {
-  @apply bg-gray-100 px-4 py-3 text-sm font-semibold text-gray-700 border-b;
-}
+  .btn-danger {
+    @apply bg-danger/15 text-danger border border-danger/40 px-4 py-2 rounded-lg
+           text-sm font-medium hover:bg-danger/25 transition-colors;
+  }
 
-.table-auto td {
-  @apply px-4 py-3 text-sm border-b border-gray-200;
+  .input-field {
+    @apply w-full bg-raised border border-line rounded-lg px-3 py-2 text-sm
+           text-slate-100 placeholder:text-slate-500
+           focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent
+           disabled:opacity-40 disabled:cursor-not-allowed;
+  }
+
+  .label {
+    @apply block text-xs font-medium text-muted mb-1.5;
+  }
+
+  .data-table {
+    @apply w-full text-left border-collapse text-sm;
+  }
+
+  .data-table th {
+    @apply bg-raised px-4 py-3 text-xs font-semibold uppercase tracking-wide
+           text-muted border-b border-line;
+  }
+
+  .data-table td {
+    @apply px-4 py-3 border-b border-line/60 text-slate-200;
+  }
+
+  .data-table tbody tr:hover {
+    @apply bg-raised/50;
+  }
+
+  .skeleton {
+    @apply bg-raised rounded animate-pulse;
+  }
+
+  .badge {
+    @apply inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium
+           border;
+  }
 }

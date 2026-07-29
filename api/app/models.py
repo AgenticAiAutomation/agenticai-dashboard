@@ -1,6 +1,17 @@
-from sqlalchemy import Column, Integer, String, Text, Date, TIMESTAMP, ForeignKey, CheckConstraint, Numeric, CHAR, SmallInteger
+from sqlalchemy import Column, Integer, String, Text, Date, TIMESTAMP, ForeignKey, CheckConstraint, Numeric, CHAR, SmallInteger, Boolean
+from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.sql import func
 from app.database import Base
+
+# 'owner'/'seo'/'writer' are the pre-SEO-module roles and are kept so existing
+# accounts keep working; 'admin'/'seo_lead' are the roles the SEO module grants.
+# ROLE_ADMIN / ROLE_SEO_LEAD below are the canonical sets to check against.
+ALL_ROLES = ('owner', 'admin', 'seo', 'seo_lead', 'writer', 'viewer')
+
+# 'owner' is legacy-equivalent to 'admin'; both get full access.
+ROLE_ADMIN = ['owner', 'admin']
+# Anyone who may create/edit articles. Cannot manage users.
+ROLE_SEO_LEAD = ROLE_ADMIN + ['seo', 'seo_lead']
 
 
 class User(Base):
@@ -10,8 +21,44 @@ class User(Base):
     email = Column(Text, unique=True, nullable=False, index=True)
     password_hash = Column(Text, nullable=False)
     full_name = Column(Text, nullable=False)
-    role = Column(Text, CheckConstraint("role IN ('owner','seo','writer','viewer')"), nullable=False)
+    role = Column(
+        Text,
+        CheckConstraint("role IN ('owner','admin','seo','seo_lead','writer','viewer')"),
+        nullable=False,
+    )
     created_at = Column(TIMESTAMP(timezone=True), server_default=func.now())
+
+    # --- User management (SEO module) ---
+    is_active = Column(Boolean, nullable=False, server_default='true')
+    must_change_password = Column(Boolean, nullable=False, server_default='false')
+    last_login_at = Column(TIMESTAMP(timezone=True))
+    # Drives the 8-hour idle timeout; bumped at most once a minute per request.
+    last_activity_at = Column(TIMESTAMP(timezone=True))
+    # Scoping: empty/NULL means "all". Validated against the seo enums on write.
+    assigned_verticals = Column(ARRAY(Text))
+    assigned_countries = Column(ARRAY(Text))
+    # TOTP enrolment. secret is set at enrolment, confirmed once a code verifies.
+    totp_secret = Column(Text)
+    totp_enabled = Column(Boolean, nullable=False, server_default='false')
+    updated_at = Column(TIMESTAMP(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class AuditEvent(Base):
+    """Append-only record of user actions. Never updated, never deleted."""
+
+    __tablename__ = "audit_events"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey('users.id', ondelete='SET NULL'), index=True)
+    # Denormalised so the trail survives the user being deleted.
+    user_email = Column(Text)
+    action = Column(Text, nullable=False, index=True)
+    target_type = Column(Text)
+    target_id = Column(Text)
+    detail = Column(Text)
+    ip = Column(Text)
+    user_agent = Column(Text)
+    created_at = Column(TIMESTAMP(timezone=True), server_default=func.now(), index=True)
 
 
 class Keyword(Base):
