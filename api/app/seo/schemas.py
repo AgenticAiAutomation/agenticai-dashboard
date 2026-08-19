@@ -31,6 +31,63 @@ class ArticleGenerateRequest(BaseModel):
     pull_request_id: Optional[UUID] = None
 
 
+class ManualFaq(BaseModel):
+    """One FAQ typed by the writer.
+
+    `source_url` stays optional here so a writer is never blocked mid-draft,
+    but the scorer awards 8 points for sourced FAQs and docks them otherwise —
+    the pressure to cite belongs at scoring time, not data-entry time.
+    """
+    question: str = Field(min_length=3)
+    answer: str = Field(min_length=1)
+    source_url: Optional[str] = None
+    source_platform: Optional[enums.SourcePlatform] = None
+
+
+class ArticleManualCreate(BaseModel):
+    """POST /api/seo/articles — a writer starting from a blank page.
+
+    Deliberately has no dependency on Claude, no budget check and no external
+    service of any kind: a writer must be able to open the editor and type,
+    whether or not an LLM key is provisioned. Only `primary_keyword` and
+    `vertical` are structurally required; everything else can be filled in as
+    the draft develops, because a half-written article is a normal state and
+    the scorer is what decides when it is finished.
+    """
+    type: enums.ArticleType = enums.ArticleType.content
+    vertical: enums.Vertical
+    country: Optional[enums.Country] = None
+    primary_keyword: str = Field(min_length=2)
+    title: Optional[str] = None
+    slug: Optional[str] = None
+    body_md: Optional[str] = None
+    meta_title: Optional[str] = None
+    meta_description: Optional[str] = None
+    from_author_story: Optional[str] = None
+    keyword_difficulty: Optional[int] = None
+    monthly_search_volume: Optional[int] = None
+    buyer_intent: Optional[enums.BuyerIntent] = None
+    assigned_to: Optional[int] = None
+    faqs: List[ManualFaq] = Field(default_factory=list)
+
+
+class ArticleManualUpdate(BaseModel):
+    """PUT /api/seo/articles/{id}/write — save an in-progress manual draft.
+
+    Distinct from ArticleTeamEdit, which requires the body and represents the
+    team-review handoff. This is an ordinary save: every field is optional so
+    autosave can send only what changed.
+    """
+    title: Optional[str] = None
+    slug: Optional[str] = None
+    body_md: Optional[str] = None
+    meta_title: Optional[str] = None
+    meta_description: Optional[str] = None
+    primary_keyword: Optional[str] = None
+    from_author_story: Optional[str] = None
+    faqs: Optional[List[ManualFaq]] = None
+
+
 class ArticleTeamEdit(BaseModel):
     team_edit_md: str
     meta_title: Optional[str] = None
@@ -141,6 +198,34 @@ class ScoreParameter(BaseModel):
     implemented: bool = True
 
 
+class RankMathTest(BaseModel):
+    key: str
+    label: str
+    group: str
+    group_label: str
+    points_earned: float
+    points_available: float
+    passed: bool
+    message: str
+    # Rank Math shows some checks as advice rather than pass/fail; these carry
+    # points but never appear in the failed list.
+    informational: bool = False
+
+
+class RankMathReport(BaseModel):
+    """Rank Math's opinion, computed from its own test suite.
+
+    Reported next to the house score rather than merged into it: the two
+    measure different things and are meant to disagree.
+    """
+    total_score: int
+    max_score: int
+    grade: str
+    groups: Dict[str, Dict[str, Any]]
+    tests: List[RankMathTest]
+    failed: List[str]
+
+
 class ScoreResponse(BaseModel):
     article_id: UUID
     version_number: int
@@ -151,6 +236,7 @@ class ScoreResponse(BaseModel):
     comments: List[ScoreComment]
     scored_at: datetime
     blocking_issues: List[str] = []
+    rank_math: Optional[RankMathReport] = None
 
 
 # --------------------------------------------------------------------------

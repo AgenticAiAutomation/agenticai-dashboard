@@ -108,6 +108,29 @@ export interface ScoreParameter {
   implemented: boolean;
 }
 
+export interface RankMathTest {
+  key: string;
+  label: string;
+  group: string;
+  group_label: string;
+  points_earned: number;
+  points_available: number;
+  passed: boolean;
+  message: string;
+  informational: boolean;
+}
+
+/* Rank Math's own test suite, computed server-side from the draft. Reported
+   next to the house score, never merged into it — see services/rankmath.py. */
+export interface RankMathReport {
+  total_score: number;
+  max_score: number;
+  grade: string;
+  groups: Record<string, { label: string; earned: number; available: number }>;
+  tests: RankMathTest[];
+  failed: string[];
+}
+
 export interface ScoreReport {
   article_id: string;
   version_number: number;
@@ -118,6 +141,13 @@ export interface ScoreReport {
   comments: ScoreComment[];
   scored_at: string;
   blocking_issues: string[];
+  rank_math?: RankMathReport | null;
+}
+
+export interface ManualFaqInput {
+  question: string;
+  answer: string;
+  source_url?: string | null;
 }
 
 export interface PullRequest {
@@ -252,6 +282,12 @@ export const seoApi = {
   listArticles: (params: Record<string, string | undefined> = {}) =>
     api.get<Article[]>('/api/seo/articles', { params }),
   getArticle: (id: string) => api.get<ArticleDetail>(`/api/seo/articles/${id}`),
+  /* Write-it-yourself. No LLM key involved on either call. */
+  createManual: (body: Record<string, unknown>) =>
+    api.post<ArticleDetail>('/api/seo/articles', body),
+  saveDraft: (id: string, body: Record<string, unknown>) =>
+    api.put<ArticleDetail>(`/api/seo/articles/${id}/write`, body),
+  /* Optional assisted route; requires ANTHROPIC_API_KEY on the server. */
   generate: (body: Record<string, unknown>) =>
     api.post<ArticleDetail>('/api/seo/articles/generate', body),
   teamEdit: (id: string, body: Record<string, unknown>) =>

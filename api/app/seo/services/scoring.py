@@ -33,7 +33,8 @@ GROUP_LABELS = {
 
 WORD_COUNT_MIN = 1200
 WORD_COUNT_MAX = 2500
-AI_DETECTION_MAX_PERCENT = 20.0
+# The AI-detection threshold lives in settings (AI_DETECTION_MAX_PERCENT) so it
+# can be tuned per environment without a deploy.
 
 
 @dataclass
@@ -232,13 +233,52 @@ def check_grammar(ctx: ScoringContext) -> CheckResult:
 
 
 def check_ai_detection(ctx: ScoringContext) -> CheckResult:
-    """Originality.ai / GPTZero. No key is provisioned yet, so this is skipped."""
-    return CheckResult(
-        0,
-        "No AI-detection provider configured (Originality.ai or GPTZero). "
-        "Publish rule 5 cannot be enforced until one is.",
-        skipped=True,
-    )
+    """Originality.ai or GPTZero, per AI_DETECTION_PROVIDER.
+
+    Scores full marks at or below the configured threshold and falls off
+    linearly to zero at twice it, rather than passing/failing on a cliff edge —
+    detector readings are noisy enough that a 1% move should not flip an
+    article between publishable and blocked.
+    """
+    from app.seo.services import ai_detection
+
+    try:
+        reading = ai_detection.detect(ctx.body_text)
+    except Exception as exc:
+        return CheckResult(0, f"AI detection unavailable ({exc})", skipped=True)
+
+    if reading is None:
+        return CheckResult(
+            0,
+            "No AI-detection provider configured. Set AI_DETECTION_PROVIDER "
+            "(originality or gptzero) and AI_DETECTION_API_KEY in api/.env to "
+            "enforce publish rule 5.",
+            skipped=True,
+        )
+
+    threshold = settings.AI_DETECTION_MAX_PERCENT
+    if reading.ai_percent <= threshold:
+        points = 8.0
+    else:
+        over = reading.ai_percent - threshold
+        points = round(max(8 * (1 - over / threshold), 0.0), 2)
+
+    comments = []
+    if reading.ai_percent > threshold:
+        comments.append(Comment(
+            line_number=1,
+            current_text=reading.detail,
+            suggested_fix=(
+                f"{reading.provider} puts this above the {threshold:.0f}% threshold. "
+                "Treat it as a prompt to check, not a verdict — these detectors "
+                "misfire on edited human writing. Rewrite the flattest sections in "
+                "the author's own voice and add the specifics only they would know."
+            ),
+            impact_points=round(8 - points, 2),
+        ))
+
+    return CheckResult(points, f"{reading.detail} (threshold {threshold:.0f}%)",
+                       comments)
 
 
 def check_sentence_variety(ctx: ScoringContext) -> CheckResult:

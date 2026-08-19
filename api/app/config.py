@@ -37,6 +37,15 @@ class Settings(BaseSettings):
     MINIO_BUCKET: str = "seo-images"
     MINIO_SECURE: bool = True
 
+    # AI-detection provider for scoring parameter `ai_detection` (8 points, the
+    # heaviest single check). Supported: "originality" or "gptzero". Leave
+    # AI_DETECTION_PROVIDER unset to skip the parameter rather than score it
+    # zero — see app.seo.services.scoring for why skipping is the right default.
+    AI_DETECTION_PROVIDER: Optional[str] = None
+    AI_DETECTION_API_KEY: Optional[str] = None
+    # Percentage of AI-generated text above which the parameter scores zero.
+    AI_DETECTION_MAX_PERCENT: float = 20.0
+
     # Self-hosted LanguageTool (Docker, port 8010).
     LANGUAGETOOL_URL: str = "http://127.0.0.1:8010"
     # Reused from Concierge — bge-m3 embeddings for semantic coverage scoring.

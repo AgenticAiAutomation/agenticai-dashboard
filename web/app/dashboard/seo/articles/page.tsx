@@ -62,9 +62,16 @@ export default function ArticlesPage() {
       title="Articles"
       subtitle="Every draft and published article in the SEO pipeline."
       actions={
-        <Link href="/dashboard/seo/articles/new" className="btn-primary">
-          New article
-        </Link>
+        <div className="flex gap-2">
+          {/* Writing is the primary path and needs no LLM key; generation is
+              the assisted alternative, so it takes the secondary button. */}
+          <Link href="/dashboard/seo/articles/write" className="btn-primary">
+            Write an article
+          </Link>
+          <Link href="/dashboard/seo/articles/new" className="btn-secondary">
+            Generate with AI
+          </Link>
+        </div>
       }
     >
       <ErrorBanner message={error} />
@@ -125,10 +132,10 @@ export default function ArticlesPage() {
         ) : articles.length === 0 ? (
           <EmptyState
             title="No articles match these filters"
-            description="Convert a question from the inbox, or generate a draft from a keyword."
+            description="Write one from scratch, convert a question from the inbox, or generate a draft from a keyword."
             action={
-              <Link href="/dashboard/seo/articles/new" className="btn-primary">
-                Create the first article
+              <Link href="/dashboard/seo/articles/write" className="btn-primary">
+                Write the first article
               </Link>
             }
           />

@@ -56,7 +56,7 @@ export default function TasksPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-bg">
       <Nav />
       <div className="max-w-7xl mx-auto px-4 py-8">
         <h1 className="text-3xl font-bold mb-8">Tasks</h1>
@@ -96,7 +96,7 @@ export default function TasksPage() {
           ) : (
             <div className="space-y-2">
               {tasks.map((task) => (
-                <div key={task.id} className="flex items-center gap-4 p-3 hover:bg-gray-50 rounded">
+                <div key={task.id} className="flex items-center gap-4 p-3 hover:bg-raised rounded">
                   <input
                     type="checkbox"
                     checked={task.status === 'done'}
@@ -111,7 +111,7 @@ export default function TasksPage() {
                     </span>
                   </div>
                   {task.owner_role && (
-                    <span className="text-xs bg-gray-200 px-2 py-1 rounded">{task.owner_role}</span>
+                    <span className="text-xs bg-raised text-slate-200 border border-line px-2 py-1 rounded">{task.owner_role}</span>
                   )}
                 </div>
               ))}

@@ -21,10 +21,12 @@ from app.seo.models import (
     SeoScore,
 )
 from app.seo.schemas import (
-    ArticleDetailResponse, ArticleGenerateRequest, ArticleResponse, ArticleTeamEdit,
-    FromAuthorStoryRequest, PublishResponse, ScoreResponse, ValidateCountryRequest,
+    ArticleDetailResponse, ArticleGenerateRequest, ArticleManualCreate,
+    ArticleManualUpdate, ArticleResponse, ArticleTeamEdit, FromAuthorStoryRequest,
+    ManualFaq, PublishResponse, ScoreResponse, ValidateCountryRequest,
 )
-from app.seo.services import ServiceUnavailable, claude, scoring, storage, wordpress
+from app.seo.services import (ServiceUnavailable, ai_detection, claude, rankmath,
+                              scoring, storage, wordpress)
 
 router = APIRouter(prefix="/api/seo/articles", tags=["seo-articles"])
 
@@ -32,7 +34,121 @@ PUBLISH_MIN_SCORE = 80
 
 
 # --------------------------------------------------------------------------
-# Generate
+# Write it yourself
+#
+# The manual path. No Claude, no budget check, no external service — a writer
+# opens a blank editor and types. This is the primary way articles are created;
+# /generate below is the optional assisted route.
+# --------------------------------------------------------------------------
+def _replace_faqs(db: Session, article: SeoArticle, faqs: List[ManualFaq]) -> None:
+    """Swap the FAQ set wholesale.
+
+    The editor sends the full list every save, so reconciling row by row would
+    be more code for the same result. Position is taken from list order, which
+    is what the writer sees on screen.
+    """
+    db.query(SeoArticleFaq).filter(SeoArticleFaq.article_id == article.id).delete(
+        synchronize_session=False)
+    for position, faq in enumerate(faqs, start=1):
+        db.add(SeoArticleFaq(
+            article_id=article.id,
+            question=faq.question,
+            answer=faq.answer,
+            source_url=faq.source_url,
+            source_platform=faq.source_platform.value if faq.source_platform else None,
+            position_in_article=position,
+        ))
+
+
+@router.post("", response_model=ArticleDetailResponse, status_code=201)
+def create_article_manually(
+    payload: ArticleManualCreate,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(seo_user),
+):
+    """Create an article from scratch. Requires no LLM key."""
+    validate_country_vertical(db, payload.type, payload.vertical, payload.country)
+
+    title = payload.title or payload.primary_keyword
+    slug = unique_slug(db, slugify(payload.slug or title))
+
+    article = SeoArticle(
+        type=payload.type.value,
+        # Straight into team review: a human wrote it, so the "author draft"
+        # stage that /generate produces has already happened.
+        status=enums.ArticleStatus.in_team_review.value,
+        title=title,
+        slug=slug,
+        vertical=payload.vertical.value,
+        country=payload.country.value if payload.country else None,
+        primary_keyword=payload.primary_keyword,
+        keyword_difficulty=payload.keyword_difficulty,
+        monthly_search_volume=payload.monthly_search_volume,
+        buyer_intent=payload.buyer_intent.value if payload.buyer_intent else None,
+        assigned_to=payload.assigned_to or current_user.id,
+        author_draft_md=payload.body_md,
+        team_edit_md=payload.body_md,
+        meta_title=payload.meta_title,
+        meta_description=payload.meta_description,
+        from_author_story=payload.from_author_story,
+    )
+    db.add(article)
+    db.flush()
+
+    if payload.faqs:
+        _replace_faqs(db, article, payload.faqs)
+
+    log_event(db, "seo.article.created_manually", current_user, request,
+              target_type="seo_article", target_id=article.id,
+              detail=f"slug {slug}", commit=False)
+    db.commit()
+    db.refresh(article)
+    return _detail(db, article)
+
+
+@router.put("/{article_id}/write", response_model=ArticleDetailResponse)
+def save_manual_draft(
+    payload: ArticleManualUpdate,
+    request: Request,
+    article: SeoArticle = Depends(get_article),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(seo_user),
+):
+    """Save an in-progress draft. Every field optional so autosave can send deltas."""
+    if article.status == enums.ArticleStatus.published.value:
+        raise HTTPException(
+            status_code=409,
+            detail="This article is already published. Archive it before editing.",
+        )
+
+    if payload.slug and payload.slug != article.slug:
+        article.slug = unique_slug(db, slugify(payload.slug), exclude_id=article.id)
+
+    for field in ("title", "body_md", "meta_title", "meta_description",
+                  "primary_keyword", "from_author_story"):
+        value = getattr(payload, field)
+        if value is None:
+            continue
+        if field == "body_md":
+            # Keep both columns aligned; final_md is set at publish time.
+            article.author_draft_md = value
+            article.team_edit_md = value
+        else:
+            setattr(article, field, value)
+
+    if payload.faqs is not None:
+        _replace_faqs(db, article, payload.faqs)
+
+    log_event(db, "seo.article.saved", current_user, request,
+              target_type="seo_article", target_id=article.id, commit=False)
+    db.commit()
+    db.refresh(article)
+    return _detail(db, article)
+
+
+# --------------------------------------------------------------------------
+# Generate (optional, assisted)
 # --------------------------------------------------------------------------
 @router.post("/generate", response_model=ArticleDetailResponse, status_code=201)
 def generate_article(
@@ -310,7 +426,20 @@ def score_article_endpoint(
     db: Session = Depends(get_db),
     current_user: User = Depends(seo_user),
 ):
-    report = scoring.score_article(_build_context(db, article))
+    context = _build_context(db, article)
+    report = scoring.score_article(context)
+
+    # Rank Math's own test suite, run over the same draft. Kept separate from
+    # the house score: it is a second opinion, not part of the publish gate.
+    rank_math_report = rankmath.score_article(rankmath.RankMathContext(
+        markdown=context.markdown,
+        primary_keyword=context.primary_keyword,
+        title=context.meta_title or context.title,
+        slug=context.slug,
+        meta_description=context.meta_description,
+        has_featured_image=bool(article.featured_image_path),
+        featured_image_alt=context.featured_image_alt,
+    ))
 
     next_version = (db.query(func.coalesce(func.max(SeoArticleVersion.version_number), 0))
                     .filter(SeoArticleVersion.article_id == article.id).scalar()) or 1
@@ -320,7 +449,8 @@ def score_article_endpoint(
         version_number=next_version,
         total_score=report["total_score"],
         breakdown_json={"groups": report["groups"], "parameters": report["parameters"],
-                        "parameters_skipped": report["parameters_skipped"]},
+                        "parameters_skipped": report["parameters_skipped"],
+                        "rank_math": rank_math_report},
         comments_json={"comments": report["comments"]},
     ))
     article.current_score = report["total_score"]
@@ -342,6 +472,7 @@ def score_article_endpoint(
         comments=report["comments"],
         scored_at=datetime.now(timezone.utc),
         blocking_issues=_blocking_issues(article, report["total_score"]),
+        rank_math=rank_math_report,
     )
 
 
@@ -542,9 +673,9 @@ def publish_article(
             detail={"error": "publish_blocked", "blocking_issues": blockers},
         )
 
-    # Rule 5 — AI detection. No provider is provisioned, so the gate is reported
-    # as unenforced rather than silently passing.
-    ai_detection_enforced = False
+    # Rule 5 — AI detection. Enforced only when a provider is configured; the
+    # response says which, so "passed" is never confused with "not checked".
+    ai_detection_enforced = ai_detection.configured()
 
     if not article.slug:
         raise HTTPException(status_code=422, detail="The article has no slug.")
