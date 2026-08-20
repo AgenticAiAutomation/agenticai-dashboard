@@ -1,9 +1,9 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Shell from '@/components/Shell';
-import { Card, ErrorBanner } from '@/components/ui';
+import { Card, ErrorBanner, Skeleton } from '@/components/ui';
 import {
   APPROVED_MATRIX,
   COUNTRY_LABELS,
@@ -97,7 +97,24 @@ function RankMathPanel({ report }: { report: RankMathReport }) {
   );
 }
 
-export default function WriteArticlePage() {
+/* useSearchParams forces client-side rendering, which the static export cannot
+   prerender without a Suspense boundary. Same wrapper pattern as the edit
+   page — without it `next build` fails outright on this route. */
+export default function WriteArticleRoute() {
+  return (
+    <Suspense
+      fallback={
+        <Shell title="Write an article">
+          <Skeleton className="h-96 w-full" />
+        </Shell>
+      }
+    >
+      <WriteArticlePage />
+    </Suspense>
+  );
+}
+
+function WriteArticlePage() {
   const router = useRouter();
   const params = useSearchParams();
   const existingId = params.get('id');
