@@ -144,6 +144,20 @@ export interface ScoreReport {
   rank_math?: RankMathReport | null;
 }
 
+export interface ArticleDeleted {
+  article_id: string;
+  slug: string | null;
+  title: string | null;
+  deleted_faqs: number;
+  deleted_sources: number;
+  deleted_versions: number;
+  deleted_scores: number;
+  detached_calendar_slots: number;
+  detached_pull_requests: number;
+  detached_api_usage: number;
+  note: string;
+}
+
 export interface ManualFaqInput {
   question: string;
   answer: string;
@@ -293,6 +307,14 @@ export const seoApi = {
   teamEdit: (id: string, body: Record<string, unknown>) =>
     api.put<ArticleDetail>(`/api/seo/articles/${id}/team-edit`, body),
   score: (id: string) => api.post<ScoreReport>(`/api/seo/articles/${id}/score`),
+  archive: (id: string) => api.post<Article>(`/api/seo/articles/${id}/archive`),
+  restore: (id: string) => api.post<Article>(`/api/seo/articles/${id}/restore`),
+  /* confirmSlug must equal the article's current slug — the server refuses
+     otherwise, so a stale list cannot delete the wrong row. */
+  remove: (id: string, confirmSlug: string) =>
+    api.delete<ArticleDeleted>(`/api/seo/articles/${id}`, {
+      params: { confirm_slug: confirmSlug },
+    }),
   submitForAuthor: (id: string, minScore: number) =>
     api.post(`/api/seo/articles/${id}/submit-for-author`, null, {
       params: { min_score: minScore },

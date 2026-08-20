@@ -198,6 +198,28 @@ class ScoreParameter(BaseModel):
     implemented: bool = True
 
 
+class ArticleDeletedResponse(BaseModel):
+    """What a hard delete actually removed.
+
+    Returned so the caller can show the operator exactly what went, rather
+    than a bare 204 that leaves them guessing.
+    """
+    article_id: UUID
+    slug: Optional[str]
+    title: Optional[str]
+    deleted_faqs: int
+    deleted_sources: int
+    deleted_versions: int
+    deleted_scores: int
+    # Rows that survive with their reference cleared rather than being removed,
+    # because destroying spend history or calendar planning is not what anyone
+    # means by "delete this draft".
+    detached_calendar_slots: int
+    detached_pull_requests: int
+    detached_api_usage: int
+    note: str
+
+
 class RankMathTest(BaseModel):
     key: str
     label: str

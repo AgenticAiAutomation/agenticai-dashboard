@@ -135,6 +135,8 @@ function WriteArticlePage() {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [showDanger, setShowDanger] = useState(false);
+  const [confirmSlug, setConfirmSlug] = useState('');
 
   // Load an existing draft when ?id= is present.
   useEffect(() => {
@@ -244,6 +246,27 @@ function WriteArticlePage() {
     });
 
   const rankMath = report?.rank_math ?? null;
+
+  const archive = () =>
+    run('archive', async () => {
+      if (!articleId) return;
+      await seoApi.archive(articleId);
+      setNotice('Archived. It is out of the pipeline but nothing was destroyed — restore it any time.');
+    });
+
+  const destroy = () =>
+    run('delete', async () => {
+      if (!articleId) return;
+      const { data } = await seoApi.remove(articleId, confirmSlug.trim());
+      setNotice(
+        `Deleted "${data.title ?? data.slug}". Removed ${data.deleted_faqs} FAQ(s), ` +
+          `${data.deleted_scores} score(s), ${data.deleted_versions} version(s).`,
+      );
+      setArticleId(null);
+      setConfirmSlug('');
+      setShowDanger(false);
+      router.push('/dashboard/seo/articles');
+    });
 
   return (
     <Shell
@@ -444,6 +467,56 @@ function WriteArticlePage() {
               ))}
             </div>
           </Card>
+
+          {articleId && (
+            <Card title="Danger zone">
+              <p className="text-xs text-muted mb-4">
+                Archiving is reversible and keeps the score history. Deleting is not.
+              </p>
+
+              <div className="flex flex-wrap gap-2">
+                <button className="btn-secondary" onClick={archive} disabled={busy !== null}>
+                  {busy === 'archive' ? 'Archiving…' : 'Archive'}
+                </button>
+                <button
+                  className="btn-danger"
+                  onClick={() => setShowDanger(!showDanger)}
+                  disabled={busy !== null}
+                  aria-expanded={showDanger}
+                >
+                  Delete permanently…
+                </button>
+              </div>
+
+              {showDanger && (
+                <div className="mt-4 pt-4 border-t border-line space-y-3">
+                  <p className="text-xs text-slate-300">
+                    This removes the article, its FAQs, sources, versions and score
+                    history. Calendar slots and cost records are kept. It cannot be
+                    undone, and published articles cannot be deleted here at all.
+                  </p>
+                  <label className="label" htmlFor="confirmSlug">
+                    Type the slug <code className="text-warning">{slug}</code> to confirm
+                  </label>
+                  <input
+                    id="confirmSlug"
+                    className="input-field"
+                    value={confirmSlug}
+                    onChange={(e) => setConfirmSlug(e.target.value)}
+                    placeholder={slug}
+                    autoComplete="off"
+                  />
+                  <button
+                    className="btn-danger"
+                    onClick={destroy}
+                    disabled={busy !== null || confirmSlug.trim() !== slug}
+                  >
+                    {busy === 'delete' ? 'Deleting…' : 'I understand — delete it'}
+                  </button>
+                </div>
+              )}
+            </Card>
+          )}
 
           <Card title="From the author">
             <p className="text-xs text-muted mb-3">

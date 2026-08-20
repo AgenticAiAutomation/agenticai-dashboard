@@ -17,13 +17,14 @@ from app.seo.deps import (
 from app.seo.golive import check_go_live
 from app.seo.matrix import validate_country_vertical
 from app.seo.models import (
-    SeoArticle, SeoArticleFaq, SeoArticleSource, SeoArticleVersion, SeoPullRequest,
-    SeoScore,
+    SeoApiUsage, SeoArticle, SeoArticleFaq, SeoArticleSource, SeoArticleVersion,
+    SeoCalendar, SeoPullRequest, SeoScore,
 )
 from app.seo.schemas import (
-    ArticleDetailResponse, ArticleGenerateRequest, ArticleManualCreate,
-    ArticleManualUpdate, ArticleResponse, ArticleTeamEdit, FromAuthorStoryRequest,
-    ManualFaq, PublishResponse, ScoreResponse, ValidateCountryRequest,
+    ArticleDeletedResponse, ArticleDetailResponse, ArticleGenerateRequest,
+    ArticleManualCreate, ArticleManualUpdate, ArticleResponse, ArticleTeamEdit,
+    FromAuthorStoryRequest, ManualFaq, PublishResponse, ScoreResponse,
+    ValidateCountryRequest,
 )
 from app.seo.services import (ServiceUnavailable, ai_detection, claude, rankmath,
                               scoring, storage, wordpress)
@@ -647,6 +648,161 @@ def _faq_html(db: Session, article: SeoArticle) -> str:
                 f'{faq.source_platform or "source"}</a></small></p>'
             )
     return "\n".join(parts)
+
+
+# --------------------------------------------------------------------------
+# Removal
+#
+# Two levels, because "get this out of my list" and "erase this" are different
+# intentions and only one of them is reversible:
+#
+#   archive  Soft. Reversible. Keeps the row, the score history and the slug
+#            reservation. This is what the UI offers first, and the only option
+#            for anything already published.
+#
+#   delete   Hard. Admin only, drafts only, and the caller must name the slug
+#            to prove they mean this article. Cascades to sources, FAQs,
+#            versions and scores; leaves calendar slots, pull-request links and
+#            API cost records in place with their reference nulled.
+# --------------------------------------------------------------------------
+@router.post("/{article_id}/archive", response_model=ArticleResponse)
+def archive_article(
+    request: Request,
+    article: SeoArticle = Depends(get_article),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(seo_user),
+):
+    """Hide an article without destroying it."""
+    if article.status == enums.ArticleStatus.archived.value:
+        return article
+    if article.status == enums.ArticleStatus.published.value:
+        raise HTTPException(
+            status_code=409,
+            detail=("This article is published. Unpublish it in WordPress first — "
+                    "archiving it here would leave the live URL serving content "
+                    "the dashboard no longer tracks."),
+        )
+
+    article.status = enums.ArticleStatus.archived.value
+    log_event(db, "seo.article.archived", current_user, request,
+              target_type="seo_article", target_id=article.id,
+              detail=f"slug {article.slug}", commit=False)
+    db.commit()
+    db.refresh(article)
+    return article
+
+
+@router.post("/{article_id}/restore", response_model=ArticleResponse)
+def restore_article(
+    request: Request,
+    article: SeoArticle = Depends(get_article),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(seo_user),
+):
+    """Bring an archived article back into the pipeline."""
+    if article.status != enums.ArticleStatus.archived.value:
+        raise HTTPException(status_code=409,
+                            detail="Only archived articles can be restored.")
+
+    # Back to team review rather than wherever it was: the score is stale and
+    # has to be re-run before this can move toward publish again.
+    article.status = enums.ArticleStatus.in_team_review.value
+    log_event(db, "seo.article.restored", current_user, request,
+              target_type="seo_article", target_id=article.id,
+              detail=f"slug {article.slug}", commit=False)
+    db.commit()
+    db.refresh(article)
+    return article
+
+
+@router.delete("/{article_id}", response_model=ArticleDeletedResponse)
+def delete_article(
+    request: Request,
+    confirm_slug: str = Query(
+        ...,
+        description="Must equal the article's current slug. Guards against "
+                    "deleting the wrong row from a stale list.",
+    ),
+    article: SeoArticle = Depends(get_article),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(admin_user),
+):
+    """Permanently remove a draft. Not reversible."""
+    if article.status == enums.ArticleStatus.published.value or article.wp_post_id:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "published_article",
+                "message": ("Published articles cannot be deleted here — the live "
+                            "URL and its WordPress post would be orphaned. Remove "
+                            "the post in WordPress, then archive this record."),
+                "wp_post_id": article.wp_post_id,
+                "wp_published_url": article.wp_published_url,
+            },
+        )
+
+    if confirm_slug != (article.slug or ""):
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": "slug_mismatch",
+                "message": ("confirm_slug does not match this article. Pass the "
+                            "exact current slug to confirm the deletion."),
+                "expected": article.slug,
+                "received": confirm_slug,
+            },
+        )
+
+    # Count children before the cascade so the response can report what went.
+    counts = {
+        "faqs": db.query(func.count(SeoArticleFaq.id))
+                  .filter(SeoArticleFaq.article_id == article.id).scalar() or 0,
+        "sources": db.query(func.count(SeoArticleSource.id))
+                     .filter(SeoArticleSource.article_id == article.id).scalar() or 0,
+        "versions": db.query(func.count(SeoArticleVersion.id))
+                      .filter(SeoArticleVersion.article_id == article.id).scalar() or 0,
+        "scores": db.query(func.count(SeoScore.id))
+                    .filter(SeoScore.article_id == article.id).scalar() or 0,
+        "calendar": db.query(func.count(SeoCalendar.id))
+                      .filter(SeoCalendar.article_id == article.id).scalar() or 0,
+        "pull_requests": db.query(func.count(SeoPullRequest.id))
+                           .filter(SeoPullRequest.converted_to_article_id
+                                   == article.id).scalar() or 0,
+        "api_usage": db.query(func.count(SeoApiUsage.id))
+                       .filter(SeoApiUsage.article_id == article.id).scalar() or 0,
+    }
+
+    article_id = article.id
+    slug = article.slug
+    title = article.title
+
+    # Log before the delete: afterwards there is no row to describe, and the
+    # audit trail is the only remaining record that this article existed.
+    log_event(db, "seo.article.deleted", current_user, request,
+              target_type="seo_article", target_id=article_id,
+              detail=(f"slug={slug!r} title={title!r} status={article.status} "
+                      f"cascaded faqs={counts['faqs']} sources={counts['sources']} "
+                      f"versions={counts['versions']} scores={counts['scores']}"),
+              commit=False)
+
+    db.delete(article)
+    db.commit()
+
+    return ArticleDeletedResponse(
+        article_id=article_id,
+        slug=slug,
+        title=title,
+        deleted_faqs=counts["faqs"],
+        deleted_sources=counts["sources"],
+        deleted_versions=counts["versions"],
+        deleted_scores=counts["scores"],
+        detached_calendar_slots=counts["calendar"],
+        detached_pull_requests=counts["pull_requests"],
+        detached_api_usage=counts["api_usage"],
+        note=("Permanently deleted. Calendar slots, pull-request links and API "
+              "cost records were kept with their reference cleared. The audit "
+              "log retains a record of this deletion."),
+    )
 
 
 @router.post("/{article_id}/publish", response_model=PublishResponse)

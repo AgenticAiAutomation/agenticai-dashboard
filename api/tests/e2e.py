@@ -354,9 +354,78 @@ if article_id:
 
 
 # --------------------------------------------------------------------------
-# 6. Supporting endpoints
+# 6. Archive, restore and delete
 # --------------------------------------------------------------------------
-section("6. Supporting endpoints")
+section("6. Archive / restore / delete")
+
+if article_id:
+    current_slug = f"{slug}-renamed"
+
+    status, body = call("POST", f"/api/seo/articles/{article_id}/archive", token)
+    check("archive returns 200", status == 200, f"got {status}: {body}")
+    check("archive sets status to archived",
+          (body or {}).get("status") == "archived", f"got {(body or {}).get('status')}")
+
+    status, body = call("POST", f"/api/seo/articles/{article_id}/archive", token)
+    check("archiving twice is idempotent, not an error", status == 200, f"got {status}")
+
+    status, body = call("POST", f"/api/seo/articles/{article_id}/restore", token)
+    check("restore returns 200", status == 200, f"got {status}: {body}")
+    check("restore puts the article back into team review",
+          (body or {}).get("status") == "in_team_review",
+          f"got {(body or {}).get('status')}")
+
+    status, body = call("POST", f"/api/seo/articles/{article_id}/restore", token)
+    check("restoring a non-archived article is refused", status == 409, f"got {status}")
+
+    # Deletion must not accept a wrong or missing slug.
+    status, body = call("DELETE", f"/api/seo/articles/{article_id}", token)
+    check("delete without confirm_slug is refused", status == 422, f"got {status}")
+
+    status, body = call(
+        "DELETE", f"/api/seo/articles/{article_id}?confirm_slug=not-the-right-slug",
+        token)
+    check("delete with a mismatched slug is refused", status == 400, f"got {status}")
+    if status == 400 and isinstance(body, dict):
+        detail = body.get("detail") or {}
+        check("slug mismatch names the expected slug",
+              isinstance(detail, dict) and detail.get("expected") == current_slug,
+              f"got {detail}")
+
+    status, _ = call("GET", f"/api/seo/articles/{article_id}", token)
+    check("article still exists after refused deletions", status == 200, f"got {status}")
+
+    status, body = call(
+        "DELETE", f"/api/seo/articles/{article_id}?confirm_slug={current_slug}", token)
+    check("delete with the correct slug returns 200", status == 200,
+          f"got {status}: {body}")
+    if status == 200:
+        check("delete reports the cascaded FAQ count",
+              (body or {}).get("deleted_faqs", -1) >= 1,
+              f"got {(body or {}).get('deleted_faqs')}")
+        check("delete reports the cascaded score count",
+              (body or {}).get("deleted_scores", -1) >= 1,
+              f"got {(body or {}).get('deleted_scores')}")
+        check("delete explains what was kept", bool((body or {}).get("note")))
+        created_article_ids.remove(article_id)
+
+    status, _ = call("GET", f"/api/seo/articles/{article_id}", token)
+    check("deleted article is really gone", status == 404, f"got {status}")
+
+    status, _ = call(
+        "DELETE", f"/api/seo/articles/{article_id}?confirm_slug={current_slug}", token)
+    check("deleting an already-deleted article returns 404", status == 404,
+          f"got {status}")
+
+status, _ = call("DELETE", f"/api/seo/articles/{uuid.uuid4()}?confirm_slug=whatever",
+                 token)
+check("deleting an unknown article returns 404", status == 404, f"got {status}")
+
+
+# --------------------------------------------------------------------------
+# 7. Supporting endpoints
+# --------------------------------------------------------------------------
+section("7. Supporting endpoints")
 
 for label, path in [
     ("dashboard home", "/api/seo/dashboard/home"),
@@ -372,20 +441,24 @@ for label, path in [
 
 
 # --------------------------------------------------------------------------
-# 7. Cleanup
+# 8. Cleanup
 # --------------------------------------------------------------------------
-section("7. Cleanup")
+section("8. Cleanup")
 
 for uid in created_user_ids:
     status, _ = call("DELETE", f"/users/{uid}", token)
     check(f"probe user {uid} deleted", status in (200, 204), f"got {status}")
 
-for aid in created_article_ids:
-    status, _ = call("DELETE", f"/api/seo/articles/{aid}", token)
-    if status == 405:
-        print(f"  NOTE  no delete endpoint for articles; {aid} left in place")
-    else:
-        check(f"probe article {aid} removed", status in (200, 204, 404), f"got {status}")
+# Anything the delete section did not already remove. Look the slug up rather
+# than assuming it, so cleanup works even if an earlier assertion failed.
+for aid in list(created_article_ids):
+    status, current = call("GET", f"/api/seo/articles/{aid}", token)
+    if status == 404:
+        created_article_ids.remove(aid)
+        continue
+    aslug = (current or {}).get("slug") or ""
+    status, _ = call("DELETE", f"/api/seo/articles/{aid}?confirm_slug={aslug}", token)
+    check(f"probe article {aid} removed", status in (200, 204, 404), f"got {status}")
 
 
 # --------------------------------------------------------------------------
