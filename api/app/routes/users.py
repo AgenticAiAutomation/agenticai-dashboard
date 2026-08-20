@@ -205,15 +205,22 @@ def create_user(
     db.commit()
     db.refresh(user)
 
-    response = CreatedUserResponse.model_validate(user, from_attributes=True)
-    response.generated_password = generated
-    response.delivery_note = (
+    # Build the response in one pass. Validating the ORM object straight into
+    # CreatedUserResponse raises before the next two lines can run, because
+    # `delivery_note` is required and a User has no such attribute — and the
+    # commit above has already happened, so the caller saw a 500 for a user
+    # that was created successfully.
+    delivery_note = (
         "This password is shown once and is not recoverable. Send it to the user "
         "over a channel they already control, and have them change it on first login."
         if generated else
         "Password was supplied by the admin; nothing is returned."
     )
-    return response
+    return CreatedUserResponse(
+        **UserResponse.model_validate(user, from_attributes=True).model_dump(),
+        generated_password=generated,
+        delivery_note=delivery_note,
+    )
 
 
 @router.patch("/{user_id}", response_model=UserResponse)
