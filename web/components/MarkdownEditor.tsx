@@ -16,11 +16,24 @@ import { useCallback, useRef, useState } from 'react';
  * a word processor.
  */
 
+export type LinkTarget = {
+  url: string;
+  label: string;
+  /* "site" = a marketing page, "article" = a published blog post. Both count
+     as internal links for scoring; the grouping just helps the writer choose. */
+  group: 'site' | 'article';
+};
+
 type Props = {
   value: string;
   onChange: (next: string) => void;
   rows?: number;
   id?: string;
+  /* Internal pages and published articles the writer can link to. Both scorers
+     award points for internal links, and the no-orphan rule needs articles to
+     link to each other, so this list is how a writer satisfies both without
+     memorising URLs. */
+  linkTargets?: LinkTarget[];
 };
 
 type Action =
@@ -104,9 +117,45 @@ function renderPreview(markdown: string): string {
   return out.join('\n');
 }
 
-export default function MarkdownEditor({ value, onChange, rows = 26, id = 'body' }: Props) {
+export default function MarkdownEditor({
+  value,
+  onChange,
+  rows = 26,
+  id = 'body',
+  linkTargets = [],
+}: Props) {
   const ref = useRef<HTMLTextAreaElement>(null);
   const [showPreview, setShowPreview] = useState(false);
+  const [showLinkPicker, setShowLinkPicker] = useState(false);
+  const [externalUrl, setExternalUrl] = useState('https://');
+  const [pendingSelection, setPendingSelection] =
+    useState<{ start: number; end: number; text: string } | null>(null);
+
+  /* Insert the link using the selection captured when the picker opened —
+     clicking into the panel blurs the textarea and loses the live selection. */
+  const insertLink = useCallback(
+    (url: string) => {
+      const el = ref.current;
+      const sel = pendingSelection;
+      if (!el || !sel) return;
+
+      const text = sel.text || 'link text';
+      const snippet = `[${text}](${url})`;
+      onChange(value.slice(0, sel.start) + snippet + value.slice(sel.end));
+
+      setShowLinkPicker(false);
+      setPendingSelection(null);
+      requestAnimationFrame(() => {
+        el.focus();
+        // Select the anchor text so it can be typed over straight away.
+        el.setSelectionRange(sel.start + 1, sel.start + 1 + text.length);
+      });
+    },
+    [pendingSelection, value, onChange],
+  );
+
+  const internalTargets = linkTargets.filter((t) => t.group === 'site');
+  const articleTargets = linkTargets.filter((t) => t.group === 'article');
 
   const apply = useCallback(
     (action: Action) => {
@@ -161,17 +210,11 @@ export default function MarkdownEditor({ value, onChange, rows = 26, id = 'body'
           caretEnd = caretStart + selected.length;
         }
       } else if (action.kind === 'link') {
-        const url = window.prompt(
-          'Link URL — use /services for an internal page, https://… for external',
-          'https://',
-        );
-        if (!url) return;
-        const text = selected || 'link text';
-        const snippet = `[${text}](${url})`;
-        next = value.slice(0, start) + snippet + value.slice(end);
-        // Select the link text so it can be typed over immediately.
-        caretStart = start + 1;
-        caretEnd = caretStart + text.length;
+        // Opening the picker instead of prompting: the writer needs to see the
+        // internal pages and published articles, not recall their URLs.
+        setPendingSelection({ start, end, text: selected });
+        setShowLinkPicker(true);
+        return;
       } else {
         const url = window.prompt('Image URL', 'https://');
         if (!url) return;
@@ -238,6 +281,88 @@ export default function MarkdownEditor({ value, onChange, rows = 26, id = 'body'
           {showPreview ? 'Edit' : 'Preview'}
         </button>
       </div>
+
+      {showLinkPicker && (
+        <div className="mb-3 p-3 bg-raised border border-line rounded-lg">
+          <div className="flex justify-between items-center mb-3">
+            <p className="card-title">
+              Insert link
+              {pendingSelection?.text ? ` around "${pendingSelection.text}"` : ''}
+            </p>
+            <button
+              className="text-xs text-muted hover:text-white"
+              onClick={() => { setShowLinkPicker(false); setPendingSelection(null); }}
+            >
+              Cancel
+            </button>
+          </div>
+
+          {internalTargets.length > 0 && (
+            <>
+              <p className="text-xs text-muted mb-1.5">
+                Site pages — internal links are worth 3 points in each scorer
+              </p>
+              <div className="flex flex-wrap gap-1.5 mb-3">
+                {internalTargets.map((t) => (
+                  <button
+                    key={t.url}
+                    onClick={() => insertLink(t.url)}
+                    title={t.url}
+                    className="px-2 py-1 rounded text-xs border border-line
+                               bg-surface text-slate-200 hover:bg-line hover:text-white"
+                  >
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+
+          <p className="text-xs text-muted mb-1.5">
+            Published articles
+            {articleTargets.length === 0 && ' — none yet, so link to a site page above'}
+          </p>
+          {articleTargets.length > 0 && (
+            <div className="flex flex-col gap-1 mb-3 max-h-40 overflow-auto">
+              {articleTargets.map((t) => (
+                <button
+                  key={t.url}
+                  onClick={() => insertLink(t.url)}
+                  title={t.url}
+                  className="text-left px-2 py-1 rounded text-xs border border-line
+                             bg-surface text-slate-200 hover:bg-line hover:text-white"
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+          )}
+
+          <p className="text-xs text-muted mb-1.5">
+            External URL — cite an authoritative source; worth 2 to 3 points
+          </p>
+          <div className="flex gap-2">
+            <label className="sr-only" htmlFor="externalUrl">External URL</label>
+            <input
+              id="externalUrl"
+              className="input-field text-xs"
+              value={externalUrl}
+              onChange={(e) => setExternalUrl(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') { e.preventDefault(); insertLink(externalUrl); }
+              }}
+              placeholder="https://developers.facebook.com/docs/whatsapp"
+            />
+            <button
+              className="btn-secondary text-xs whitespace-nowrap"
+              onClick={() => insertLink(externalUrl)}
+              disabled={!/^https?:\/\/.+\..+/.test(externalUrl)}
+            >
+              Insert
+            </button>
+          </div>
+        </div>
+      )}
 
       {showPreview ? (
         <div

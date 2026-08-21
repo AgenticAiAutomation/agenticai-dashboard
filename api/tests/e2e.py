@@ -382,6 +382,21 @@ if article_id:
         check("upload returns the stored path", bool(body.get("featured_image_path")))
         check("upload reports the byte count", body.get("bytes", 0) > 0)
 
+    # Alt text must be settable by hand. /generate-alt needs an Anthropic key,
+    # and publishing is blocked while alt text is empty — so without a manual
+    # path an article could never be published at all.
+    alt = "Counsellor reviewing WhatsApp admission enquiries on a laptop"
+    status, saved = call("PUT", f"/api/seo/articles/{article_id}/write", token,
+                         {"featured_image_alt": alt})
+    check("alt text can be set manually, without an LLM key",
+          status == 200 and (saved or {}).get("featured_image_alt") == alt,
+          f"got {status}: {(saved or {}).get('featured_image_alt')!r}")
+
+    status, fetched = call("GET", f"/api/seo/articles/{article_id}", token)
+    check("manual alt text persists",
+          (fetched or {}).get("featured_image_alt") == alt,
+          f"got {(fetched or {}).get('featured_image_alt')!r}")
+
     status, body = upload(article_id, "notes.txt", b"plain text", "text/plain", token)
     check("non-image upload is rejected cleanly (not 500)",
           status in (400, 415, 422, 503), f"got {status}: {body}")

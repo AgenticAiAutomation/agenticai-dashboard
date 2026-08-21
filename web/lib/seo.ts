@@ -159,6 +159,30 @@ export interface ArticleDeleted {
   note: string;
 }
 
+/* Marketing pages a writer can link to from inside an article. Mirrors the
+   live site's structure and the anchors used on /services — keep in step with
+   the site's nav. Published articles are appended at runtime.
+
+   Typed structurally rather than importing LinkTarget from the component, so
+   lib/ stays free of component imports. */
+export const SITE_LINK_TARGETS: {
+  url: string;
+  label: string;
+  group: 'site';
+}[] = [
+  { url: '/services', label: 'Services', group: 'site' },
+  { url: '/services#whatsapp', label: 'WhatsApp automation', group: 'site' },
+  { url: '/services#ai-agents', label: 'AI agents', group: 'site' },
+  { url: '/services#n8n', label: 'n8n workflows', group: 'site' },
+  { url: '/services#uipath', label: 'UiPath & RPA', group: 'site' },
+  { url: '/services#documents', label: 'Document processing', group: 'site' },
+  { url: '/services#migration', label: 'RPA to AI migration', group: 'site' },
+  { url: '/industries', label: 'Industries', group: 'site' },
+  { url: '/case-studies', label: 'Case studies', group: 'site' },
+  { url: '/about', label: 'About', group: 'site' },
+  { url: '/contact', label: 'Contact', group: 'site' },
+];
+
 export interface ManualFaqInput {
   question: string;
   answer: string;

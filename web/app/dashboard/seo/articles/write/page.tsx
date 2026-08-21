@@ -3,7 +3,7 @@
 import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Shell from '@/components/Shell';
-import MarkdownEditor from '@/components/MarkdownEditor';
+import MarkdownEditor, { LinkTarget } from '@/components/MarkdownEditor';
 import { Card, ErrorBanner, Skeleton } from '@/components/ui';
 import {
   APPROVED_MATRIX,
@@ -11,6 +11,7 @@ import {
   Country,
   ManualFaqInput,
   RankMathReport,
+  SITE_LINK_TARGETS,
   ScoreReport,
   VERTICAL_LABELS,
   Vertical,
@@ -138,6 +139,29 @@ function WriteArticlePage() {
   const [notice, setNotice] = useState<string | null>(null);
   const [showDanger, setShowDanger] = useState(false);
   const [confirmSlug, setConfirmSlug] = useState('');
+  const [imageAlt, setImageAlt] = useState('');
+  const [linkTargets, setLinkTargets] = useState<LinkTarget[]>(SITE_LINK_TARGETS);
+
+  /* Published articles become link targets too. The no-orphan rule needs
+     articles pointing at each other, so the writer has to be able to find
+     them without leaving the editor. */
+  useEffect(() => {
+    seoApi
+      .listArticles({ status: 'published' })
+      .then(({ data }) => {
+        const published: LinkTarget[] = data
+          .filter((a) => a.slug)
+          .map((a) => ({
+            url: `/blog/${a.slug}`,
+            label: a.title ?? a.slug!,
+            group: 'article' as const,
+          }));
+        setLinkTargets([...SITE_LINK_TARGETS, ...published]);
+      })
+      .catch(() => {
+        /* Non-fatal: the site targets alone still let the writer link. */
+      });
+  }, []);
 
   // Load an existing draft when ?id= is present.
   useEffect(() => {
@@ -154,6 +178,7 @@ function WriteArticlePage() {
         setMetaDescription(data.meta_description ?? '');
         setBody(data.team_edit_md ?? data.author_draft_md ?? '');
         setFromAuthor(data.from_author_story ?? '');
+        setImageAlt(data.featured_image_alt ?? '');
         setFaqs(
           data.faqs.length
             ? data.faqs.map((f) => ({
@@ -207,6 +232,7 @@ function WriteArticlePage() {
         meta_description: metaDescription || null,
         primary_keyword: keyword,
         from_author_story: fromAuthor || null,
+        featured_image_alt: imageAlt || null,
         faqs: cleanFaqs(),
       };
 
@@ -240,6 +266,7 @@ function WriteArticlePage() {
         meta_description: metaDescription || null,
         primary_keyword: keyword,
         from_author_story: fromAuthor || null,
+        featured_image_alt: imageAlt || null,
         faqs: cleanFaqs(),
       });
       const { data } = await seoApi.score(articleId);
@@ -247,6 +274,16 @@ function WriteArticlePage() {
     });
 
   const rankMath = report?.rank_math ?? null;
+
+  const uploadImage = (file: File) =>
+    run('upload', async () => {
+      if (!articleId) {
+        setError('Create the draft before uploading an image.');
+        return;
+      }
+      await seoApi.uploadImage(articleId, file);
+      setNotice('Image uploaded. Write the alt text below, then save.');
+    });
 
   const archive = () =>
     run('archive', async () => {
@@ -360,7 +397,13 @@ function WriteArticlePage() {
             }
           >
             <label className="sr-only" htmlFor="body">Article body in Markdown</label>
-            <MarkdownEditor id="body" value={body} onChange={setBody} rows={26} />
+            <MarkdownEditor
+              id="body"
+              value={body}
+              onChange={setBody}
+              rows={26}
+              linkTargets={linkTargets}
+            />
           </Card>
 
           <Card title="Search appearance">
@@ -461,6 +504,46 @@ function WriteArticlePage() {
               ))}
             </div>
           </Card>
+
+          {articleId && (
+            <Card title="Featured image">
+              <p className="text-xs text-muted mb-3">
+                1200×630 or larger. Both the image and its alt text are required
+                before publishing.
+              </p>
+
+              <label className="label" htmlFor="featuredImage">Upload image</label>
+              <input
+                id="featuredImage"
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                className="input-field text-xs"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) uploadImage(file);
+                }}
+              />
+
+              <div className="mt-4">
+                <label className="label" htmlFor="imageAlt">
+                  Alt text · {imageAlt.length} characters
+                </label>
+                <textarea
+                  id="imageAlt"
+                  className="input-field"
+                  rows={2}
+                  value={imageAlt}
+                  onChange={(e) => setImageAlt(e.target.value)}
+                  placeholder="Counsellor reviewing WhatsApp admission enquiries on a laptop"
+                />
+                <p className="text-xs text-muted mt-1.5">
+                  Describe what is in the image for someone who cannot see it. Do not
+                  start with &ldquo;image of&rdquo;. Saved with the draft — the
+                  AI-generated caption needs an Anthropic key and is optional.
+                </p>
+              </div>
+            </Card>
+          )}
 
           {articleId && (
             <Card title="Danger zone">

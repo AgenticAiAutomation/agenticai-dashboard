@@ -4,6 +4,7 @@ import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import Shell from '@/components/Shell';
+import MarkdownEditor from '@/components/MarkdownEditor';
 import {
   Card,
   EmptyState,
@@ -16,6 +17,7 @@ import {
   apiError,
   ArticleDetail,
   COUNTRY_LABELS,
+  SITE_LINK_TARGETS,
   ScoreReport,
   seoApi,
   VERTICAL_LABELS,
@@ -53,6 +55,7 @@ function EditArticlePage() {
   const [draft, setDraft] = useState('');
   const [metaTitle, setMetaTitle] = useState('');
   const [metaDescription, setMetaDescription] = useState('');
+  const [imageAlt, setImageAlt] = useState('');
   const [report, setReport] = useState<ScoreReport | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -68,6 +71,7 @@ function EditArticlePage() {
       setDraft(data.team_edit_md ?? data.author_draft_md ?? '');
       setMetaTitle(data.meta_title ?? '');
       setMetaDescription(data.meta_description ?? '');
+      setImageAlt(data.featured_image_alt ?? '');
       setError(null);
     } catch (err) {
       setError(apiError(err, 'Could not load this article.'));
@@ -98,6 +102,7 @@ function EditArticlePage() {
         team_edit_md: draft,
         meta_title: metaTitle || null,
         meta_description: metaDescription || null,
+        featured_image_alt: imageAlt || null,
       });
       setArticle(data);
       setNotice('Team edit saved as a new version.');
@@ -110,6 +115,7 @@ function EditArticlePage() {
         team_edit_md: draft,
         meta_title: metaTitle || null,
         meta_description: metaDescription || null,
+        featured_image_alt: imageAlt || null,
       });
       const { data } = await seoApi.score(id);
       setReport(data);
@@ -217,11 +223,14 @@ function EditArticlePage() {
 
         {/* Middle: team edit */}
         <Card title="Team edit">
-          <textarea
-            className="input-field h-[70vh] resize-none font-mono text-xs leading-relaxed"
+          {/* Same editor as the write page: headings, links and the internal
+              link picker, rather than raw markdown in a bare textarea. */}
+          <MarkdownEditor
+            id="team-edit-body"
             value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            spellCheck
+            onChange={setDraft}
+            rows={28}
+            linkTargets={SITE_LINK_TARGETS}
           />
           <div className="mt-3 grid grid-cols-1 gap-3">
             <div>
@@ -353,11 +362,25 @@ function EditArticlePage() {
               </button>
             </div>
 
-            {article.featured_image_alt && (
-              <p className="mt-3 rounded-lg bg-raised p-2 text-xs text-slate-300">
-                {article.featured_image_alt}
+            {/* Typed by hand. "Generate alt" above needs an Anthropic key, and
+                publishing is blocked while this is empty — so without a key
+                there was previously no way to fill it at all. */}
+            <div className="mt-4">
+              <label className="label" htmlFor="imageAlt">
+                Alt text · {imageAlt.length} characters
+              </label>
+              <textarea
+                id="imageAlt"
+                className="input-field text-xs"
+                rows={2}
+                value={imageAlt}
+                onChange={(e) => setImageAlt(e.target.value)}
+                placeholder="Describe the image for someone who cannot see it"
+              />
+              <p className="mt-1.5 text-xs text-muted">
+                Saved with the draft. Required before publishing.
               </p>
-            )}
+            </div>
           </Card>
 
           <Card title={`FAQs (${article.faqs.length})`}>

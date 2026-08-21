@@ -127,7 +127,7 @@ def save_manual_draft(
         article.slug = unique_slug(db, slugify(payload.slug), exclude_id=article.id)
 
     for field in ("title", "body_md", "meta_title", "meta_description",
-                  "primary_keyword", "from_author_story"):
+                  "primary_keyword", "from_author_story", "featured_image_alt"):
         value = getattr(payload, field)
         if value is None:
             continue
@@ -352,6 +352,8 @@ def submit_team_edit(
         article.meta_title = payload.meta_title
     if payload.meta_description is not None:
         article.meta_description = payload.meta_description
+    if payload.featured_image_alt is not None:
+        article.featured_image_alt = payload.featured_image_alt
     if payload.slug:
         article.slug = unique_slug(db, slugify(payload.slug), exclude_id=article.id)
     article.status = enums.ArticleStatus.in_team_review.value

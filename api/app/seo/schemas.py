@@ -85,6 +85,12 @@ class ArticleManualUpdate(BaseModel):
     meta_description: Optional[str] = None
     primary_keyword: Optional[str] = None
     from_author_story: Optional[str] = None
+    # Written by hand. The /generate-alt endpoint needs an Anthropic key, and
+    # publishing is blocked while alt text is empty — so with no key there was
+    # no way to publish at all. Alt text is also a scored parameter in both
+    # engines, and the person who chose the image writes a better one than a
+    # model that has not seen it.
+    featured_image_alt: Optional[str] = None
     faqs: Optional[List[ManualFaq]] = None
 
 
@@ -93,6 +99,7 @@ class ArticleTeamEdit(BaseModel):
     meta_title: Optional[str] = None
     meta_description: Optional[str] = None
     slug: Optional[str] = None
+    featured_image_alt: Optional[str] = None
 
 
 class FromAuthorStoryRequest(BaseModel):
