@@ -124,5 +124,46 @@ def get_object(path: str) -> Tuple[bytes, str]:
     return content, mime
 
 
+def delete_object(path: Optional[str]) -> bool:
+    """Remove a stored image. Best effort — never raises.
+
+    Called when an article is deleted. A failure here must not abort that
+    deletion: the article row going away is the operation the user asked for,
+    and a leftover file is a housekeeping problem, not a correctness one. The
+    return value says whether anything was actually removed so the caller can
+    report it.
+    """
+    if not path:
+        return False
+
+    try:
+        if path.startswith("minio://"):
+            _, _, remainder = path.partition("minio://")
+            bucket, _, key = remainder.partition("/")
+            _minio_client().remove_object(bucket, key)
+            return True
+
+        if path.startswith("file://"):
+            local = path[len("file://"):]
+            # Refuse anything outside the upload root, so a tampered database
+            # value cannot turn article deletion into arbitrary file removal.
+            root = os.path.realpath(LOCAL_FALLBACK_DIR)
+            target = os.path.realpath(local)
+            if not target.startswith(root + os.sep):
+                return False
+            if os.path.isfile(target):
+                os.remove(target)
+                # Drop the now-empty per-article directory too.
+                try:
+                    os.rmdir(os.path.dirname(target))
+                except OSError:
+                    pass
+                return True
+    except Exception:
+        return False
+
+    return False
+
+
 def filename_for(path: str) -> str:
     return os.path.basename(path) or "featured-image.jpg"

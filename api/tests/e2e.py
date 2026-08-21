@@ -467,6 +467,11 @@ if article_id:
               (body or {}).get("deleted_scores", -1) >= 1,
               f"got {(body or {}).get('deleted_scores')}")
         check("delete explains what was kept", bool((body or {}).get("note")))
+        # The upload section attached an image, so deletion must have cleaned
+        # it up rather than stranding the file on disk forever.
+        check("delete removes the stored featured image",
+              (body or {}).get("featured_image_removed") is True,
+              "image left on disk — deleted drafts would leak files")
         created_article_ids.remove(article_id)
 
     status, _ = call("GET", f"/api/seo/articles/{article_id}", token)

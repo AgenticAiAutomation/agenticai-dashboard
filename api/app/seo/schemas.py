@@ -217,6 +217,9 @@ class ArticleDeletedResponse(BaseModel):
     detached_calendar_slots: int
     detached_pull_requests: int
     detached_api_usage: int
+    # False when there was no image, or when storage could not remove it. The
+    # deletion still succeeds either way — a stranded file is housekeeping.
+    featured_image_removed: bool = False
     note: str
 
 

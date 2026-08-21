@@ -155,6 +155,7 @@ export interface ArticleDeleted {
   detached_calendar_slots: number;
   detached_pull_requests: number;
   detached_api_usage: number;
+  featured_image_removed: boolean;
   note: string;
 }
 

@@ -776,6 +776,11 @@ def delete_article(
     slug = article.slug
     title = article.title
 
+    # Remove the stored featured image too, or every deleted draft leaks a file
+    # that nothing references again. Best effort: a storage failure must not
+    # block the deletion the user actually asked for.
+    image_removed = storage.delete_object(article.featured_image_path)
+
     # Log before the delete: afterwards there is no row to describe, and the
     # audit trail is the only remaining record that this article existed.
     log_event(db, "seo.article.deleted", current_user, request,
@@ -799,6 +804,7 @@ def delete_article(
         detached_calendar_slots=counts["calendar"],
         detached_pull_requests=counts["pull_requests"],
         detached_api_usage=counts["api_usage"],
+        featured_image_removed=image_removed,
         note=("Permanently deleted. Calendar slots, pull-request links and API "
               "cost records were kept with their reference cleared. The audit "
               "log retains a record of this deletion."),
