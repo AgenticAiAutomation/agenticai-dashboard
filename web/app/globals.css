@@ -74,6 +74,24 @@ body {
     @apply bg-raised rounded animate-pulse;
   }
 
+  /* Preview pane in the markdown editor. Scoped so it never leaks into the
+     rest of the dashboard chrome. */
+  .prose-preview h1 { @apply text-2xl font-semibold text-white mt-4 mb-2; }
+  .prose-preview h2 { @apply text-xl font-semibold text-white mt-4 mb-2; }
+  .prose-preview h3 { @apply text-lg font-semibold text-slate-100 mt-3 mb-1.5; }
+  .prose-preview p  { @apply text-slate-200 mb-3 leading-relaxed; }
+  .prose-preview a  { @apply text-primary underline; }
+  .prose-preview ul { @apply list-disc pl-6 mb-3 text-slate-200; }
+  .prose-preview ol { @apply list-decimal pl-6 mb-3 text-slate-200; }
+  .prose-preview li { @apply mb-1; }
+  .prose-preview blockquote {
+    @apply border-l-2 border-line pl-4 text-muted italic mb-3;
+  }
+  .prose-preview code {
+    @apply bg-raised px-1 py-0.5 rounded text-xs font-mono text-slate-100;
+  }
+  .prose-preview strong { @apply font-semibold text-white; }
+
   .badge {
     @apply inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium
            border;

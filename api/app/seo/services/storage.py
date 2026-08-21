@@ -71,10 +71,25 @@ def put_object(article_id: str, content: bytes, mime_type: str) -> str:
         )
         return f"minio://{settings.MINIO_BUCKET}/{key}"
 
+    # Local fallback when MinIO is not configured. A filesystem failure here is
+    # almost always ownership: the service runs as www-data and the deploy
+    # directory belongs to root. Report it as an unavailable service with the
+    # fix in the message, rather than letting an OSError surface as a bare 500
+    # that the browser shows the user as "network error".
     destination = os.path.join(LOCAL_FALLBACK_DIR, key)
-    os.makedirs(os.path.dirname(destination), exist_ok=True)
-    with open(destination, "wb") as fh:
-        fh.write(content)
+    try:
+        os.makedirs(os.path.dirname(destination), exist_ok=True)
+        with open(destination, "wb") as fh:
+            fh.write(content)
+    except OSError as exc:
+        raise ServiceUnavailable(
+            "storage",
+            f"cannot write to {LOCAL_FALLBACK_DIR} ({exc.strerror}). Either "
+            f"configure MINIO_* in api/.env, or create the directory and give "
+            f"the service account ownership: "
+            f"mkdir -p {LOCAL_FALLBACK_DIR} && chown -R www-data:www-data "
+            f"{LOCAL_FALLBACK_DIR}",
+        )
     return f"file://{destination}"
 
 

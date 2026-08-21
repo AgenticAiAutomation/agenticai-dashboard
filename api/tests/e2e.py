@@ -332,6 +332,66 @@ if article_id:
 
 
 # --------------------------------------------------------------------------
+# 4b. Featured image upload
+#
+# This is a multipart endpoint, so it needs a hand-rolled body rather than the
+# JSON helper above. The bug it guards against: with MinIO unconfigured the
+# service falls back to a local directory it may not own, and the resulting
+# OSError surfaced as a bare 500 that the browser reported as "network error".
+# --------------------------------------------------------------------------
+section("4b. Image upload")
+
+# Smallest valid PNG: 1x1, transparent.
+PNG_1PX = bytes.fromhex(
+    "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4"
+    "890000000a49444154789c63000100000500010d0a2db40000000049454e44ae426082"
+)
+
+
+def upload(article, filename, content, content_type, tok):
+    boundary = "----e2e" + uuid.uuid4().hex
+    body = b"".join([
+        f"--{boundary}\r\n".encode(),
+        f'Content-Disposition: form-data; name="file"; filename="{filename}"\r\n'.encode(),
+        f"Content-Type: {content_type}\r\n\r\n".encode(),
+        content,
+        f"\r\n--{boundary}--\r\n".encode(),
+    ])
+    request = urllib.request.Request(
+        f"{BASE}/api/seo/articles/{article}/upload-image", data=body, method="POST")
+    request.add_header("Content-Type", f"multipart/form-data; boundary={boundary}")
+    request.add_header("Authorization", f"Bearer {tok}")
+    try:
+        with urllib.request.urlopen(request, timeout=90) as response:
+            return response.status, json.loads(response.read().decode() or "{}")
+    except urllib.error.HTTPError as exc:
+        raw = exc.read().decode()
+        try:
+            return exc.code, json.loads(raw)
+        except json.JSONDecodeError:
+            return exc.code, raw
+
+
+if article_id:
+    status, body = upload(article_id, "hero.png", PNG_1PX, "image/png", token)
+    check("image upload does not return a raw 500",
+          status != 500,
+          f"got 500 — storage misconfigured and surfacing as a browser network error: {body}")
+    check("image upload succeeds", status == 200, f"got {status}: {body}")
+    if status == 200:
+        check("upload returns the stored path", bool(body.get("featured_image_path")))
+        check("upload reports the byte count", body.get("bytes", 0) > 0)
+
+    status, body = upload(article_id, "notes.txt", b"plain text", "text/plain", token)
+    check("non-image upload is rejected cleanly (not 500)",
+          status in (400, 415, 422, 503), f"got {status}: {body}")
+
+    status, body = upload(article_id, "empty.png", b"", "image/png", token)
+    check("empty file is rejected cleanly (not 500)",
+          status in (400, 422, 503), f"got {status}: {body}")
+
+
+# --------------------------------------------------------------------------
 # 5. Publish gates
 # --------------------------------------------------------------------------
 section("5. Publish gates")

@@ -3,6 +3,7 @@
 import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Shell from '@/components/Shell';
+import MarkdownEditor from '@/components/MarkdownEditor';
 import { Card, ErrorBanner, Skeleton } from '@/components/ui';
 import {
   APPROVED_MATRIX,
@@ -359,14 +360,7 @@ function WriteArticlePage() {
             }
           >
             <label className="sr-only" htmlFor="body">Article body in Markdown</label>
-            <textarea
-              id="body"
-              className="input-field font-mono text-sm leading-relaxed"
-              rows={26}
-              value={body}
-              onChange={(e) => setBody(e.target.value)}
-              placeholder={'# Your headline\n\nWrite in Markdown. Use ## for sections.\n\nLink internally with [text](/services) and externally with [text](https://example.com).'}
-            />
+            <MarkdownEditor id="body" value={body} onChange={setBody} rows={26} />
           </Card>
 
           <Card title="Search appearance">
