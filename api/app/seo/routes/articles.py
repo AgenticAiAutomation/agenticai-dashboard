@@ -3,7 +3,8 @@ from datetime import datetime, timezone
 from typing import List, Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
+from fastapi import (APIRouter, Depends, File, HTTPException, Query, Request,
+                     Response, UploadFile)
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -581,12 +582,80 @@ async def upload_image(
     except ServiceUnavailable as exc:
         raise service_error(exc)
 
+    # Uploading again is how an image gets replaced, so drop the previous file
+    # once the new one is safely stored. Without this every replacement left an
+    # unreferenced file behind for good. Order matters: if put_object failed
+    # above we have already returned, so the old image is still intact.
+    previous = article.featured_image_path
+    replaced = storage.delete_object(previous) if previous and previous != path else False
+
     article.featured_image_path = path
     log_event(db, "seo.article.image_uploaded", current_user, request,
               target_type="seo_article", target_id=article.id,
-              detail=file.filename, commit=False)
+              detail=f"{file.filename} (replaced previous: {replaced})", commit=False)
     db.commit()
-    return {"featured_image_path": path, "bytes": len(content)}
+    return {
+        "featured_image_path": path,
+        "bytes": len(content),
+        "replaced_previous": replaced,
+    }
+
+
+@router.get("/{article_id}/image")
+def get_article_image(
+    article: SeoArticle = Depends(get_article),
+    current_user: User = Depends(seo_user),
+):
+    """Stream the stored featured image so the editor can preview it.
+
+    Behind the normal bearer auth like every other endpoint, so the browser
+    fetches it as a blob rather than pointing an <img src> at it.
+    """
+    if not article.featured_image_path:
+        raise HTTPException(status_code=404, detail="This article has no image.")
+    try:
+        content, mime = storage.get_object(article.featured_image_path)
+    except ServiceUnavailable as exc:
+        raise service_error(exc)
+    return Response(content=content, media_type=mime,
+                    headers={"Cache-Control": "no-store"})
+
+
+@router.delete("/{article_id}/image")
+def delete_article_image(
+    request: Request,
+    article: SeoArticle = Depends(get_article),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(seo_user),
+):
+    """Remove the featured image and its alt text.
+
+    Both go together: alt text describing an image that is no longer there is
+    worse than none, and the scorer would still credit it.
+    """
+    if article.status == enums.ArticleStatus.published.value:
+        raise HTTPException(
+            status_code=409,
+            detail=("This article is published. Removing its image here would "
+                    "leave the live post pointing at a missing file."),
+        )
+    if not article.featured_image_path:
+        raise HTTPException(status_code=404, detail="This article has no image.")
+
+    removed = storage.delete_object(article.featured_image_path)
+    article.featured_image_path = None
+    article.featured_image_alt = None
+
+    log_event(db, "seo.article.image_removed", current_user, request,
+              target_type="seo_article", target_id=article.id,
+              detail=f"file removed: {removed}", commit=False)
+    db.commit()
+    return {
+        "featured_image_path": None,
+        "file_removed": removed,
+        "note": ("Image and alt text cleared. Publishing is blocked until both "
+                 "are supplied again."),
+    }
 
 
 @router.post("/{article_id}/generate-alt")

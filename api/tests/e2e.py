@@ -40,7 +40,15 @@ def call(method, path, token=None, payload=None, timeout=90):
         request.add_header("Authorization", f"Bearer {token}")
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
-            body = response.read().decode()
+            raw = response.read()
+            # Not every endpoint answers with JSON — /image streams bytes.
+            # Decoding blindly would raise and be reported as a transport
+            # failure, which is a lie about what the server did.
+            content_type = response.headers.get("Content-Type", "")
+            if "json" not in content_type:
+                return response.status, {"_bytes": len(raw),
+                                         "_content_type": content_type}
+            body = raw.decode()
             return response.status, (json.loads(body) if body else None)
     except urllib.error.HTTPError as exc:
         body = exc.read().decode()
@@ -396,6 +404,46 @@ if article_id:
     check("manual alt text persists",
           (fetched or {}).get("featured_image_alt") == alt,
           f"got {(fetched or {}).get('featured_image_alt')!r}")
+
+    # The image must be viewable, replaceable and removable.
+    status, fetched_image = call("GET", f"/api/seo/articles/{article_id}/image", token)
+    check("uploaded image can be fetched back", status == 200, f"got {status}")
+    check("fetched image is served as an image, not JSON",
+          "image/" in (fetched_image or {}).get("_content_type", ""),
+          f"got {(fetched_image or {}).get('_content_type')!r}")
+    check("fetched image has the uploaded bytes",
+          (fetched_image or {}).get("_bytes", 0) == len(PNG_1PX),
+          f"got {(fetched_image or {}).get('_bytes')} of {len(PNG_1PX)}")
+
+    status, second = upload(article_id, "hero2.png", PNG_1PX, "image/png", token)
+    check("re-uploading replaces the image", status == 200, f"got {status}: {second}")
+    check("replacing deletes the previous file, not orphaning it",
+          (second or {}).get("replaced_previous") is True,
+          "old file left on disk — every replacement would leak one")
+
+    status, removed = call("DELETE", f"/api/seo/articles/{article_id}/image", token)
+    check("image can be removed", status == 200, f"got {status}: {removed}")
+    check("removing the image reports the file was deleted",
+          (removed or {}).get("file_removed") is True, f"got {removed}")
+
+    status, after = call("GET", f"/api/seo/articles/{article_id}", token)
+    check("removing the image clears its path",
+          (after or {}).get("featured_image_path") is None,
+          f"got {(after or {}).get('featured_image_path')!r}")
+    check("removing the image clears the alt text too",
+          (after or {}).get("featured_image_alt") is None,
+          "alt text describing a missing image would still earn points")
+
+    status, _ = call("GET", f"/api/seo/articles/{article_id}/image", token)
+    check("fetching a removed image returns 404", status == 404, f"got {status}")
+
+    status, _ = call("DELETE", f"/api/seo/articles/{article_id}/image", token)
+    check("removing an absent image returns 404", status == 404, f"got {status}")
+
+    # Put one back so the deletion section still exercises image cleanup.
+    upload(article_id, "hero3.png", PNG_1PX, "image/png", token)
+    call("PUT", f"/api/seo/articles/{article_id}/write", token,
+         {"featured_image_alt": alt})
 
     status, body = upload(article_id, "notes.txt", b"plain text", "text/plain", token)
     check("non-image upload is rejected cleanly (not 500)",

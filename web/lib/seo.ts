@@ -346,10 +346,24 @@ export const seoApi = {
     }),
   setFromAuthor: (id: string, story: string) =>
     api.put(`/api/seo/articles/${id}/from-author-story`, { from_author_story: story }),
+  /* Fetched as a blob because the endpoint needs the bearer token — an
+     <img src> would send no Authorization header. */
+  getImage: (id: string) =>
+    api.get<Blob>(`/api/seo/articles/${id}/image`, { responseType: 'blob' }),
+  deleteImage: (id: string) =>
+    api.delete<{ file_removed: boolean; note: string }>(
+      `/api/seo/articles/${id}/image`,
+    ),
   uploadImage: (id: string, file: File) => {
     const form = new FormData();
     form.append('file', file);
-    return api.post(`/api/seo/articles/${id}/upload-image`, form, {
+    return api.post<{
+      featured_image_path: string;
+      bytes: number;
+      /* True when this upload replaced an existing image and the old file was
+         deleted, so the UI can say so rather than guessing. */
+      replaced_previous: boolean;
+    }>(`/api/seo/articles/${id}/upload-image`, form, {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
   },

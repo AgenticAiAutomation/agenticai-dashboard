@@ -140,6 +140,7 @@ function WriteArticlePage() {
   const [showDanger, setShowDanger] = useState(false);
   const [confirmSlug, setConfirmSlug] = useState('');
   const [imageAlt, setImageAlt] = useState('');
+  const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [linkTargets, setLinkTargets] = useState<LinkTarget[]>(SITE_LINK_TARGETS);
 
   /* Published articles become link targets too. The no-orphan rule needs
@@ -163,6 +164,26 @@ function WriteArticlePage() {
       });
   }, []);
 
+  /* Object URLs must be revoked or the blob stays in memory for the life of
+     the tab, so every replacement frees the previous one. */
+  const loadImagePreview = useCallback(
+    async (id: string) => {
+      try {
+        const { data } = await seoApi.getImage(id);
+        setImageUrl((previous) => {
+          if (previous) URL.revokeObjectURL(previous);
+          return URL.createObjectURL(data);
+        });
+      } catch {
+        setImageUrl((previous) => {
+          if (previous) URL.revokeObjectURL(previous);
+          return null;
+        });
+      }
+    },
+    [],
+  );
+
   // Load an existing draft when ?id= is present.
   useEffect(() => {
     if (!existingId) return;
@@ -179,6 +200,7 @@ function WriteArticlePage() {
         setBody(data.team_edit_md ?? data.author_draft_md ?? '');
         setFromAuthor(data.from_author_story ?? '');
         setImageAlt(data.featured_image_alt ?? '');
+        if (data.featured_image_path) loadImagePreview(existingId);
         setFaqs(
           data.faqs.length
             ? data.faqs.map((f) => ({
@@ -190,7 +212,15 @@ function WriteArticlePage() {
         );
       })
       .catch((err) => setError(apiError(err)));
-  }, [existingId]);
+  }, [existingId, loadImagePreview]);
+
+  // Free the last object URL when the page unmounts.
+  useEffect(() => () => {
+    setImageUrl((previous) => {
+      if (previous) URL.revokeObjectURL(previous);
+      return null;
+    });
+  }, []);
 
   const wordCount = useMemo(
     () => body.split(/\s+/).filter(Boolean).length,
@@ -281,8 +311,25 @@ function WriteArticlePage() {
         setError('Create the draft before uploading an image.');
         return;
       }
-      await seoApi.uploadImage(articleId, file);
-      setNotice('Image uploaded. Write the alt text below, then save.');
+      const { data } = await seoApi.uploadImage(articleId, file);
+      await loadImagePreview(articleId);
+      setNotice(
+        data.replaced_previous
+          ? 'Image replaced. The previous file was removed.'
+          : 'Image uploaded. Write the alt text below, then save.',
+      );
+    });
+
+  const removeImage = () =>
+    run('removeImage', async () => {
+      if (!articleId) return;
+      await seoApi.deleteImage(articleId);
+      setImageUrl((previous) => {
+        if (previous) URL.revokeObjectURL(previous);
+        return null;
+      });
+      setImageAlt('');
+      setNotice('Image and alt text removed. Upload another before publishing.');
     });
 
   const archive = () =>
@@ -512,7 +559,29 @@ function WriteArticlePage() {
                 before publishing.
               </p>
 
-              <label className="label" htmlFor="featuredImage">Upload image</label>
+              {imageUrl && (
+                <div className="mb-3">
+                  {/* Blob URL from an authenticated fetch, so next/image cannot
+                      optimise it — a plain img is correct here. */}
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={imageUrl}
+                    alt={imageAlt || 'Featured image preview'}
+                    className="w-full rounded-lg border border-line"
+                  />
+                  <button
+                    className="btn-danger mt-2 w-full text-xs"
+                    onClick={removeImage}
+                    disabled={busy !== null}
+                  >
+                    {busy === 'removeImage' ? 'Removing…' : 'Remove image'}
+                  </button>
+                </div>
+              )}
+
+              <label className="label" htmlFor="featuredImage">
+                {imageUrl ? 'Replace image' : 'Upload image'}
+              </label>
               <input
                 id="featuredImage"
                 type="file"
@@ -521,8 +590,15 @@ function WriteArticlePage() {
                 onChange={(e) => {
                   const file = e.target.files?.[0];
                   if (file) uploadImage(file);
+                  // Reset so choosing the same file twice still fires onChange.
+                  e.target.value = '';
                 }}
               />
+              {imageUrl && (
+                <p className="mt-1.5 text-xs text-muted">
+                  Uploading a new file replaces this one and removes the old file.
+                </p>
+              )}
 
               <div className="mt-4">
                 <label className="label" htmlFor="imageAlt">
