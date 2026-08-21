@@ -1,6 +1,14 @@
 'use client';
 
-import { useCallback, useRef, useState } from 'react';
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  useState,
+} from 'react';
+import LineGutter from '@/components/LineGutter';
 
 /**
  * Markdown editor with a formatting toolbar and live preview.
@@ -34,6 +42,15 @@ type Props = {
      link to each other, so this list is how a writer satisfies both without
      memorising URLs. */
   linkTargets?: LinkTarget[];
+  /* 1-based line numbers carrying a scoring suggestion. Highlighted in the
+     gutter so the writer can see where the points are without cross-checking
+     a list against the text. */
+  issueLines?: Set<number>;
+};
+
+export type MarkdownEditorHandle = {
+  /** Put the caret on a line, select it, and scroll it into view. */
+  jumpToLine: (line: number) => void;
 };
 
 type Action =
@@ -117,15 +134,55 @@ function renderPreview(markdown: string): string {
   return out.join('\n');
 }
 
-export default function MarkdownEditor({
-  value,
-  onChange,
-  rows = 26,
-  id = 'body',
-  linkTargets = [],
-}: Props) {
+const MarkdownEditor = forwardRef<MarkdownEditorHandle, Props>(function MarkdownEditor(
+  { value, onChange, rows = 26, id = 'body', linkTargets = [], issueLines },
+  handleRef,
+) {
   const ref = useRef<HTMLTextAreaElement>(null);
   const [showPreview, setShowPreview] = useState(false);
+  const [scrollTop, setScrollTop] = useState(0);
+
+  /* Character offset of the first character on a 1-based line. */
+  const offsetOfLine = useCallback(
+    (line: number) => {
+      const lines = value.split('\n');
+      const index = Math.min(Math.max(line, 1), lines.length) - 1;
+      return lines.slice(0, index).reduce((sum, l) => sum + l.length + 1, 0);
+    },
+    [value],
+  );
+
+  const jumpToLine = useCallback(
+    (line: number) => {
+      const el = ref.current;
+      if (!el) return;
+      if (showPreview) setShowPreview(false);
+
+      const lines = value.split('\n');
+      const index = Math.min(Math.max(line, 1), lines.length) - 1;
+      const start = offsetOfLine(line);
+      const end = start + lines[index].length;
+
+      requestAnimationFrame(() => {
+        el.focus();
+        el.setSelectionRange(start, end);
+        // Centre the line rather than leaving it against the top edge, so the
+        // surrounding context is visible.
+        const lineHeight = parseFloat(window.getComputedStyle(el).lineHeight) || 20;
+        el.scrollTop = Math.max(index * lineHeight - el.clientHeight / 2, 0);
+        setScrollTop(el.scrollTop);
+      });
+    },
+    [value, showPreview, offsetOfLine],
+  );
+
+  useImperativeHandle(handleRef, () => ({ jumpToLine }), [jumpToLine]);
+
+  // Keep the gutter aligned when the value changes height under it.
+  useEffect(() => {
+    const el = ref.current;
+    if (el) setScrollTop(el.scrollTop);
+  }, [value]);
   const [showLinkPicker, setShowLinkPicker] = useState(false);
   const [externalUrl, setExternalUrl] = useState('https://');
   const [pendingSelection, setPendingSelection] =
@@ -371,23 +428,39 @@ export default function MarkdownEditor({
           dangerouslySetInnerHTML={{ __html: renderPreview(value) }}
         />
       ) : (
-        <textarea
-          id={id}
-          ref={ref}
-          className="input-field font-mono text-sm leading-relaxed"
-          rows={rows}
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          onKeyDown={onKeyDown}
-          placeholder={
-            '# Your headline\n\n' +
-            'Select text and press H2 for a section, or Ctrl+K to add a link.\n\n' +
-            '## A section\n\n' +
-            'Internal link: [our services](/services)\n' +
-            'External link: [the docs](https://example.com)'
-          }
-        />
+        <div className="relative flex overflow-hidden rounded-lg border border-line
+                        bg-raised focus-within:ring-2 focus-within:ring-primary">
+          <LineGutter
+            textareaRef={ref}
+            value={value}
+            issueLines={issueLines}
+            scrollTop={scrollTop}
+            onLineClick={jumpToLine}
+          />
+          <textarea
+            id={id}
+            ref={ref}
+            className="flex-1 resize-y border-0 bg-transparent px-3 py-0 font-mono
+                       text-sm leading-relaxed text-slate-100 outline-none
+                       placeholder:text-slate-500"
+            rows={rows}
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            onKeyDown={onKeyDown}
+            onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}
+            spellCheck
+            placeholder={
+              '# Your headline\n\n' +
+              'Select text and press H2 for a section, or Ctrl+K to add a link.\n\n' +
+              '## A section\n\n' +
+              'Internal link: [our services](/services)\n' +
+              'External link: [the docs](https://example.com)'
+            }
+          />
+        </div>
       )}
     </div>
   );
-}
+});
+
+export default MarkdownEditor;

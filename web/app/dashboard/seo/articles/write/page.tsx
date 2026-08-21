@@ -1,9 +1,19 @@
 'use client';
 
-import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Shell from '@/components/Shell';
-import MarkdownEditor, { LinkTarget } from '@/components/MarkdownEditor';
+import MarkdownEditor, {
+  LinkTarget,
+  MarkdownEditorHandle,
+} from '@/components/MarkdownEditor';
 import { Card, ErrorBanner, Skeleton } from '@/components/ui';
 import {
   APPROVED_MATRIX,
@@ -142,6 +152,22 @@ function WriteArticlePage() {
   const [imageAlt, setImageAlt] = useState('');
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [linkTargets, setLinkTargets] = useState<LinkTarget[]>(SITE_LINK_TARGETS);
+  const editorRef = useRef<MarkdownEditorHandle>(null);
+
+  /* Lines carrying a suggestion, for the gutter highlight. The scorer reports
+     line 1 for document-level findings (word count, keyword placement), which
+     would light up the first line misleadingly — so those are excluded here
+     and surfaced separately in the list below. */
+  const issueLines = useMemo(() => {
+    const set = new Set<number>();
+    for (const comment of report?.comments ?? []) {
+      if (comment.line_number > 1) set.add(comment.line_number);
+    }
+    return set;
+  }, [report]);
+
+  const documentLevel = (report?.comments ?? []).filter((c) => c.line_number <= 1);
+  const lineLevel = (report?.comments ?? []).filter((c) => c.line_number > 1);
 
   /* Published articles become link targets too. The no-orphan rule needs
      articles pointing at each other, so the writer has to be able to find
@@ -445,12 +471,21 @@ function WriteArticlePage() {
           >
             <label className="sr-only" htmlFor="body">Article body in Markdown</label>
             <MarkdownEditor
+              ref={editorRef}
               id="body"
               value={body}
               onChange={setBody}
               rows={26}
               linkTargets={linkTargets}
+              issueLines={issueLines}
             />
+            {issueLines.size > 0 && (
+              <p className="mt-2 text-xs text-muted">
+                <span className="text-warning">{issueLines.size}</span> highlighted
+                line{issueLines.size === 1 ? '' : 's'} in the gutter have a
+                suggestion. Click a number to jump to it.
+              </p>
+            )}
           </Card>
 
           <Card title="Search appearance">
@@ -722,12 +757,51 @@ function WriteArticlePage() {
             </Card>
           )}
 
-          {report && report.comments.length > 0 && (
-            <Card title="House scorer — biggest wins">
+          {report && lineLevel.length > 0 && (
+            <Card title={`In the text · ${lineLevel.length}`}>
+              <p className="mb-3 text-xs text-muted">
+                Click a suggestion to jump to that line.
+              </p>
+              <ul className="space-y-2">
+                {lineLevel.map((comment, index) => (
+                  <li key={index}>
+                    <button
+                      onClick={() => editorRef.current?.jumpToLine(comment.line_number)}
+                      className="w-full rounded border border-line bg-raised p-2
+                                 text-left text-xs hover:border-primary"
+                    >
+                      <span className="flex items-baseline gap-2">
+                        <span className="font-mono text-warning">
+                          L{comment.line_number}
+                        </span>
+                        <span className="tabular-nums text-success">
+                          +{comment.impact_points}
+                        </span>
+                      </span>
+                      {comment.current_text && (
+                        <span className="mt-1 block truncate font-mono text-muted">
+                          {comment.current_text}
+                        </span>
+                      )}
+                      <span className="mt-1 block text-slate-300">
+                        {comment.suggested_fix}
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          )}
+
+          {report && documentLevel.length > 0 && (
+            <Card title={`Whole article · ${documentLevel.length}`}>
+              <p className="mb-3 text-xs text-muted">
+                These apply to the article as a whole, not to one line.
+              </p>
               <ul className="space-y-3">
-                {report.comments.slice(0, 8).map((comment, index) => (
+                {documentLevel.map((comment, index) => (
                   <li key={index} className="text-xs">
-                    <span className="text-warning tabular-nums">
+                    <span className="tabular-nums text-success">
                       +{comment.impact_points}
                     </span>{' '}
                     <span className="text-slate-300">{comment.suggested_fix}</span>
