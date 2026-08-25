@@ -1,12 +1,12 @@
 """Go-live gate.
 
-Nothing reaches WordPress as a real publish until Jai writes
+Nothing is published for real until an owner writes
 /var/www/agenticai-dashboard/SEO_LIVE_APPROVED.txt containing
 
     GO LIVE YYYY-MM-DD
 
 with a date inside the last 24 hours. Until then every publish is forced to
-WordPress status 'draft'. The check is re-read from disk on every call so
+status 'draft'. The check is re-read from disk on every call so
 approval takes effect without a restart, and expires on its own.
 """
 import os
@@ -28,7 +28,7 @@ class GoLiveStatus:
 
     @property
     def wp_status(self) -> str:
-        """The WordPress post status this approval level permits."""
+        """The publish status this approval level permits."""
         return "publish" if self.approved else "draft"
 
 
@@ -41,7 +41,7 @@ def check_go_live(path: Optional[str] = None, now: Optional[datetime] = None) ->
             approved=False,
             reason=(
                 f"Go-live not approved: {approval_path} does not exist. "
-                "Posts will be sent to WordPress as drafts."
+                "Articles will be written as drafts."
             ),
         )
 
@@ -57,7 +57,7 @@ def check_go_live(path: Optional[str] = None, now: Optional[datetime] = None) ->
             approved=False,
             reason=(
                 "Go-live file present but malformed. Expected a line reading "
-                "'GO LIVE YYYY-MM-DD'. Posts will be sent as drafts."
+                "'GO LIVE YYYY-MM-DD'. Articles will be written as drafts."
             ),
         )
 
