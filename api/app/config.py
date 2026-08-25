@@ -19,7 +19,25 @@ class Settings(BaseSettings):
     # within the last 24h, WordPress publishes are forced to status=draft.
     SEO_LIVE_APPROVAL_FILE: str = "/var/www/agenticai-dashboard/SEO_LIVE_APPROVED.txt"
 
-    # WordPress REST API (application password, not the login password).
+    # --- Publishing output ---
+    # A finished article is written as JSON into SITE_CONTENT_DIR with its
+    # featured image copied into SITE_MEDIA_DIR. Both live under the dashboard
+    # and are owned by it — nothing outside the dashboard is written to.
+    #
+    # This is deliberately the entire publish path: no CMS, no second database,
+    # and no credentials that can be unset. Publishing previously called the
+    # WordPress REST API and failed with "WP_APP_USER and WP_APP_PASSWORD are
+    # not set" on a server where WordPress had never been installed, which
+    # blocked every finished article indefinitely.
+    #
+    # Whichever system eventually serves these files reads this directory.
+    # That is a separate decision and does not belong in the publish path.
+    SITE_CONTENT_DIR: str = "/var/www/agenticai-dashboard/published/articles"
+    SITE_MEDIA_DIR: str = "/var/www/agenticai-dashboard/published/media"
+    SITE_BLOG_BASE_URL: str = "https://agenticaiautomation.co/blog"
+
+    # WordPress REST API. Retained so an existing install can still be targeted,
+    # but it is no longer part of the publish path — see app.seo.services.publisher.
     WP_BASE_URL: str = "https://agenticaiautomation.co/blog"
     WP_APP_USER: Optional[str] = None
     WP_APP_PASSWORD: Optional[str] = None

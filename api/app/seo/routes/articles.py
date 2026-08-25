@@ -27,8 +27,8 @@ from app.seo.schemas import (
     FromAuthorStoryRequest, ManualFaq, PublishResponse, ScoreResponse,
     ValidateCountryRequest,
 )
-from app.seo.services import (ServiceUnavailable, ai_detection, claude, rankmath,
-                              scoring, storage, wordpress)
+from app.seo.services import (ServiceUnavailable, ai_detection, claude, publisher,
+                              rankmath, scoring, storage)
 
 router = APIRouter(prefix="/api/seo/articles", tags=["seo-articles"])
 
@@ -749,9 +749,9 @@ def archive_article(
     if article.status == enums.ArticleStatus.published.value:
         raise HTTPException(
             status_code=409,
-            detail=("This article is published. Unpublish it in WordPress first — "
-                    "archiving it here would leave the live URL serving content "
-                    "the dashboard no longer tracks."),
+            detail=("This article is published. Unpublish it first — archiving it "
+                    "while live would leave the URL serving content the dashboard "
+                    "no longer tracks."),
         )
 
     article.status = enums.ArticleStatus.archived.value
@@ -889,7 +889,12 @@ def publish_article(
     db: Session = Depends(get_db),
     current_user: User = Depends(admin_user),
 ):
-    """Push to WordPress. Enforcement rules 1-6 all apply here, server-side."""
+    """Publish the article. Enforcement rules 1-6 apply server-side.
+
+    Writes to the dashboard's own published directory — no CMS, no API
+    credentials, nothing that can be unset. The gates below are the whole
+    protection, so they all run before anything touches disk.
+    """
     # Rule 1 — country x vertical matrix.
     validate_country_vertical(
         db,
@@ -913,7 +918,8 @@ def publish_article(
     if not article.slug:
         raise HTTPException(status_code=422, detail="The article has no slug.")
 
-    # Rule 6 — duplicate slug, checked locally and against WordPress.
+    # Rule 6 — duplicate slug. Only the local check is needed now: the content
+    # directory is keyed by slug, so the database is the single authority.
     duplicate = (db.query(SeoArticle)
                  .filter(SeoArticle.slug == article.slug, SeoArticle.id != article.id)
                  .first())
@@ -926,60 +932,53 @@ def publish_article(
         )
 
     go_live = check_go_live()
-    client = wordpress.get_client()
+
+    faqs = (db.query(SeoArticleFaq)
+            .filter(SeoArticleFaq.article_id == article.id)
+            .order_by(SeoArticleFaq.position_in_article).all())
+
+    body_md = article.final_md or article.team_edit_md or ""
 
     try:
-        existing = client.find_post_by_slug(article.slug)
-        if existing and existing.id != (article.wp_post_id or -1):
-            raise HTTPException(
-                status_code=409,
-                detail={"error": "duplicate_slug",
-                        "message": f"WordPress already has a post at slug "
-                                   f"'{article.slug}' (post {existing.id})."},
-            )
-
-        media_id = None
-        if article.featured_image_path:
-            content, mime = storage.get_object(article.featured_image_path)
-            media_id = client.upload_media(
-                storage.filename_for(article.featured_image_path), content, mime,
-                alt_text=article.featured_image_alt,
-            )
-
-        body_md = article.final_md or article.team_edit_md or ""
-        html = _markdown_to_html(body_md) + "\n" + _faq_html(db, article)
-
-        post = client.create_or_update_post(
-            title=article.title or article.primary_keyword,
-            content_html=html,
+        result = publisher.publish(
+            article_id=str(article.id),
             slug=article.slug,
-            status=go_live.wp_status,
-            excerpt=article.meta_description,
-            featured_media=media_id,
-            post_id=article.wp_post_id,
-            meta={
-                "rank_math_title": article.meta_title or article.title,
-                "rank_math_description": article.meta_description,
-                "rank_math_focus_keyword": article.primary_keyword,
-            },
+            title=article.title or article.primary_keyword,
+            # FAQs are passed separately rather than appended to the body, so
+            # the site renders the accordion and the FAQPage schema from one
+            # source and the two cannot drift apart.
+            html=_markdown_to_html(body_md),
+            meta_title=article.meta_title,
+            meta_description=article.meta_description,
+            primary_keyword=article.primary_keyword,
+            faqs=[{"question": f.question, "answer": f.answer} for f in faqs],
+            featured_image_path=article.featured_image_path,
+            featured_image_alt=article.featured_image_alt,
+            author="Agentic AI Automation Editorial",
+            from_author_story=article.from_author_story,
+            published_at=article.published_at,
+            # Until go-live is approved the file is written but flagged, so the
+            # site keeps it out of the index, the sitemap, and search results.
+            is_draft=not go_live.approved,
         )
     except ServiceUnavailable as exc:
         raise service_error(exc)
 
-    article.wp_post_id = post.id
-    article.wp_published_url = post.link
+    article.wp_published_url = result.url
     if go_live.approved:
         article.status = enums.ArticleStatus.published.value
-        article.published_at = datetime.now(timezone.utc)
+        article.published_at = article.published_at or datetime.now(timezone.utc)
 
     log_event(db, "seo.article.published", current_user, request,
               target_type="seo_article", target_id=article.id,
-              detail=f"wp_post={post.id} status={post.status}", commit=False)
+              detail=f"{result.path} ({result.bytes_written} bytes) "
+                     f"draft={not go_live.approved}", commit=False)
     db.commit()
 
     message = (
-        f"Published live at {post.link}." if go_live.approved
-        else f"Sent to WordPress as a DRAFT (post {post.id}). {go_live.reason}"
+        f"Published live at {result.url}." if go_live.approved
+        else f"Written as a DRAFT — not indexed and not in the sitemap. "
+             f"{go_live.reason}"
     )
     if not ai_detection_enforced:
         message += (" Note: the AI-detection gate is not enforced — no "
@@ -987,9 +986,41 @@ def publish_article(
 
     return PublishResponse(
         article_id=article.id,
-        wp_post_id=post.id,
-        wp_published_url=post.link,
-        wp_status=post.status,
+        wp_post_id=None,
+        wp_published_url=result.url,
+        wp_status="publish" if go_live.approved else "draft",
         go_live_approved=go_live.approved,
         message=message,
     )
+
+
+@router.post("/{article_id}/unpublish", response_model=ArticleResponse)
+def unpublish_article(
+    request: Request,
+    article: SeoArticle = Depends(get_article),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(admin_user),
+):
+    """Withdraw a published article.
+
+    Removing the files is the whole operation — there is no CMS holding a
+    second copy — so what is on disk stays exactly the set of published
+    articles. The row goes back to team review rather than being deleted.
+    """
+    if not article.slug:
+        raise HTTPException(status_code=422, detail="The article has no slug.")
+
+    try:
+        removed = publisher.unpublish(article.slug)
+    except ServiceUnavailable as exc:
+        raise service_error(exc)
+
+    article.status = enums.ArticleStatus.in_team_review.value
+    article.wp_published_url = None
+
+    log_event(db, "seo.article.unpublished", current_user, request,
+              target_type="seo_article", target_id=article.id,
+              detail=f"slug={article.slug} file_removed={removed}", commit=False)
+    db.commit()
+    db.refresh(article)
+    return article
