@@ -36,6 +36,12 @@ class Settings(BaseSettings):
     SITE_MEDIA_DIR: str = "/var/www/agenticai-dashboard/published/media"
     SITE_BLOG_BASE_URL: str = "https://agenticaiautomation.co/blog"
 
+    # IndexNow. The key file is already served from the site root; this must be
+    # the same value or submissions are rejected. Empty disables submission
+    # entirely rather than sending unsigned requests.
+    INDEXNOW_KEY: Optional[str] = None
+    INDEXNOW_HOST: str = "agenticaiautomation.co"
+
     # WordPress REST API. Retained so an existing install can still be targeted,
     # but it is no longer part of the publish path — see app.seo.services.publisher.
     WP_BASE_URL: str = "https://agenticaiautomation.co/blog"

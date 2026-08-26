@@ -127,6 +127,18 @@ def publish(
     image_relative = _copy_image(article_id, slug, featured_image_path)
     now = datetime.now(timezone.utc)
 
+    def as_utc(value: datetime) -> str:
+        """Always emit UTC.
+
+        The database returns timestamps in the server's local zone, so the same
+        instant round-trips as a different ISO string than the one first
+        written. Normalising here keeps datePublished byte-stable across
+        republishes instead of appearing to change every time.
+        """
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=timezone.utc)
+        return value.astimezone(timezone.utc).isoformat()
+
     document = {
         "schema_version": CONTENT_SCHEMA_VERSION,
         "id": article_id,
@@ -147,8 +159,8 @@ def publish(
         "featured_image_alt": featured_image_alt or "",
         "author": author,
         "from_author_story": from_author_story or "",
-        "published_at": (published_at or now).isoformat(),
-        "updated_at": now.isoformat(),
+        "published_at": as_utc(published_at or now),
+        "updated_at": as_utc(now),
         # Drafts are written so they can be previewed, but the site excludes
         # them from the index and the sitemap and marks them noindex.
         "is_draft": is_draft,

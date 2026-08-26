@@ -28,8 +28,9 @@ from app.seo.schemas import (
     FromAuthorStoryRequest, ManualFaq, PublishResponse, ScoreResponse,
     ValidateCountryRequest,
 )
-from app.seo.services import (ServiceUnavailable, ai_detection, claude, publisher,
-                              rankmath, scoring, storage)
+from app.config import settings
+from app.seo.services import (ServiceUnavailable, ai_detection, claude, indexnow,
+                              publisher, rankmath, scoring, storage)
 
 router = APIRouter(prefix="/api/seo/articles", tags=["seo-articles"])
 
@@ -118,11 +119,27 @@ def save_manual_draft(
     db: Session = Depends(get_db),
     current_user: User = Depends(seo_user),
 ):
-    """Save an in-progress draft. Every field optional so autosave can send deltas."""
-    if article.status == enums.ArticleStatus.published.value:
+    """Save a draft, or correct a published article.
+
+    Editing a published article is allowed: a typo on a live page should be
+    fixable in one step, not by archiving and rebuilding it. The edit does not
+    reach the site until Publish is pressed again, which is what refreshes the
+    updated date and re-submits the URL to IndexNow. The status is left alone
+    so the article stays marked published while it is being corrected.
+    """
+    if payload.slug and payload.slug != article.slug and \
+            article.status == enums.ArticleStatus.published.value:
+        # Changing a live URL orphans the indexed one and loses its history.
         raise HTTPException(
             status_code=409,
-            detail="This article is already published. Archive it before editing.",
+            detail={
+                "error": "slug_locked",
+                "message": ("This article is published, so its URL cannot be "
+                            "changed — the live URL is already indexed and links "
+                            "to it would break. Unpublish it first if the slug "
+                            "really must change."),
+                "current_slug": article.slug,
+            },
         )
 
     if payload.slug and payload.slug != article.slug:
@@ -492,7 +509,7 @@ def _blocking_issues(article: SeoArticle, score: Optional[int]) -> List[str]:
     if not (article.featured_image_alt or "").strip():
         issues.append("The featured image alt caption is missing.")
     if not article.featured_image_path:
-        issues.append("No featured image uploaded — WordPress rejects publish without one.")
+        issues.append("No featured image uploaded.")
     return issues
 
 
@@ -859,19 +876,6 @@ def delete_article(
     current_user: User = Depends(admin_user),
 ):
     """Permanently remove a draft. Not reversible."""
-    if article.status == enums.ArticleStatus.published.value or article.wp_post_id:
-        raise HTTPException(
-            status_code=409,
-            detail={
-                "error": "published_article",
-                "message": ("Published articles cannot be deleted here — the live "
-                            "URL and its WordPress post would be orphaned. Remove "
-                            "the post in WordPress, then archive this record."),
-                "wp_post_id": article.wp_post_id,
-                "wp_published_url": article.wp_published_url,
-            },
-        )
-
     if confirm_slug != (article.slug or ""):
         raise HTTPException(
             status_code=400,
@@ -906,6 +910,16 @@ def delete_article(
     article_id = article.id
     slug = article.slug
     title = article.title
+    was_published = article.status == enums.ArticleStatus.published.value
+
+    # A published article must come off the site before its record goes, or the
+    # URL keeps serving content nothing tracks any more. Deleting is allowed
+    # precisely so a bad post can be pulled in one action — but the live files
+    # go first, and the removal is announced to IndexNow so the URL drops out
+    # of the index rather than sitting there as a soft 404.
+    withdrawn = publisher.unpublish(slug) if slug else False
+    if withdrawn and indexnow.configured():
+        indexnow.submit_one(f"{settings.SITE_BLOG_BASE_URL.rstrip('/')}/{slug}")
 
     # Remove the stored featured image too, or every deleted draft leaks a file
     # that nothing references again. Best effort: a storage failure must not
@@ -916,7 +930,7 @@ def delete_article(
     # audit trail is the only remaining record that this article existed.
     log_event(db, "seo.article.deleted", current_user, request,
               target_type="seo_article", target_id=article_id,
-              detail=(f"slug={slug!r} title={title!r} status={article.status} "
+              detail=(f"slug={slug!r} title={title!r} was_published={was_published} "
                       f"cascaded faqs={counts['faqs']} sources={counts['sources']} "
                       f"versions={counts['versions']} scores={counts['scores']}"),
               commit=False)
@@ -999,6 +1013,14 @@ def publish_article(
 
     body_md = article.final_md or article.team_edit_md or ""
 
+    # Stamp the publication date before writing the file, not after, so the
+    # record and the published file carry the identical value. Setting it
+    # afterwards made the first publish write "now" to the file and a slightly
+    # later timestamp to the row, and the next republish then silently moved
+    # the article's publication date forward.
+    if go_live.approved and not article.published_at:
+        article.published_at = datetime.now(timezone.utc)
+
     try:
         result = publisher.publish(
             article_id=str(article.id),
@@ -1027,7 +1049,7 @@ def publish_article(
     article.wp_published_url = result.url
     if go_live.approved:
         article.status = enums.ArticleStatus.published.value
-        article.published_at = article.published_at or datetime.now(timezone.utc)
+        # published_at was stamped above, before the file was written.
 
     log_event(db, "seo.article.published", current_user, request,
               target_type="seo_article", target_id=article.id,
@@ -1035,11 +1057,21 @@ def publish_article(
                      f"draft={not go_live.approved}", commit=False)
     db.commit()
 
+    # Tell IndexNow the URL changed. Drafts are not announced: they are
+    # noindex and absent from the sitemap, so submitting them would be asking
+    # engines to crawl something we are telling them to ignore.
+    index_note = ""
+    if go_live.approved:
+        submission = indexnow.submit_one(result.url)
+        index_note = (" Submitted to IndexNow." if submission.ok
+                      else f" IndexNow not submitted: {submission.detail}")
+
     message = (
         f"Published live at {result.url}." if go_live.approved
         else f"Written as a DRAFT — not indexed and not in the sitemap. "
              f"{go_live.reason}"
     )
+    message += index_note
     if not ai_detection_enforced:
         message += (" Note: the AI-detection gate is not enforced — no "
                     "Originality.ai/GPTZero key is configured.")
@@ -1074,6 +1106,11 @@ def unpublish_article(
         removed = publisher.unpublish(article.slug)
     except ServiceUnavailable as exc:
         raise service_error(exc)
+
+    # A removed URL is announced as well, so it drops out of the index instead
+    # of lingering as a soft 404.
+    if removed:
+        indexnow.submit_one(f"{settings.SITE_BLOG_BASE_URL.rstrip('/')}/{article.slug}")
 
     article.status = enums.ArticleStatus.in_team_review.value
     article.wp_published_url = None

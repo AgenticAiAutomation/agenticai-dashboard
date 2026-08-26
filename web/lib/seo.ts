@@ -332,6 +332,9 @@ export const seoApi = {
   teamEdit: (id: string, body: Record<string, unknown>) =>
     api.put<ArticleDetail>(`/api/seo/articles/${id}/team-edit`, body),
   score: (id: string) => api.post<ScoreReport>(`/api/seo/articles/${id}/score`),
+  /* Takes a live article off the website. The record survives and returns to
+     team review; the removal is submitted to IndexNow by the server. */
+  unpublish: (id: string) => api.post<Article>(`/api/seo/articles/${id}/unpublish`),
   archive: (id: string) => api.post<Article>(`/api/seo/articles/${id}/archive`),
   restore: (id: string) => api.post<Article>(`/api/seo/articles/${id}/restore`),
   /* confirmSlug must equal the article's current slug — the server refuses

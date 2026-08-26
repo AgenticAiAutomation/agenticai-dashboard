@@ -26,12 +26,77 @@ const STATUSES: ArticleStatus[] = [
 export default function ArticlesPage() {
   const [articles, setArticles] = useState<Article[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
   const [filters, setFilters] = useState({
     status: '',
     type: '',
     vertical: '',
     country: '',
   });
+
+  /* Taking a live article down. The record survives and goes back to team
+     review, so it can be corrected and republished rather than rewritten. */
+  const unpublish = async (article: Article) => {
+    if (!window.confirm(
+      `Remove "${article.title ?? article.slug}" from the website?
+
+` +
+      'The live URL stops working immediately and the removal is submitted to ' +
+      'IndexNow. The article itself is kept and returns to team review, so you ' +
+      'can fix it and publish again.',
+    )) return;
+
+    setBusy(`un-${article.id}`);
+    setError(null);
+    setNotice(null);
+    try {
+      await seoApi.unpublish(article.id);
+      setNotice(`"${article.title ?? article.slug}" is off the website.`);
+      await load();
+    } catch (err) {
+      setError(apiError(err));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  /* Permanent. The slug has to be typed, matching the server-side guard, so a
+     mis-click on a stale list cannot destroy the wrong article. */
+  const remove = async (article: Article) => {
+    const slug = article.slug ?? '';
+    const live = article.status === 'published';
+    const typed = window.prompt(
+      (live ? 'This article is LIVE on the website.\n\n' : '') +
+      'Deleting removes the article, its FAQs, sources, versions and score ' +
+      'history permanently. This cannot be undone.' +
+      (live
+        ? ' The page is taken off the site first and the removal is submitted to IndexNow.'
+        : '') +
+      `\n\nType the slug to confirm:\n${slug}`,
+    );
+    if (typed === null) return;
+    if (typed.trim() !== slug) {
+      setError('The slug did not match, so nothing was deleted.');
+      return;
+    }
+
+    setBusy(`del-${article.id}`);
+    setError(null);
+    setNotice(null);
+    try {
+      const { data } = await seoApi.remove(article.id, slug);
+      setNotice(
+        `Deleted "${data.title ?? data.slug}". Removed ${data.deleted_faqs} FAQ(s), ` +
+        `${data.deleted_scores} score(s), ${data.deleted_versions} version(s).`,
+      );
+      await load();
+    } catch (err) {
+      setError(apiError(err));
+    } finally {
+      setBusy(null);
+    }
+  };
 
   const load = useCallback(async () => {
     setArticles(null);
@@ -75,6 +140,11 @@ export default function ArticlesPage() {
       }
     >
       <ErrorBanner message={error} />
+      {notice && (
+        <p className="mb-4 text-sm text-success" role="status">
+          {notice}
+        </p>
+      )}
 
       <Card className="mb-4">
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
@@ -179,7 +249,7 @@ export default function ArticlesPage() {
                     </td>
                     <td className="whitespace-nowrap">
                       <Link
-                        href={`/dashboard/seo/articles/edit/?id=${article.id}`}
+                        href={`/dashboard/seo/articles/write/?id=${article.id}`}
                         className="text-xs text-primary hover:underline"
                       >
                         Edit
@@ -191,6 +261,35 @@ export default function ArticlesPage() {
                       >
                         Review
                       </Link>
+                      {article.status === 'published' && (
+                        <>
+                          <span className="mx-2 text-line">|</span>
+                          <a
+                            href={`https://agenticaiautomation.co/blog/${article.slug}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs text-primary hover:underline"
+                          >
+                            View
+                          </a>
+                          <span className="mx-2 text-line">|</span>
+                          <button
+                            onClick={() => unpublish(article)}
+                            disabled={busy !== null}
+                            className="text-xs text-warning hover:underline disabled:opacity-40"
+                          >
+                            {busy === `un-${article.id}` ? 'Removing…' : 'Unpublish'}
+                          </button>
+                        </>
+                      )}
+                      <span className="mx-2 text-line">|</span>
+                      <button
+                        onClick={() => remove(article)}
+                        disabled={busy !== null}
+                        className="text-xs text-danger hover:underline disabled:opacity-40"
+                      >
+                        {busy === `del-${article.id}` ? 'Deleting…' : 'Delete'}
+                      </button>
                     </td>
                   </tr>
                 ))}
