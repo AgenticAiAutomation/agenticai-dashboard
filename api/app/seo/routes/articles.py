@@ -1,4 +1,5 @@
 """Article lifecycle: generate -> team edit -> score -> author review -> publish."""
+import re
 from datetime import datetime, timezone
 from typing import List, Optional
 from uuid import UUID
@@ -694,10 +695,69 @@ def generate_alt(
 # --------------------------------------------------------------------------
 # Publish
 # --------------------------------------------------------------------------
+def _normalise_markdown(md: str) -> str:
+    """Repair block separation before conversion.
+
+    Markdown only starts a new block after a blank line. Writers routinely put
+    a heading, then its body, on consecutive lines with no blank line between —
+    which collapses an entire section into one paragraph. The first published
+    article rendered its seven numbered solutions as a single wall of text for
+    exactly this reason, with no <ol>, <li> or <h3> anywhere in the output.
+
+    This inserts the missing blank lines and nothing else. It never changes a
+    word, a number or a link — only whitespace and the marker on a line that
+    was already acting as a heading. Content stays the writer's; only the
+    mechanics are corrected, which is the boundary in WORDPRESSCONTENTRULES.md.
+    """
+    # A line that is entirely bold and starts with "N." is a numbered section
+    # heading the writer wrote by hand. Promote it to a real h3 so it renders
+    # as a heading, appears in the document outline, and gives the numbered
+    # sequence visible structure.
+    numbered_heading = re.compile(r"^\*\*\s*(\d+)\.\s+(.+?)\s*\*\*\s*$")
+    # A fully bold line with no number is a plain sub-heading.
+    bold_heading = re.compile(r"^\*\*\s*([^*]+?)\s*\*\*\s*$")
+    block_start = re.compile(r"^(#{1,6}\s|\s*[-*+]\s|\s*\d+[.)]\s|>\s|\|)")
+
+    out: List[str] = []
+    inside_fence = False
+
+    for raw in md.splitlines():
+        line = raw.rstrip()
+
+        if line.lstrip().startswith("```"):
+            inside_fence = not inside_fence
+            out.append(line)
+            continue
+
+        if inside_fence:                      # never touch code
+            out.append(line)
+            continue
+
+        match = numbered_heading.match(line)
+        if match:
+            line = f"### {match.group(1)}. {match.group(2)}"
+        elif bold_heading.match(line) and len(line) < 90:
+            line = f"### {bold_heading.match(line).group(1)}"
+
+        # Any block-level line needs a blank line before it, or the previous
+        # paragraph swallows it.
+        if block_start.match(line) and out and out[-1].strip():
+            out.append("")
+
+        out.append(line)
+
+        # A heading also needs a blank line after it.
+        if line.startswith("#"):
+            out.append("")
+
+    return "\n".join(out)
+
+
 def _markdown_to_html(md: str) -> str:
     try:
         import markdown as md_lib
-        return md_lib.markdown(md, extensions=["extra", "sane_lists", "toc"])
+        return md_lib.markdown(_normalise_markdown(md),
+                               extensions=["extra", "sane_lists", "toc"])
     except ImportError:
         # The publish path must not fail on a missing optional renderer.
         return "\n".join(f"<p>{line}</p>" for line in md.split("\n\n") if line.strip())
