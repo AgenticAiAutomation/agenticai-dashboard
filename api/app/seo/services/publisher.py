@@ -49,6 +49,8 @@ class PublishedArticle:
 def _ensure_dir(path: str) -> None:
     try:
         os.makedirs(path, exist_ok=True)
+        # The web server reads these as a different user than the API writes as.
+        os.chmod(path, 0o755)
     except OSError as exc:
         raise ServiceUnavailable(
             "publisher",
@@ -68,6 +70,10 @@ def _write_atomic(path: str, payload: bytes) -> None:
             fh.write(payload)
             fh.flush()
             os.fsync(fh.fileno())
+        # mkstemp creates 0600. Published articles and their images are public
+        # content served by the web server as a different user, so they need to
+        # be world-readable or every publish 404s on the image.
+        os.chmod(temp_path, 0o644)
         os.replace(temp_path, path)
     except OSError as exc:
         try:
