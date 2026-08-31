@@ -15,8 +15,14 @@ class Settings(BaseSettings):
     CORS_ORIGINS: str
 
     # --- SEO module ---
-    # Absolute path to the go-live approval file. Until it exists and is dated
-    # within the last 24h, WordPress publishes are forced to status=draft.
+    # The go-live gate was a launch safeguard: it held every publish at draft
+    # until an owner re-approved by hand each day. The site is live and the team
+    # publishes routinely, so pressing Publish in the dashboard is the approval —
+    # an article goes live, into the sitemap and to IndexNow in one step.
+    #
+    # Set this True to bring the manual gate back (during a migration, say), and
+    # publishing again requires SEO_LIVE_APPROVAL_FILE dated within 24 hours.
+    SEO_REQUIRE_GOLIVE_APPROVAL: bool = False
     SEO_LIVE_APPROVAL_FILE: str = "/var/www/agenticai-dashboard/SEO_LIVE_APPROVED.txt"
 
     # --- Publishing output ---

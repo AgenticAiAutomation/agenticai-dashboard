@@ -13,6 +13,7 @@ import {
   Skeleton,
   StatusBadge,
 } from '@/components/ui';
+import { ScorePassing, ScorePath } from '@/components/ScorePath';
 import {
   apiError,
   ArticleDetail,
@@ -324,6 +325,17 @@ function EditArticlePage() {
               </>
             )}
           </Card>
+
+          {report?.path_to_threshold && (
+            <ScorePath path={report.path_to_threshold} />
+          )}
+
+          {report && (
+            <ScorePassing
+              passing={report.passing}
+              rankMathTests={report.rank_math?.tests}
+            />
+          )}
 
           <Card title="Featured image">
             {article.featured_image_path ? (

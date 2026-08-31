@@ -131,6 +131,40 @@ export interface RankMathReport {
   failed: string[];
 }
 
+export interface PathStep {
+  key: string;
+  label: string;
+  group: string;
+  group_label: string;
+  /* Worth on the 0-100 scale, not raw points. */
+  score_gain: number;
+  raw_missing: number;
+  detail: string;
+  how: string;
+}
+
+/* The shortest route from the current score to the publish threshold. */
+export interface PathToThreshold {
+  threshold: number;
+  current: number;
+  gap: number;
+  /* Always 100 - current: maxing every implemented check scores exactly 100,
+     so the threshold is never out of reach. Used for the "+X more" affordance. */
+  headroom: number;
+  steps: PathStep[];
+  /* Index into steps at which the gap closes; anything after it is optional. */
+  closes_gap_after: number | null;
+}
+
+export interface PassingCheck {
+  key: string;
+  label: string;
+  group: string;
+  group_label: string;
+  points: number;
+  detail: string;
+}
+
 export interface ScoreReport {
   article_id: string;
   version_number: number;
@@ -142,6 +176,8 @@ export interface ScoreReport {
   scored_at: string;
   blocking_issues: string[];
   rank_math?: RankMathReport | null;
+  path_to_threshold?: PathToThreshold | null;
+  passing?: PassingCheck[];
 }
 
 export interface ArticleDeleted {

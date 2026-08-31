@@ -15,6 +15,7 @@ import MarkdownEditor, {
   MarkdownEditorHandle,
 } from '@/components/MarkdownEditor';
 import { Card, ErrorBanner, Skeleton } from '@/components/ui';
+import { ScorePassing, ScorePath } from '@/components/ScorePath';
 import {
   APPROVED_MATRIX,
   COUNTRY_LABELS,
@@ -751,6 +752,10 @@ function WriteArticlePage() {
             )}
           </Card>
 
+          {report?.path_to_threshold && (
+            <ScorePath path={report.path_to_threshold} />
+          )}
+
           {rankMath && (
             <Card title={`Rank Math checklist · ${rankMath.failed.length} to fix`}>
               <RankMathPanel report={rankMath} />
@@ -809,6 +814,13 @@ function WriteArticlePage() {
                 ))}
               </ul>
             </Card>
+          )}
+
+          {report && (
+            <ScorePassing
+              passing={report.passing}
+              rankMathTests={rankMath?.tests}
+            />
           )}
         </div>
       </div>

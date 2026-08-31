@@ -34,7 +34,9 @@ from app.seo.services import (ServiceUnavailable, ai_detection, claude, indexnow
 
 router = APIRouter(prefix="/api/seo/articles", tags=["seo-articles"])
 
-PUBLISH_MIN_SCORE = 80
+# Single source of truth, shared with the scorer so the "Path to 80" panel can
+# never advertise a different bar from the one the publish gate enforces.
+PUBLISH_MIN_SCORE = scoring.PUBLISH_MIN_SCORE
 
 
 # --------------------------------------------------------------------------
@@ -495,6 +497,8 @@ def score_article_endpoint(
         scored_at=datetime.now(timezone.utc),
         blocking_issues=_blocking_issues(article, report["total_score"]),
         rank_math=rank_math_report,
+        path_to_threshold=report.get("path_to_threshold"),
+        passing=report.get("passing", []),
     )
 
 

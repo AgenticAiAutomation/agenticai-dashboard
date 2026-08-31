@@ -258,6 +258,39 @@ class RankMathReport(BaseModel):
     failed: List[str]
 
 
+class PathStep(BaseModel):
+    key: str
+    label: str
+    group: str
+    group_label: str
+    # What this fix is worth on the 0-100 scale, not in raw points.
+    score_gain: float
+    raw_missing: float
+    detail: str
+    how: str = ""
+
+
+class PathToThreshold(BaseModel):
+    """The shortest route from the current score to the publish threshold."""
+    threshold: int
+    current: int
+    gap: int
+    # False when every remaining fix combined still cannot reach the threshold.
+    headroom: float
+    steps: List[PathStep]
+    # Index into `steps` at which the gap closes; anything after it is optional.
+    closes_gap_after: Optional[int] = None
+
+
+class PassingCheck(BaseModel):
+    key: str
+    label: str
+    group: str
+    group_label: str
+    points: float
+    detail: str
+
+
 class ScoreResponse(BaseModel):
     article_id: UUID
     version_number: int
@@ -269,6 +302,8 @@ class ScoreResponse(BaseModel):
     scored_at: datetime
     blocking_issues: List[str] = []
     rank_math: Optional[RankMathReport] = None
+    path_to_threshold: Optional[PathToThreshold] = None
+    passing: List[PassingCheck] = []
 
 
 # --------------------------------------------------------------------------

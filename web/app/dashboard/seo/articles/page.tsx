@@ -136,6 +136,9 @@ export default function ArticlesPage() {
           <Link href="/dashboard/seo/articles/new" className="btn-secondary">
             Generate with AI
           </Link>
+          <Link href="/dashboard/seo/articles/scoring-guide" className="btn-secondary">
+            Scoring guide
+          </Link>
         </div>
       }
     >

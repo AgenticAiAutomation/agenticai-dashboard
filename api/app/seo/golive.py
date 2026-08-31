@@ -1,13 +1,19 @@
-"""Go-live gate.
+"""Go-live gate — off by default.
 
-Nothing is published for real until an owner writes
-/var/www/agenticai-dashboard/SEO_LIVE_APPROVED.txt containing
+This was a launch safeguard. Every publish was forced to 'draft' until an owner
+wrote SEO_LIVE_APPROVED.txt containing 'GO LIVE YYYY-MM-DD' dated within 24
+hours, and the approval expired daily. A draft article is excluded from the blog
+index and the sitemap and is never sent to IndexNow, so a lapsed approval meant
+articles the team believed were published were invisible to readers and Google.
 
-    GO LIVE YYYY-MM-DD
+That trade made sense before launch and stopped making sense after it. With
+settings.SEO_REQUIRE_GOLIVE_APPROVAL False — the default — pressing Publish in
+the dashboard is the approval, and the article is listed, sitemapped and
+submitted to IndexNow in one step.
 
-with a date inside the last 24 hours. Until then every publish is forced to
-status 'draft'. The check is re-read from disk on every call so
-approval takes effect without a restart, and expires on its own.
+Set that flag True to restore the manual gate; everything below still works, is
+re-read from disk on every call so approval takes effect without a restart, and
+expires on its own.
 """
 import os
 import re
@@ -33,6 +39,16 @@ class GoLiveStatus:
 
 
 def check_go_live(path: Optional[str] = None, now: Optional[datetime] = None) -> GoLiveStatus:
+    # Publishing is self-approving unless the manual gate is switched back on.
+    # Passing an explicit path means a caller is testing the gate itself, so the
+    # file is still honoured there regardless of the setting.
+    if path is None and not settings.SEO_REQUIRE_GOLIVE_APPROVAL:
+        return GoLiveStatus(
+            approved=True,
+            approval_date=(now or datetime.now()).date(),
+            reason="Publishing from the dashboard is the approval.",
+        )
+
     approval_path = path or settings.SEO_LIVE_APPROVAL_FILE
     now = now or datetime.now()
 

@@ -802,4 +802,109 @@ def score_article(ctx: ScoringContext) -> Dict[str, Any]:
         "parameters": parameters,
         "comments": [c.__dict__ for c in comments],
         "parameters_skipped": skipped,
+        "path_to_threshold": path_to_threshold(parameters, comments, earned, available),
+        "passing": passing_checks(parameters),
+    }
+
+
+def passing_checks(parameters: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Everything already at full marks.
+
+    A writer staring at a list of failures has no idea how much of the article
+    is already right. Showing what passes is what makes a score feel like
+    progress rather than a wall.
+    """
+    return [
+        {
+            "key": p["key"],
+            "label": p["label"],
+            "group": p["group"],
+            "group_label": GROUP_LABELS.get(p["group"], p["group"]),
+            "points": p["points_available"],
+            "detail": p["detail"],
+        }
+        for p in parameters
+        if p["implemented"] and p["points_earned"] >= p["points_available"]
+    ]
+
+
+# The score an article must reach before it can be published. The publish
+# gate in the articles route imports this, so the two cannot drift apart.
+PUBLISH_MIN_SCORE = 80
+
+
+def path_to_threshold(
+    parameters: List[Dict[str, Any]],
+    comments: List[Comment],
+    earned: float,
+    available: float,
+    threshold: int = PUBLISH_MIN_SCORE,
+) -> Dict[str, Any]:
+    """The shortest route from the current score to the publish threshold.
+
+    The score is normalised — skipped parameters leave the denominator — so a
+    raw point is worth 100/available score points, not one. Every gain below is
+    converted before being compared to the gap, or the maths quietly overstates
+    how close the article is.
+
+    Steps are ordered by score impact, so the list answers "what do I do next"
+    rather than "here is everything wrong". `closes_gap_after` marks the point
+    at which the article becomes publishable, so the UI can stop the highlight
+    there instead of implying all of it is mandatory.
+    """
+    if not available:
+        return {"threshold": threshold, "current": 0, "gap": threshold,
+                "headroom": 0.0, "steps": [], "closes_gap_after": None}
+
+    per_raw_point = 100.0 / available
+    current = int(round(earned / available * 100))
+    gap = max(threshold - current, 0)
+
+    # The fix text lives on the comments, keyed by parameter.
+    fix_for: Dict[str, str] = {}
+    for comment in comments:
+        if comment.parameter and comment.parameter not in fix_for:
+            fix_for[comment.parameter] = comment.suggested_fix
+
+    steps = []
+    for parameter in parameters:
+        if not parameter["implemented"]:
+            continue
+        missing = parameter["points_available"] - parameter["points_earned"]
+        if missing <= 0.01:
+            continue
+        steps.append({
+            "key": parameter["key"],
+            "label": parameter["label"],
+            "group": parameter["group"],
+            "group_label": GROUP_LABELS.get(parameter["group"], parameter["group"]),
+            "score_gain": round(missing * per_raw_point, 1),
+            "raw_missing": round(missing, 2),
+            "detail": parameter["detail"],
+            "how": fix_for.get(parameter["key"], ""),
+        })
+
+    steps.sort(key=lambda s: -s["score_gain"])
+
+    # Where the gap closes, walking the list from the top.
+    closes_after = None
+    running = 0.0
+    for index, step in enumerate(steps):
+        running += step["score_gain"]
+        if running >= gap:
+            closes_after = index + 1
+            break
+
+    headroom = round(sum(s["score_gain"] for s in steps), 1)
+    return {
+        "threshold": threshold,
+        "current": current,
+        "gap": gap,
+        # Always equal to 100 - current: "available" counts only implemented
+        # parameters, so maxing every one of them scores exactly 100. There is
+        # therefore no such thing as an unreachable threshold, and this carries
+        # no "reachable" flag — see tests/score_path.py, which pins the invariant.
+        "headroom": headroom,
+        "steps": steps,
+        "closes_gap_after": closes_after,
     }
