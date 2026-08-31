@@ -124,10 +124,11 @@ def save_manual_draft(
     """Save a draft, or correct a published article.
 
     Editing a published article is allowed: a typo on a live page should be
-    fixable in one step, not by archiving and rebuilding it. The edit does not
-    reach the site until Publish is pressed again, which is what refreshes the
-    updated date and re-submits the URL to IndexNow. The status is left alone
-    so the article stays marked published while it is being corrected.
+    fixable in one step, not by archiving and rebuilding it. A correction to a
+    live article is written straight through to the site and announced to
+    IndexNow, because an edit that stops at the database leaves the dashboard
+    and the public page saying different things — with nothing on screen to say
+    so. The status is left alone, so the article stays published throughout.
     """
     if payload.slug and payload.slug != article.slug and \
             article.status == enums.ArticleStatus.published.value:
@@ -166,6 +167,31 @@ def save_manual_draft(
               target_type="seo_article", target_id=article.id, commit=False)
     db.commit()
     db.refresh(article)
+
+    if article.status == enums.ArticleStatus.published.value:
+        # Already live, so it stays live: is_draft is False regardless of the
+        # go-live setting. Re-flagging a published article as a draft would
+        # pull it out of the blog index and the sitemap mid-correction.
+        try:
+            result = _write_to_site(db, article, is_draft=False)
+        except ServiceUnavailable as exc:
+            # The edit is already saved — losing a writer's work because the
+            # filesystem hiccuped would be worse than a stale page. Say plainly
+            # that the page did not change, rather than reporting success.
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "error": "site_write_failed",
+                    "message": (f"Your edit was saved, but the live page could "
+                                f"not be updated: {exc}. Press Publish to retry."),
+                },
+            )
+
+        indexnow.submit_one(result.url)
+        log_event(db, "seo.article.republished", current_user, request,
+                  target_type="seo_article", target_id=article.id,
+                  detail=f"correction written to {result.path}")
+
     return _detail(db, article)
 
 
@@ -802,6 +828,42 @@ def _faq_html(db: Session, article: SeoArticle) -> str:
     return "\n".join(parts)
 
 
+def _write_to_site(db: Session, article: SeoArticle, *, is_draft: bool):
+    """Render the article and write it to the site's content directory.
+
+    Shared by Publish and by an edit to an already-live article, so a
+    correction reaches the page through exactly the same path as the original
+    publish and the two cannot drift apart.
+
+    The caller stamps published_at. It is passed through rather than defaulted
+    here so a republish keeps the original publication date and only moves
+    updated_at, which is what puts "Updated <date>" on the page.
+    """
+    faqs = (db.query(SeoArticleFaq)
+            .filter(SeoArticleFaq.article_id == article.id)
+            .order_by(SeoArticleFaq.position_in_article).all())
+
+    return publisher.publish(
+        article_id=str(article.id),
+        slug=article.slug,
+        title=article.title or article.primary_keyword,
+        # FAQs are passed separately rather than appended to the body, so
+        # the site renders the accordion and the FAQPage schema from one
+        # source and the two cannot drift apart.
+        html=_markdown_to_html(article.final_md or article.team_edit_md or ""),
+        meta_title=article.meta_title,
+        meta_description=article.meta_description,
+        primary_keyword=article.primary_keyword,
+        faqs=[{"question": f.question, "answer": f.answer} for f in faqs],
+        featured_image_path=article.featured_image_path,
+        featured_image_alt=article.featured_image_alt,
+        author="Agentic AI Automation Editorial",
+        from_author_story=article.from_author_story,
+        published_at=article.published_at,
+        is_draft=is_draft,
+    )
+
+
 # --------------------------------------------------------------------------
 # Removal
 #
@@ -1011,12 +1073,6 @@ def publish_article(
 
     go_live = check_go_live()
 
-    faqs = (db.query(SeoArticleFaq)
-            .filter(SeoArticleFaq.article_id == article.id)
-            .order_by(SeoArticleFaq.position_in_article).all())
-
-    body_md = article.final_md or article.team_edit_md or ""
-
     # Stamp the publication date before writing the file, not after, so the
     # record and the published file carry the identical value. Setting it
     # afterwards made the first publish write "now" to the file and a slightly
@@ -1026,27 +1082,9 @@ def publish_article(
         article.published_at = datetime.now(timezone.utc)
 
     try:
-        result = publisher.publish(
-            article_id=str(article.id),
-            slug=article.slug,
-            title=article.title or article.primary_keyword,
-            # FAQs are passed separately rather than appended to the body, so
-            # the site renders the accordion and the FAQPage schema from one
-            # source and the two cannot drift apart.
-            html=_markdown_to_html(body_md),
-            meta_title=article.meta_title,
-            meta_description=article.meta_description,
-            primary_keyword=article.primary_keyword,
-            faqs=[{"question": f.question, "answer": f.answer} for f in faqs],
-            featured_image_path=article.featured_image_path,
-            featured_image_alt=article.featured_image_alt,
-            author="Agentic AI Automation Editorial",
-            from_author_story=article.from_author_story,
-            published_at=article.published_at,
-            # Until go-live is approved the file is written but flagged, so the
-            # site keeps it out of the index, the sitemap, and search results.
-            is_draft=not go_live.approved,
-        )
+        # Until go-live is approved the file is written but flagged, so the
+        # site keeps it out of the index, the sitemap, and search results.
+        result = _write_to_site(db, article, is_draft=not go_live.approved)
     except ServiceUnavailable as exc:
         raise service_error(exc)
 
