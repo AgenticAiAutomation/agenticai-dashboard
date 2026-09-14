@@ -64,3 +64,4 @@ Not changed: no existing route, template, model, migration, dependency or
 logging handler. Registration is a single defensive call that returns `False`
 rather than raising if anything is wrong, and the feature is off unless
 `BACKLINK_OPS_ENABLED=1`.
+- 2026-09-14T11:57:33Z · backlink-ops · install · d1e472e · by unknown
