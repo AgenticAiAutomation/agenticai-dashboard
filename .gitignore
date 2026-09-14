@@ -58,8 +58,8 @@ uploads/
 *service-account*.json
 
 # Backlink Ops — its own env (holds an API key) and its own SQLite file.
-# *.db above already covers backlink_ops.db; this also catches the
-# -journal/-wal/-shm sidecar files SQLite writes alongside it.
+# The feature DB lives under api/instance/ (service WorkingDirectory is api/).
+# *.db above covers the file itself; this also catches the -wal/-shm sidecars.
 ops/backlink-ops.env
-instance/backlink_ops.db*
+api/instance/
 backups/
