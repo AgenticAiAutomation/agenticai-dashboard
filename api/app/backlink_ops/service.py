@@ -342,8 +342,8 @@ def make_backup(user):
 # --------------------------------------------------------------- the page
 def page_html():
     """The desk page. Read from disk each call in debug, cached otherwise.
-    No template engine: two placeholders, one string replace — so the module
-    adds no Jinja dependency to a FastAPI host."""
+    No template engine: four placeholders, one string replace each — so the
+    module adds no Jinja dependency to a FastAPI host."""
     import os
     global _PAGE_CACHE
     path = os.path.join(os.path.dirname(__file__), "templates", "backlink_ops", "index.html")
@@ -353,7 +353,9 @@ def page_html():
             html = fh.read()
         _PAGE_CACHE = html
     return (html.replace("__BO_API__", json.dumps(settings.API_PREFIX))
-                .replace("__BO_VERSION__", json.dumps(settings.VERSION)))
+                .replace("__BO_VERSION__", json.dumps(settings.VERSION))
+                .replace("__BO_TOKEN_KEY__", json.dumps(settings.TOKEN_STORAGE_KEY))
+                .replace("__BO_LOGIN_URL__", json.dumps(settings.LOGIN_URL)))
 
 
 _PAGE_CACHE = None

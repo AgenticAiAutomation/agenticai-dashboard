@@ -64,4 +64,14 @@ Not changed: no existing route, template, model, migration, dependency or
 logging handler. Registration is a single defensive call that returns `False`
 rather than raising if anything is wrong, and the feature is off unless
 `BACKLINK_OPS_ENABLED=1`.
+
+Added at go-live (2026-09-15), after the first deploy showed the page treating
+every visitor as anonymous:
+
+- **Token mode for the page** — `BACKLINK_OPS_TOKEN_STORAGE_KEY` /
+  `BACKLINK_OPS_LOGIN_URL`. This dashboard keeps its JWT in
+  `localStorage['access_token']` and sends it as a header, never a cookie, so
+  the page now attaches the same header, and a 401 goes to `/login/` instead of
+  reloading in a loop. Opt-in; blank = as shipped. Served same-origin with the
+  frontend via nginx (`sites-available/dashboard-frontend`). See RUNBOOK.
 - 2026-09-14T11:57:33Z · backlink-ops · install · d1e472e · by unknown

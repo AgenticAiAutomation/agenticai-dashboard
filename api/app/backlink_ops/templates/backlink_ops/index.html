@@ -325,7 +325,7 @@ tr:last-child td{border-bottom:0}
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <script>
-window.BO = { api: __BO_API__, version: __BO_VERSION__ };
+window.BO = { api: __BO_API__, version: __BO_VERSION__, tokenKey: __BO_TOKEN_KEY__, loginUrl: __BO_LOGIN_URL__ };
 </script>
 <script>
 "use strict";
@@ -347,10 +347,26 @@ function toast(msg){
 }
 async function api(path, opts){
   const o = Object.assign({credentials:"same-origin", headers:{"Content-Type":"application/json"}}, opts||{});
+  // Token mode (BACKLINK_OPS_TOKEN_STORAGE_KEY): the host's own JS keeps a
+  // bearer token in localStorage and sends it as a header, not a cookie —
+  // do the same, so the desk sees the same signed-in user the dashboard does.
+  const tokenKey = window.BO && window.BO.tokenKey;
+  let token = null; try { token = tokenKey && localStorage.getItem(tokenKey); } catch(_){}
+  if(token) o.headers = Object.assign({}, o.headers, {Authorization: "Bearer " + token});
   let r;
   try { r = await fetch(API+path, o); }
   catch(_){ throw Object.assign(new Error("Can't reach the dashboard. Check your connection."), {offline:true}); }
-  if(r.status===401){ location.reload(); throw new Error("Session expired."); }
+  if(r.status===401){
+    // Cookie mode: a reload lets the host's session redirect kick in.
+    // Token mode: a reload would just loop, so go to the login page instead
+    // (or say so, if no login URL is configured).
+    if(tokenKey){
+      const login = window.BO.loginUrl;
+      if(login){ location.replace(login); }
+      throw new Error("Not signed in — sign in to the dashboard, then open this page again.");
+    }
+    location.reload(); throw new Error("Session expired.");
+  }
   let body={}; try{ body = await r.json(); }catch(_){}
   if(!r.ok) throw Object.assign(new Error(body.message || "That didn't go through."), {code:body.error, status:r.status});
   return body;

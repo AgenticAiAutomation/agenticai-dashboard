@@ -47,6 +47,16 @@ class Settings:
     JWT_ALGS       = _csv("BACKLINK_OPS_JWT_ALGS", "HS256")
     JWT_COOKIES    = _csv("BACKLINK_OPS_JWT_COOKIES", "access_token,token,jwt,Authorization")
 
+    # Hosts whose browser app keeps its bearer token in localStorage and sends
+    # "Authorization: Bearer" from JavaScript (no session cookie): name that
+    # localStorage key here and the desk page attaches the same header on its
+    # own calls. Only works when the page is served same-origin with that app.
+    # Blank (default) = cookie mode, the page sends credentials:"same-origin".
+    TOKEN_STORAGE_KEY = os.environ.get("BACKLINK_OPS_TOKEN_STORAGE_KEY", "")
+    # Where to send the browser on 401 in token mode (the host's login page).
+    # Blank = show a message instead; the page never reloads in a loop.
+    LOGIN_URL      = os.environ.get("BACKLINK_OPS_LOGIN_URL", "")
+
     # Fallback only for environments with no host auth (dev / first boot).
     ALLOW_ANON     = _b("BACKLINK_OPS_ALLOW_ANON", "0")
 

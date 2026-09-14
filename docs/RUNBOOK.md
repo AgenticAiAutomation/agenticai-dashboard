@@ -81,6 +81,29 @@ curl -s https://api.dashboard.agenticaiautomation.co/api/seo/backlink-ops/bootst
      -H "Authorization: Bearer $TOKEN" | python3 -c "import sys,json; print(json.load(sys.stdin)['me'])"
 ```
 
+## If the API works but the page itself shows nobody signed in
+
+The hook above covers API calls that carry the dashboard's token. The desk
+*page* is plain HTML and, by default, calls the API with the browser's cookies
+(`credentials: "same-origin"`). A dashboard that keeps its JWT in
+`localStorage` and sends it as an `Authorization: Bearer` header from
+JavaScript — this one does, see `web/lib/api.ts` — never sets a cookie, so the
+page has nothing to send and everyone looks anonymous.
+
+Token mode fixes that without touching the auth system:
+
+```
+BACKLINK_OPS_TOKEN_STORAGE_KEY=access_token   # the frontend's localStorage key
+BACKLINK_OPS_LOGIN_URL=/login/                # where a 401 sends the browser
+```
+
+Two conditions: the page must be served **same-origin** with the frontend
+(localStorage is per-origin), and the frontend's login must land the token
+under that key. On this host nginx proxies `/seo/backlink-ops` and
+`/api/seo/backlink-ops` from `dashboard.agenticaiautomation.co` to the API
+for exactly that reason — `sites-available/dashboard-frontend`. With both
+blank the page behaves as shipped (cookie mode, reload on 401).
+
 ## Turning the AI layer on
 
 In-house default is **Grok** — free tier, and this desk makes roughly 20 calls a
