@@ -7,6 +7,22 @@ Type=simple
 User=www-data
 WorkingDirectory=/var/www/agenticai-dashboard/api
 Environment="PATH=/var/www/agenticai-dashboard/api/venv/bin"
+# --- Backlink Ops (off-page SEO desk) --------------------------------------
+# The dashboard's own settings load via pydantic-settings from api/.env,
+# which is never pushed into os.environ (confirmed: no load_dotenv() anywhere
+# in api/app/*.py) — but this module reads plain os.environ, so its flags are
+# set here instead, the same way PATH already is. See docs/RUNBOOK.md.
+# Full values (incl. the AI key once Phase 5 is turned on) are also kept in
+# ops/backlink-ops.env for the ops/*.sh scripts; keep the two in sync.
+Environment="BACKLINK_OPS_ENABLED=1"
+Environment="BACKLINK_OPS_DB=/var/www/agenticai-dashboard/api/instance/backlink_ops.db"
+Environment="BACKLINK_OPS_BACKUP_DIR=/var/www/agenticai-dashboard/api/backups/backlink_ops"
+Environment="BACKLINK_OPS_SUPERUSERS=jai.prajapati91@gmail.com"
+Environment="BACKLINK_OPS_ADMIN_ROLES=admin,seo_lead,seo,owner"
+Environment="BACKLINK_OPS_VIEWER_ROLES=viewer"
+Environment="BACKLINK_OPS_USER_HOOK=app.backlink_ops_hook:get_user_or_none"
+Environment="BACKLINK_OPS_AI_PROVIDER=none"
+# -----------------------------------------------------------------------
 ExecStart=/var/www/agenticai-dashboard/api/venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 5004 --workers 2
 Restart=always
 RestartSec=10

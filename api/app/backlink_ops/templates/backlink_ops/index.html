@@ -1,0 +1,880 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Backlink Ops Control</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+:root{
+  --bg:#F4F6F4; --surface:#FFFFFF; --surface-2:#EDF0EE; --line:#DCE2DF; --line-strong:#C3CCC8;
+  --ink:#141E1C; --ink-2:#3E4A47; --muted:#66746F;
+  --agentic:#00998C; --diymart:#B85520;
+  --good:#2F7D4F; --warn:#9C6608; --bad:#AF3D2C;
+  --good-bg:#E6F1EA; --warn-bg:#F7EEDC; --bad-bg:#F8E7E3;
+  --accent:var(--agentic); --accent-soft:#E2F1EF;
+  --shadow:0 1px 2px rgba(20,30,28,.06),0 6px 20px -12px rgba(20,30,28,.22);
+  --r:10px;
+  --font-display:"Bricolage Grotesque",Georgia,serif;
+  --font-ui:"Instrument Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --font-mono:"JetBrains Mono",ui-monospace,"SF Mono",Menlo,monospace;
+}
+:root:not([data-theme="light"]){}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#111716; --surface:#18201E; --surface-2:#202927; --line:#2C3835; --line-strong:#3D4B47;
+    --ink:#E9EEEC; --ink-2:#BAC6C2; --muted:#8A9793;
+    --good:#5FBB85; --warn:#D6A243; --bad:#E07767;
+    --good-bg:#16291F; --warn-bg:#2A2216; --bad-bg:#2C1B18;
+    --accent-soft:#123330;
+    --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px -14px rgba(0,0,0,.7);
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#111716; --surface:#18201E; --surface-2:#202927; --line:#2C3835; --line-strong:#3D4B47;
+  --ink:#E9EEEC; --ink-2:#BAC6C2; --muted:#8A9793;
+  --good:#5FBB85; --warn:#D6A243; --bad:#E07767;
+  --good-bg:#16291F; --warn-bg:#2A2216; --bad-bg:#2C1B18;
+  --accent-soft:#123330;
+  --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px -14px rgba(0,0,0,.7);
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font-ui);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1180px;margin:0 auto;padding-inline:18px;padding-block:0 56px}
+h1,h2,h3{font-family:var(--font-display);margin:0;text-wrap:balance;letter-spacing:-.015em}
+button{font:inherit;color:inherit;cursor:pointer}
+input,select,textarea{font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--line-strong);border-radius:8px;padding:7px 9px;width:100%}
+input:focus-visible,select:focus-visible,textarea:focus-visible,button:focus-visible,[tabindex]:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.num{font-variant-numeric:tabular-nums}
+.mono{font-family:var(--font-mono);font-size:12px}
+
+/* ---------- top bar ---------- */
+.topbar{border-bottom:1px solid var(--line);background:var(--surface);position:sticky;top:0;z-index:40}
+.topbar-in{max-width:1180px;margin:0 auto;padding:12px 18px;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+.brand{display:flex;align-items:center;gap:10px;margin-right:auto}
+.mark{width:30px;height:30px;border-radius:8px;background:var(--accent);display:grid;place-items:center;color:#fff;font-family:var(--font-display);font-weight:800;font-size:15px;flex:none}
+.brand-t{font-family:var(--font-display);font-weight:700;font-size:16px;letter-spacing:-.02em;line-height:1.15}
+.brand-s{font-size:11px;color:var(--muted);letter-spacing:.06em;text-transform:uppercase}
+.switch{display:flex;background:var(--surface-2);border-radius:9px;padding:3px;gap:3px}
+.switch button{border:0;background:transparent;padding:6px 12px;border-radius:7px;font-weight:600;font-size:13px;color:var(--muted);display:flex;align-items:center;gap:7px}
+.switch button[aria-pressed="true"]{background:var(--surface);color:var(--ink);box-shadow:var(--shadow)}
+.dot{width:8px;height:8px;border-radius:50%;flex:none}
+.whoami{display:flex;align-items:center;gap:8px}
+.chip{border:1px solid var(--line-strong);border-radius:999px;padding:4px 11px;font-size:12px;font-weight:600;background:var(--surface);display:inline-flex;align-items:center;gap:6px}
+.chip.role{background:var(--accent-soft);border-color:transparent;color:var(--accent)}
+
+/* ---------- tabs ---------- */
+.tabs{display:flex;gap:2px;border-bottom:1px solid var(--line);overflow-x:auto;margin-bottom:22px;padding-top:18px}
+.tabs button{border:0;background:transparent;padding:9px 14px;font-weight:600;font-size:13.5px;color:var(--muted);border-bottom:2px solid transparent;white-space:nowrap;margin-bottom:-1px}
+.tabs button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--accent)}
+.panel[hidden]{display:none}
+
+/* ---------- cards ---------- */
+.grid{display:grid;gap:14px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:16px}
+.card.flat{background:transparent;border:0;padding:0}
+.card-h{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:12px}
+.card-h h3{font-size:14.5px;font-weight:700}
+.eyebrow{font-size:10.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);font-weight:600}
+.hint{color:var(--muted);font-size:12.5px}
+
+/* ---------- today deck ---------- */
+.deck{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:14px;align-items:start}
+.meter-num{font-family:var(--font-display);font-size:52px;font-weight:800;line-height:.95;letter-spacing:-.03em;color:var(--accent)}
+.meter-sub{font-size:12.5px;color:var(--muted);margin-top:4px}
+.track{position:relative;height:12px;background:var(--surface-2);border-radius:999px;margin:16px 0 8px;overflow:visible}
+.fill{height:100%;border-radius:999px;background:var(--accent);transition:width .5s cubic-bezier(.3,.9,.3,1);max-width:100%}
+.tick{position:absolute;top:-5px;bottom:-5px;width:2px;background:var(--ink-2);border-radius:1px}
+.tick span{position:absolute;top:-17px;left:50%;transform:translateX(-50%);font-size:10.5px;color:var(--ink-2);white-space:nowrap;font-weight:600}
+.reqs{list-style:none;margin:14px 0 0;padding:0;display:grid;gap:7px}
+.reqs li{display:flex;gap:9px;align-items:flex-start;font-size:13px;padding:7px 9px;border-radius:8px;background:var(--surface-2)}
+.reqs li.met{background:var(--good-bg)}
+.box{width:17px;height:17px;border-radius:5px;border:1.5px solid var(--line-strong);flex:none;display:grid;place-items:center;font-size:11px;color:#fff;margin-top:1px}
+.reqs li.met .box{background:var(--good);border-color:var(--good)}
+.req-n{margin-left:auto;font-weight:700;font-size:12.5px;color:var(--muted);white-space:nowrap}
+
+/* ---------- form ---------- */
+.form{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.f-full{grid-column:1/-1}
+label{display:block;font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);margin-bottom:4px}
+.btn{border:1px solid transparent;background:var(--accent);color:#fff;border-radius:8px;padding:9px 15px;font-weight:650;font-size:13.5px;display:inline-flex;align-items:center;gap:7px;justify-content:center}
+.btn:hover{filter:brightness(1.07)}
+.btn[disabled]{opacity:.5;cursor:not-allowed;filter:none}
+.btn.ghost{background:transparent;color:var(--ink);border-color:var(--line-strong)}
+.btn.ghost:hover{background:var(--surface-2);filter:none}
+.btn.sm{padding:5px 10px;font-size:12px;border-radius:7px}
+.btn.good{background:var(--good)}.btn.bad{background:var(--bad)}.btn.warn{background:var(--warn)}
+
+/* ---------- table ---------- */
+.tw{overflow-x:auto;border:1px solid var(--line);border-radius:var(--r);background:var(--surface)}
+table{border-collapse:collapse;width:100%;min-width:660px}
+th{text-align:left;font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);font-weight:600;padding:9px 12px;border-bottom:1px solid var(--line);background:var(--surface-2);position:sticky;top:0}
+td{padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:top;font-size:13px}
+tr:last-child td{border-bottom:0}
+.pill{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;white-space:nowrap}
+.pill.pending{background:var(--surface-2);color:var(--muted)}
+.pill.approved{background:var(--good-bg);color:var(--good)}
+.pill.rejected{background:var(--bad-bg);color:var(--bad)}
+.pill.fix{background:var(--warn-bg);color:var(--warn)}
+.stripe{display:inline-block;width:3px;align-self:stretch;border-radius:2px}
+.flagline{font-size:11.5px;color:var(--warn);margin-top:3px}
+.empty{padding:26px 14px;text-align:center;color:var(--muted);font-size:13px}
+
+/* ---------- keyword lab ---------- */
+.query-card{border:1px solid var(--accent);border-radius:var(--r);background:var(--surface);overflow:hidden}
+.query-top{background:var(--accent-soft);padding:14px 16px;border-bottom:1px solid var(--line)}
+.query-kw{font-family:var(--font-display);font-size:24px;font-weight:700;letter-spacing:-.02em;color:var(--accent);word-break:break-word}
+.steps{margin:0;padding-left:18px;font-size:12.5px;color:var(--ink-2);display:grid;gap:3px}
+.steps li::marker{font-weight:700;color:var(--muted)}
+.verdict{display:inline-flex;align-items:center;gap:6px;font-family:var(--font-display);font-weight:700;font-size:15px;padding:3px 12px;border-radius:8px}
+.v-chase{background:var(--good-bg);color:var(--good)}
+.v-park{background:var(--warn-bg);color:var(--warn)}
+.v-drop{background:var(--bad-bg);color:var(--bad)}
+.kv{display:grid;grid-template-columns:repeat(auto-fit,minmax(92px,1fr));gap:1px;background:var(--line);border-radius:8px;overflow:hidden;margin:12px 0}
+.kv>div{background:var(--surface);padding:9px 11px}
+.kv dt{font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:600}
+.kv dd{margin:2px 0 0;font-family:var(--font-display);font-size:19px;font-weight:700;letter-spacing:-.02em}
+.anchors{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.anchor{font-family:var(--font-mono);font-size:11.5px;background:var(--surface-2);border:1px solid var(--line);padding:3px 8px;border-radius:6px}
+.bullets{margin:6px 0 0;padding-left:17px;display:grid;gap:4px;font-size:13px}
+
+/* ---------- scoreboard ---------- */
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(148px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+.tile{background:var(--surface);padding:13px 15px}
+.tile .n{font-family:var(--font-display);font-size:27px;font-weight:700;letter-spacing:-.025em;line-height:1.1}
+.tile .l{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:600;margin-top:2px}
+.band{font-family:var(--font-display);font-size:13px;font-weight:700;padding:2px 10px;border-radius:999px}
+.b-great{background:var(--good-bg);color:var(--good)}
+.b-good{background:var(--accent-soft);color:var(--accent)}
+.b-work{background:var(--warn-bg);color:var(--warn)}
+.b-none{background:var(--surface-2);color:var(--muted)}
+.chart-note{font-size:11.5px;color:var(--muted);margin-top:6px}
+
+/* ---------- misc ---------- */
+.toast{position:fixed;left:50%;bottom:22px;opacity:0;visibility:hidden;transform:translateX(-50%) translateY(140%);background:var(--ink);color:var(--bg);padding:10px 18px;border-radius:999px;font-weight:600;font-size:13px;z-index:90;transition:transform .3s,opacity .3s,visibility .3s;max-width:calc(100% - 36px);text-align:center}
+.toast.show{opacity:1;visibility:visible;transform:translateX(-50%) translateY(0)}
+#confetti{position:fixed;inset:0;pointer-events:none;z-index:80;display:none}
+.celebrate{border:1px solid var(--good);background:var(--good-bg);border-radius:var(--r);padding:16px;display:flex;gap:14px;align-items:center}
+.celebrate h3{font-size:19px;color:var(--good)}
+.gate{display:grid;place-items:center;min-height:62vh;padding:20px}
+.gate-card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:26px;max-width:420px;width:100%;box-shadow:var(--shadow)}
+.who-list{display:grid;gap:8px;margin-top:16px}
+.who{display:flex;align-items:center;gap:11px;padding:11px 13px;border:1px solid var(--line-strong);border-radius:10px;background:var(--surface);text-align:left;width:100%}
+.who:hover{border-color:var(--accent);background:var(--accent-soft)}
+.who-n{font-weight:650}
+.who-p{font-size:11.5px;color:var(--muted)}
+.avatar{width:32px;height:32px;border-radius:9px;display:grid;place-items:center;color:#fff;font-weight:700;font-size:13px;flex:none;font-family:var(--font-display)}
+.section-title{font-size:19px;font-weight:700;margin-bottom:3px}
+.lede{color:var(--muted);font-size:13px;margin:0 0 14px}
+.split{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px;align-items:start}
+.rowbtns{display:flex;gap:6px;flex-wrap:wrap}
+.spin{display:inline-block;width:13px;height:13px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:sp .7s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+.levelbar{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+.lvl{border:1px solid var(--line-strong);border-radius:8px;padding:8px 11px;text-align:left;background:var(--surface);flex:1 1 130px;min-width:0}
+.lvl[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft)}
+.lvl b{display:block;font-family:var(--font-display);font-size:13.5px}
+.lvl span{font-size:11.5px;color:var(--muted)}
+@media (prefers-reduced-motion:reduce){*{animation-duration:.01ms!important;transition-duration:.01ms!important}}
+@media (max-width:820px){
+  .deck,.split{grid-template-columns:1fr}
+  .meter-num{font-size:44px}
+  .brand{margin-right:0;width:100%}
+}
+@media (max-width:440px){.form{grid-template-columns:1fr}}
+</style><style>body{padding:0}</style>
+</head>
+<body>
+<div class="topbar">
+  <div class="topbar-in">
+    <div class="brand">
+      <div class="mark" id="mark">A</div>
+      <div>
+        <div class="brand-t">Backlink Ops Control</div>
+        <div class="brand-s" id="datelabel">Off-page desk</div>
+      </div>
+    </div>
+    <div class="switch" id="projswitch" role="group" aria-label="Project"></div>
+    <div class="whoami" id="whoami"></div>
+  </div>
+</div>
+
+<div class="wrap">
+    <div id="app">
+    <div class="tabs" role="tablist" id="tabs"></div>
+
+    <!-- TODAY -->
+    <section class="panel" id="p-today" role="tabpanel">
+      <div id="celebrate-slot"></div>
+      <div class="deck" style="margin-top:14px">
+        <div class="card">
+          <div class="card-h">
+            <div>
+              <div class="eyebrow" id="today-eyebrow">Today's score</div>
+              <div class="meter-num num" id="score-num">0</div>
+              <div class="meter-sub" id="score-sub">of 60 points needed</div>
+            </div>
+            <span class="band b-none" id="score-band">Not started</span>
+          </div>
+          <div class="track"><div class="fill" id="score-fill" style="width:0%"></div><div class="tick" id="score-tick" style="left:100%"><span>target</span></div></div>
+          <div class="hint" id="score-hint">Log your first link to start the day.</div>
+          <ul class="reqs" id="reqs"></ul>
+        </div>
+
+        <div class="card">
+          <div class="card-h"><h3>Log a submitted link</h3><span class="eyebrow" id="pts-preview">0 pts</span></div>
+          <form class="form" id="logform">
+            <div class="f-full">
+              <label for="f-url">Where you submitted it</label>
+              <input id="f-url" name="url" placeholder="https://directory.example.com/listing/123" required>
+            </div>
+            <div>
+              <label for="f-type">Link type</label>
+              <select id="f-type" name="type"></select>
+            </div>
+            <div>
+              <label for="f-da">Domain authority (DA/DR)</label>
+              <input id="f-da" name="da" type="number" min="0" max="100" value="25" required>
+            </div>
+            <div>
+              <label for="f-spam">Spam score %</label>
+              <input id="f-spam" name="spam" type="number" min="0" max="100" value="2">
+            </div>
+            <div>
+              <label for="f-follow">Follow attribute</label>
+              <select id="f-follow" name="follow"><option value="dofollow">Dofollow</option><option value="nofollow">Nofollow</option><option value="unknown">Not checked yet</option></select>
+            </div>
+            <div>
+              <label for="f-target">Our page it points to</label>
+              <input id="f-target" name="target" placeholder="/whatsapp-automation" required>
+            </div>
+            <div>
+              <label for="f-anchor">Anchor text</label>
+              <input id="f-anchor" name="anchor" placeholder="whatsapp automation for hospitals" required>
+            </div>
+            <div class="f-full">
+              <label for="f-kw">Keyword cluster it supports</label>
+              <select id="f-kw" name="kw"></select>
+            </div>
+            <div class="f-full" style="display:flex;gap:14px;flex-wrap:wrap;align-items:center">
+              <label style="display:flex;gap:7px;align-items:center;text-transform:none;letter-spacing:0;font-size:13px;font-weight:500;margin:0">
+                <input type="checkbox" id="f-relevant" style="width:auto" checked> Page topic matches our niche
+              </label>
+              <label style="display:flex;gap:7px;align-items:center;text-transform:none;letter-spacing:0;font-size:13px;font-weight:500;margin:0">
+                <input type="checkbox" id="f-indexed" style="width:auto"> Live &amp; indexed (checked)
+              </label>
+            </div>
+            <div class="f-full"><button class="btn" type="submit" id="logbtn">Add to today's sheet</button></div>
+          </form>
+        </div>
+      </div>
+
+      <div style="margin-top:22px">
+        <div class="card-h">
+          <div><h3 class="section-title" style="font-size:16px">Today's sheet</h3><p class="lede" style="margin:0" id="sheet-lede">Nothing logged yet.</p></div>
+          <button class="btn ghost sm" id="coachbtn">Ask AI coach to review</button>
+        </div>
+        <div id="coach-slot"></div>
+        <div class="tw" style="margin-top:12px"><table><thead><tr>
+          <th style="width:34%">Link</th><th>Type</th><th>DA</th><th>Anchor</th><th>Pts</th><th>Status</th><th></th>
+        </tr></thead><tbody id="entries"></tbody></table></div>
+      </div>
+    </section>
+
+    <!-- KEYWORD LAB -->
+    <section class="panel" id="p-lab" role="tabpanel" hidden>
+      <h2 class="section-title">Keyword Lab</h2>
+      <p class="lede">One Ubersuggest query at a time. Run it, paste what you see, get a verdict and the anchor text to use. <span id="lab-progress"></span></p>
+      <div id="query-slot"></div>
+      <div id="analysis-out"></div>
+      <div style="margin-top:22px">
+        <div class="card-h"><h3 class="section-title" style="font-size:16px">Keyword bank</h3><span class="eyebrow" id="bank-count"></span></div>
+        <div class="tw"><table><thead><tr>
+          <th style="width:30%">Keyword</th><th>Volume</th><th>Difficulty</th><th>CPC</th><th>Verdict</th><th style="width:28%">Why</th><th>By</th>
+        </tr></thead><tbody id="bank"></tbody></table></div>
+      </div>
+    </section>
+
+    <!-- SCOREBOARD -->
+    <section class="panel" id="p-board" role="tabpanel" hidden>
+      <h2 class="section-title">Scoreboard</h2>
+      <p class="lede">Last 14 days of approved and pending points, per associate.</p>
+      <div id="board"></div>
+    </section>
+
+    <!-- REVIEW -->
+    <section class="panel" id="p-review" role="tabpanel" hidden>
+      <h2 class="section-title">Review queue</h2>
+      <p class="lede" id="review-lede">Approve what counts. Rejected links stop counting and go back to the associate as a fix.</p>
+      <div id="review"></div>
+    </section>
+
+    <!-- SETTINGS -->
+    <section class="panel" id="p-settings" role="tabpanel" hidden>
+      <h2 class="section-title">Difficulty &amp; team</h2>
+      <p class="lede">Raise the level when both associates clear their target five days running. Superuser only.</p>
+      <div id="settings"></div>
+    </section>
+  </div>
+</div>
+
+<canvas id="confetti"></canvas>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+window.BO = { api: __BO_API__, version: __BO_VERSION__ };
+</script>
+<script>
+"use strict";
+/* Backlink Ops Control — client.
+   The server owns scoring, roles and persistence. This file renders what the
+   API returns and posts what the associate does. It holds no business rules:
+   if you need to change how a link is scored, change scoring.py, not this. */
+
+const API = (window.BO && window.BO.api) || "/api/seo/backlink-ops";
+const S = { me:null, cfg:null, meta:null, project:"agenticai", tab:"today",
+            day:null, bank:[], board:null, celebrated:{}, booted:false };
+const $ = s => document.querySelector(s);
+const esc = s => String(s==null?"":s).replace(/[&<>"']/g, c =>
+  ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+
+function toast(msg){
+  const t=$("#toast"); t.textContent=msg; t.classList.add("show");
+  clearTimeout(t._h); t._h=setTimeout(()=>t.classList.remove("show"),4200);
+}
+async function api(path, opts){
+  const o = Object.assign({credentials:"same-origin", headers:{"Content-Type":"application/json"}}, opts||{});
+  let r;
+  try { r = await fetch(API+path, o); }
+  catch(_){ throw Object.assign(new Error("Can't reach the dashboard. Check your connection."), {offline:true}); }
+  if(r.status===401){ location.reload(); throw new Error("Session expired."); }
+  let body={}; try{ body = await r.json(); }catch(_){}
+  if(!r.ok) throw Object.assign(new Error(body.message || "That didn't go through."), {code:body.error, status:r.status});
+  return body;
+}
+const P = () => (S.meta && S.meta.projects[S.project]) || {short:"—", hue:"#00998C", initial:"?", name:""};
+const L = () => (S.day && S.day.level) || (S.meta && S.meta.level) || {n:1,name:"Warm-up",target:60,queries:3};
+const typeMap = () => Object.fromEntries((S.meta.linkTypes||[]).map(t=>[t.v,t]));
+
+/* ------------------------------------------------------------------ boot */
+async function boot(){
+  try { const b = await api("/bootstrap"); applyBootstrap(b); }
+  catch(e){
+    document.body.innerHTML = '<div style="max-width:520px;margin:14vh auto;padding:26px;'+
+      'font-family:system-ui;text-align:center"><h1 style="font-size:20px">The desk could not load</h1>'+
+      '<p style="color:#667">'+esc(e.message)+'</p>'+
+      '<p style="color:#667;font-size:13px">Sign in to the dashboard, then reload this page. '+
+      'If it keeps happening, tell Jai — the health check is at <code>'+esc(API)+'/health</code>.</p></div>';
+    return;
+  }
+  renderShell();
+  await Promise.all([loadDay(), loadBank(), loadBoard()]);
+  S.booted = true;
+  renderAll();
+}
+function applyBootstrap(b){
+  S.me = b.me; S.cfg = b.config;
+  S.meta = {levels:b.levels, level:b.level, linkTypes:b.linkTypes, projects:b.projects,
+            seedKeywords:b.seedKeywords, today:b.today, readOnly:b.readOnly,
+            aiEnabled:b.aiEnabled, version:b.version};
+  const mine = (b.config.roster||[]).find(r => r.name === S.me.name);
+  S.project = (mine && mine.project) || b.project || "agenticai";
+  if(b.readOnly) toast("The desk is in read-only mode while maintenance runs.");
+}
+const isOwner = () => S.me && S.me.role === "superuser";
+
+async function loadDay(){
+  try { S.day = await api("/day?project="+encodeURIComponent(S.project)); }
+  catch(e){ toast(e.message); }
+}
+async function loadBank(){
+  try { S.bank = (await api("/bank?project="+encodeURIComponent(S.project))).keywords || []; }
+  catch(_){ S.bank = []; }
+}
+async function loadBoard(){
+  try { S.board = await api("/board?days=14"); }
+  catch(_){ S.board = null; }
+}
+
+/* ------------------------------------------------------------------ shell */
+function renderShell(){
+  const sw = $("#projswitch");
+  sw.innerHTML = Object.values(S.meta.projects).map(p =>
+    '<button type="button" data-p="'+p.id+'" aria-pressed="false"><span class="dot" style="background:'+
+    p.hue+'"></span>'+esc(p.short)+'</button>').join("");
+  sw.addEventListener("click", async ev => {
+    const b = ev.target.closest("button[data-p]"); if(!b || b.dataset.p===S.project) return;
+    S.project = b.dataset.p; const ao=$("#analysis-out"); if(ao) ao.innerHTML="";
+    renderAll(); await Promise.all([loadDay(), loadBank()]); renderAll();
+  });
+
+  const TABS = [["today","Today"],["lab","Keyword Lab"],["board","Scoreboard"],
+                ["review","Review queue"],["settings","Difficulty & team"]];
+  $("#tabs").innerHTML = TABS.map(([k,l]) =>
+    '<button type="button" role="tab" data-t="'+k+'" aria-selected="false" id="tab-'+k+'">'+l+'</button>').join("");
+  $("#tabs").addEventListener("click", ev => {
+    const b = ev.target.closest("button[data-t]"); if(!b) return;
+    S.tab = b.dataset.t; renderAll();
+    if(S.tab==="board") loadBoard().then(renderAll);
+  });
+
+  $("#f-type").innerHTML = S.meta.linkTypes.map(t =>
+    '<option value="'+t.v+'">'+esc(t.l)+' · '+t.p+' base</option>').join("");
+  $("#logform").addEventListener("submit", onLog);
+  $("#coachbtn").addEventListener("click", runCoach);
+  $("#datelabel").textContent = new Intl.DateTimeFormat("en-IN",
+    {timeZone:"Asia/Kolkata",weekday:"short",day:"numeric",month:"short"}).format(new Date());
+  ["f-type","f-da","f-spam","f-follow","f-relevant","f-indexed"].forEach(id => {
+    const el = document.getElementById(id); if(el) el.addEventListener("input", previewPoints);
+  });
+}
+
+function renderAll(){
+  if(!S.meta) return;
+  const p = P();
+  document.documentElement.style.setProperty("--accent", p.hue);
+  document.documentElement.style.setProperty("--accent-soft", accentSoft(p.hue));
+  $("#mark").textContent = p.initial;
+  document.querySelectorAll("#projswitch button").forEach(b =>
+    b.setAttribute("aria-pressed", String(b.dataset.p === S.project)));
+
+  $("#whoami").innerHTML =
+    '<span class="chip"><span class="avatar" style="width:20px;height:20px;border-radius:6px;'+
+      'font-size:10px;background:'+p.hue+'">'+esc((S.me.name||"?").slice(0,1))+'</span>'+esc(S.me.name)+'</span>'+
+    '<span class="chip role">'+(isOwner()?"Superuser":"Admin")+'</span>'+
+    '<span class="chip">L'+L().n+' · '+esc(L().name)+'</span>'+
+    (S.meta.readOnly?'<span class="chip" style="color:var(--warn)">Read-only</span>':'');
+
+  document.querySelectorAll("#tabs button").forEach(b => {
+    b.hidden = (b.dataset.t==="settings") && !isOwner();
+    b.setAttribute("aria-selected", String(b.dataset.t === S.tab));
+  });
+  if(S.tab==="settings" && !isOwner()) S.tab = "today";
+  ["today","lab","board","review","settings"].forEach(k => { $("#p-"+k).hidden = (k !== S.tab); });
+
+  renderToday(); renderLab(); renderBoard(); renderReview(); renderSettings();
+}
+function accentSoft(hex){
+  const r=parseInt(hex.slice(1,3),16), g=parseInt(hex.slice(3,5),16), b=parseInt(hex.slice(5,7),16);
+  const isDark = document.documentElement.getAttribute("data-theme")==="dark" ||
+    (matchMedia("(prefers-color-scheme:dark)").matches &&
+     document.documentElement.getAttribute("data-theme")!=="light");
+  const mix = isDark?0.16:0.10, base = isDark?22:255;
+  const m = c => Math.round(c*mix + base*(1-mix));
+  return "rgb("+m(r)+","+m(g)+","+m(b)+")";
+}
+
+/* ------------------------------------------------------------------ today */
+function formEntry(){
+  return { project:S.project, url:$("#f-url").value.trim(), type:$("#f-type").value,
+    da:Number($("#f-da").value)||0, spam:Number($("#f-spam").value)||0,
+    follow:$("#f-follow").value, target:$("#f-target").value.trim(),
+    anchor:$("#f-anchor").value.trim(), kw:$("#f-kw").value,
+    relevant:$("#f-relevant").checked, indexed:$("#f-indexed").checked };
+}
+function previewPoints(){
+  // Mirrors scoring.py for instant feedback only. The server value is authoritative.
+  const e = formEntry(), t = typeMap()[e.type] || {p:3};
+  const da = e.da, mult = da>=80?2:da>=60?1.7:da>=40?1.4:da>=20?1:0.6;
+  let pts = t.p*mult;
+  if(e.follow==="dofollow") pts += 3;
+  if(e.relevant) pts += 4;
+  if(e.indexed) pts += 2;
+  if(e.spam>5) pts *= 0.35;
+  $("#pts-preview").textContent = (Math.round(pts*10)/10)+" pts (est.)";
+}
+async function onLog(ev){
+  ev.preventDefault();
+  const e = formEntry();
+  if(!e.url || !e.anchor || !e.target){ toast("Fill the link, anchor and target page."); return; }
+  const btn = $("#logbtn"); btn.disabled = true;
+  try {
+    S.day = await api("/entries", {method:"POST", body:JSON.stringify(e)});
+    $("#f-url").value=""; $("#f-anchor").value=""; $("#f-indexed").checked=false;
+    $("#f-url").focus();
+    renderAll(); loadBoard().then(()=>{ if(S.tab==="board") renderAll(); });
+  } catch(err){ toast(err.message); }
+  finally { btn.disabled = false; }
+}
+function renderToday(){
+  const st = S.day; if(!st) return;
+  const pct = Math.min(100, st.target ? st.points/st.target*100 : 0);
+  $("#score-num").textContent = st.points;
+  $("#score-sub").textContent = "of "+st.target+" points needed today";
+  $("#score-fill").style.width = pct+"%";
+  const bandMap = {none:["Not started","b-none"], work:["Needs work","b-work"],
+                   good:["Good","b-good"], great:["Great","b-great"]};
+  const be = $("#score-band");
+  be.textContent = bandMap[st.band][0]; be.className = "band "+bandMap[st.band][1];
+  $("#today-eyebrow").textContent = P().short+" · today's score";
+  $("#score-hint").textContent = st.counted===0 ? "Log your first link to start the day."
+    : st.done ? "Every requirement met. Nice day's work."
+    : "Requirements left: "+st.reqs.filter(r=>!r.ok).length+" of "+st.reqs.length+".";
+  $("#reqs").innerHTML = st.reqs.map(r =>
+    '<li class="'+(r.ok?"met":"")+'"><span class="box">'+(r.ok?"✓":"")+'</span><span>'+
+    esc(r.label)+'</span><span class="req-n num">'+esc(r.now)+'</span></li>').join("");
+
+  const seeds = (S.meta.seedKeywords[S.project]||[]);
+  const opts = Array.from(new Set([...S.bank.map(k=>k.kw), ...seeds]));
+  const cur = $("#f-kw").value;
+  $("#f-kw").innerHTML = opts.map(k=>'<option value="'+esc(k)+'">'+esc(k)+'</option>').join("");
+  if(cur && opts.includes(cur)) $("#f-kw").value = cur;
+
+  $("#sheet-lede").textContent = (st.counted||st.rejected)
+    ? st.rows.length+" link"+(st.rows.length===1?"":"s")+" logged · "+st.points+
+      " points counting · avg DA "+(st.avgDa||"—")
+    : "Nothing logged yet.";
+  const tm = typeMap();
+  $("#entries").innerHTML = st.rows.length ? st.rows.slice().reverse().map(r => {
+    const t = tm[r.type] || {l:r.type};
+    return '<tr>'+
+      '<td><div class="mono" style="word-break:break-all">'+esc(r.url)+'</div>'+
+        '<div class="hint">→ '+esc(r.target)+' · '+esc(r.author||"")+'</div>'+
+        (r.flags&&r.flags.length?'<div class="flagline">'+esc(r.flags[0])+'</div>':'')+
+        (r.note?'<div class="flagline">Review note: '+esc(r.note)+'</div>':'')+'</td>'+
+      '<td>'+esc(t.l)+(r.tier==="high"?' <span class="pill approved">high value</span>':'')+'</td>'+
+      '<td class="num">'+esc(r.da)+'</td><td class="mono">'+esc(r.anchor)+'</td>'+
+      '<td class="num"><b>'+r.pts+'</b></td>'+
+      '<td><span class="pill '+(r.status==="needs_fix"?"fix":r.status)+'">'+
+        ({pending:"Pending",approved:"Approved",rejected:"Rejected",needs_fix:"Needs fix"}[r.status]||r.status)+'</span></td>'+
+      '<td>'+(r.status!=="approved" ? '<button class="btn ghost sm" data-del="'+esc(r.id)+'" type="button">Remove</button>' : '')+'</td>'+
+    '</tr>';
+  }).join("") : '<tr><td colspan="7" class="empty">No links on today\'s sheet yet. Add your first one on the right.</td></tr>';
+  $("#entries").onclick = async ev => {
+    const b = ev.target.closest("button[data-del]"); if(!b) return;
+    b.disabled = true;
+    try { S.day = await api("/entries/"+encodeURIComponent(b.dataset.del)+"?project="+
+                            encodeURIComponent(S.project), {method:"DELETE"}); renderAll(); }
+    catch(err){ toast(err.message); b.disabled = false; }
+  };
+
+  const key = S.project+"|"+(S.meta.today||"");
+  if(st.done){
+    $("#celebrate-slot").innerHTML =
+      '<div class="celebrate"><span style="font-size:30px">🎉</span><div>'+
+      '<h3>Target cleared — '+esc(S.me.name)+'</h3><div class="hint">'+st.points+' points, '+
+      st.queries+' keyword queries, avg DA '+st.avgDa+'. Level '+L().n+' ('+esc(L().name)+
+      ') complete for '+esc(P().short)+'.</div></div></div>';
+    if(!S.celebrated[key]){ S.celebrated[key]=true; fireConfetti(); }
+  } else { $("#celebrate-slot").innerHTML = ""; }
+
+  if(st.coach) renderCoach(st.coach); else $("#coach-slot").innerHTML = "";
+  previewPoints();
+}
+
+/* ------------------------------------------------------------------ lab */
+function nextKeyword(){
+  const done = new Set(S.bank.map(k=>String(k.kw).toLowerCase()));
+  return (S.meta.seedKeywords[S.project]||[]).find(k => !done.has(k.toLowerCase())) || null;
+}
+function renderLab(){
+  const kw = nextKeyword(), slot = $("#query-slot");
+  $("#lab-progress").textContent = (S.day?S.day.queries:0)+" of "+L().queries+" done today.";
+  $("#bank-count").textContent = S.bank.length+" analysed";
+  if(slot.dataset.kw === (kw||"__none__") && slot.dataset.proj === S.project){ renderBankTable(); return; }
+  slot.dataset.kw = kw||"__none__"; slot.dataset.proj = S.project;
+  const p = P();
+  slot.innerHTML = !kw
+    ? '<div class="card"><h3>Seed list finished for '+esc(p.short)+'</h3><p class="hint" style="margin:6px 0 0">'+
+      'All '+(S.meta.seedKeywords[S.project]||[]).length+' seed keywords are analysed. Ask Jai for the next '+
+      'cluster, or re-run the ones marked <b>park</b> next month.</p></div>'
+    : '<div class="query-card">'+
+        '<div class="query-top"><div class="eyebrow">Query '+(S.bank.length+1)+' · run this one now</div>'+
+        '<div class="query-kw">'+esc(kw)+'</div></div>'+
+        '<div style="padding:16px"><div class="split">'+
+          '<div><div class="eyebrow" style="margin-bottom:6px">In Ubersuggest</div><ol class="steps">'+
+            '<li>Keyword Overview → paste <span class="mono">'+esc(kw)+'</span></li>'+
+            '<li>Set country to <b>India</b> (language English)</li>'+
+            '<li>Copy the volume, SEO difficulty, paid difficulty and CPC</li>'+
+            '<li>Scroll to <b>Keyword Ideas</b> and copy the top 5 rows</li></ol></div>'+
+          '<div><label for="paste">Paste what Ubersuggest shows</label>'+
+            '<textarea id="paste" rows="7" placeholder="Volume 1,300&#10;SD 34&#10;PD 41&#10;CPC ₹92"></textarea>'+
+            '<div style="display:flex;gap:8px;margin-top:9px;flex-wrap:wrap">'+
+              '<button class="btn" id="analyse" type="button">Analyse &amp; log query</button>'+
+              '<button class="btn ghost" id="skipkw" type="button">Skip this keyword</button>'+
+            '</div></div>'+
+        '</div></div></div>';
+  if(kw){
+    $("#analyse").addEventListener("click", ()=>analyse(kw,false));
+    $("#skipkw").addEventListener("click", ()=>analyse(kw,true));
+  }
+  renderBankTable();
+}
+function renderBankTable(){
+  $("#bank").innerHTML = S.bank.length ? S.bank.slice().reverse().map(k =>
+    '<tr><td class="mono">'+esc(k.kw)+'</td><td class="num">'+esc(k.volume==null?"—":k.volume)+'</td>'+
+    '<td class="num">'+esc(k.kd==null?"—":k.kd)+'</td><td class="num">'+esc(k.cpc==null?"—":k.cpc)+'</td>'+
+    '<td><span class="verdict v-'+esc(k.verdict||"park")+'" style="font-size:12px;padding:1px 8px">'+
+      esc((k.verdict||"park").toUpperCase())+'</span></td>'+
+    '<td class="hint">'+esc(k.why||"")+'</td><td class="hint">'+esc(k.author||"")+'</td></tr>').join("")
+    : '<tr><td colspan="7" class="empty">The bank fills up as you analyse each query above.</td></tr>';
+}
+async function analyse(kw, skip){
+  const btn = $("#analyse"), ta = $("#paste");
+  const pasted = ta ? ta.value.trim() : "";
+  if(!skip && pasted.length < 8){ toast("Paste the Ubersuggest numbers first."); return; }
+  if(btn){ btn.disabled = true; btn.innerHTML = '<span class="spin"></span> Reading it'; }
+  try {
+    const res = await api("/analyse", {method:"POST",
+      body: JSON.stringify({project:S.project, kw, pasted, skip: !!skip})});
+    S.day = res.day; S.bank = res.bank;
+    const o = res.analysis, out = $("#analysis-out");
+    if(out && !skip) out.innerHTML =
+      '<div class="card" style="margin-top:14px">'+
+        '<div class="eyebrow" style="margin-bottom:8px">Verdict on &ldquo;'+esc(kw)+'&rdquo;'+
+        (o._source==="rules"?' · offline rules':'')+'</div>'+
+        '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">'+
+          '<span class="verdict v-'+esc(o.verdict)+'">'+esc(String(o.verdict).toUpperCase())+'</span>'+
+          '<span class="hint">'+esc(o.why||"")+'</span></div>'+
+        '<dl class="kv"><div><dt>Volume</dt><dd class="num">'+esc(o.volume==null?"—":o.volume)+'</dd></div>'+
+          '<div><dt>Difficulty</dt><dd class="num">'+esc(o.kd==null?"—":o.kd)+'</dd></div>'+
+          '<div><dt>CPC</dt><dd class="num">'+esc(o.cpc==null?"—":o.cpc)+'</dd></div>'+
+          '<div><dt>Target page</dt><dd style="font-size:13px">'+esc(o.targetPage||"—")+'</dd></div></dl>'+
+        '<div class="eyebrow">Anchor text to rotate</div><div class="anchors">'+
+          (o.anchors||[]).map(a=>'<span class="anchor">'+esc(a)+'</span>').join("")+'</div>'+
+        '<div class="eyebrow" style="margin-top:12px">Off-page plan for this keyword</div>'+
+        '<ul class="bullets">'+(o.linkPlan||[]).map(x=>'<li>'+esc(x)+'</li>').join("")+'</ul>'+
+        '<div class="hint" style="margin-top:10px"><b>Next:</b> '+esc(o.nextFocus||"")+'</div></div>';
+    renderAll();
+    toast(skip ? "Keyword skipped." : "Query logged. "+S.day.queries+" of "+L().queries+" today.");
+  } catch(err){ toast(err.message); }
+  finally { if(btn){ btn.disabled=false; btn.textContent="Analyse & log query"; } }
+}
+
+/* ------------------------------------------------------------------ coach */
+async function runCoach(){
+  const btn = $("#coachbtn");
+  btn.disabled = true; btn.innerHTML = '<span class="spin"></span> Reviewing';
+  try { const res = await api("/coach", {method:"POST", body:JSON.stringify({project:S.project})});
+        if(S.day) S.day.coach = res.coach; renderCoach(res.coach); }
+  catch(err){ toast(err.message); }
+  finally { btn.disabled=false; btn.textContent="Ask AI coach to review"; }
+}
+function renderCoach(o){
+  if(!o) return;
+  const cls = o.grade==="Great"?"b-great":o.grade==="Good"?"b-good":"b-work";
+  $("#coach-slot").innerHTML =
+    '<div class="card" style="margin-top:12px"><div class="card-h"><div>'+
+      '<div class="eyebrow">AI coach · '+esc(P().short)+(o._source==="rules"?' · offline rules':'')+'</div>'+
+      '<h3 style="font-size:16px;margin-top:3px">'+esc(o.headline||"")+'</h3></div>'+
+      '<span class="band '+cls+'">'+esc(o.grade||"")+'</span></div>'+
+    (o.wins&&o.wins.length?'<div class="eyebrow">Working</div><ul class="bullets">'+
+      o.wins.map(w=>'<li>'+esc(w)+'</li>').join("")+'</ul>':'')+
+    '<div class="eyebrow" style="margin-top:12px">Fix these</div><ul class="bullets">'+
+      (o.fixes||[]).map(w=>'<li>'+esc(w)+'</li>').join("")+'</ul>'+
+    '<div class="eyebrow" style="margin-top:12px">Tomorrow</div><ul class="bullets">'+
+      (o.tomorrow||[]).map(w=>'<li>'+esc(w)+'</li>').join("")+'</ul></div>';
+}
+
+/* ------------------------------------------------------------------ board */
+function renderBoard(){
+  if(!S.board){ $("#board").innerHTML = '<div class="card"><p class="hint" style="margin:0">Loading the last 14 days…</p></div>'; return; }
+  const days = []; const today = new Date(S.board.today+"T00:00:00");
+  for(let i=13;i>=0;i--){ const d=new Date(today); d.setDate(d.getDate()-i);
+    days.push(d.toISOString().slice(0,10)); }
+  const byKey = {};
+  (S.board.series||[]).forEach(s => { byKey[s.author+"|"+s.project+"|"+s.date] = s; });
+  const people = (S.board.roster||[]).filter(r => !r.owner);
+  const Lv = S.board.level;
+  $("#board").innerHTML = people.map(p => {
+    const proj = S.meta.projects[p.project] || P();
+    const series = days.map(d => {
+      const s = byKey[p.name+"|"+p.project+"|"+d];
+      return {date:d, pts: s?s.points:0, done: !!(s&&s.done)};
+    });
+    const hit = series.filter(s=>s.done).length;
+    let streak=0; for(let i=series.length-1;i>=0;i--){ if(series[i].done) streak++; else break; }
+    const active = series.filter(s=>s.pts>0);
+    const avg = active.length ? Math.round(active.reduce((a,b)=>a+b.pts,0)/active.length) : 0;
+    const band = hit>=10?["Great","b-great"] : hit>=5?["Good","b-good"] :
+                 active.length?["Needs work","b-work"]:["No data","b-none"];
+    return '<div class="card" style="margin-bottom:14px"><div class="card-h">'+
+      '<div style="display:flex;gap:11px;align-items:center">'+
+        '<span class="avatar" style="background:'+proj.hue+'">'+esc(p.name.slice(0,1))+'</span>'+
+        '<div><h3 style="font-size:15px">'+esc(p.name)+'</h3><div class="hint">'+esc(proj.name)+'</div></div></div>'+
+      '<span class="band '+band[1]+'">'+band[0]+'</span></div>'+
+      '<div class="tiles" style="margin-bottom:14px">'+
+        '<div class="tile"><div class="n num" style="color:'+proj.hue+'">'+hit+
+          '<span style="font-size:15px;color:var(--muted)">/14</span></div><div class="l">Targets hit</div></div>'+
+        '<div class="tile"><div class="n num">'+streak+'</div><div class="l">Day streak</div></div>'+
+        '<div class="tile"><div class="n num">'+avg+'</div><div class="l">Avg points</div></div>'+
+        '<div class="tile"><div class="n num">'+((S.board.bankCounts||{})[p.project]||0)+
+          '</div><div class="l">Keywords analysed</div></div></div>'+
+      barChart(series, proj.hue, Lv.target)+
+      '<div class="chart-note">Bars are daily link points. The dashed line is the Level '+Lv.n+
+      ' target of '+Lv.target+'.</div></div>';
+  }).join("") || '<div class="card"><p class="hint" style="margin:0">No associates on the roster yet. '+
+                 'Add them under Difficulty &amp; team.</p></div>';
+}
+function barChart(series, hue, target){
+  const W=680,H=150,padL=34,padR=10,padT=14,padB=26;
+  const max = Math.max(target*1.25, ...series.map(s=>s.pts), 10);
+  const iw=W-padL-padR, ih=H-padT-padB, bw=iw/series.length;
+  const y = v => padT + ih - (v/max)*ih;
+  const ticks = [0, Math.round(max/2), Math.round(max)];
+  const grid = ticks.map(t =>
+    '<line x1="'+padL+'" x2="'+(W-padR)+'" y1="'+y(t).toFixed(1)+'" y2="'+y(t).toFixed(1)+
+    '" stroke="var(--line)" stroke-width="1"/><text x="'+(padL-6)+'" y="'+(y(t)+3.5).toFixed(1)+
+    '" text-anchor="end" font-size="10" fill="var(--muted)" font-family="var(--font-ui)">'+t+'</text>').join("");
+  const bars = series.map((s,i) => {
+    if(!(s.pts>0)) return "";
+    const h = Math.max(2,(s.pts/max)*ih), x = padL+i*bw+2, w = Math.max(4,bw-6);
+    return '<rect x="'+x.toFixed(1)+'" y="'+(padT+ih-h).toFixed(1)+'" width="'+w.toFixed(1)+
+      '" height="'+h.toFixed(1)+'" rx="3" fill="'+hue+'" fill-opacity="'+(s.done?1:0.55)+
+      '"><title>'+s.date+" · "+s.pts+" pts"+(s.done?" · target hit":"")+'</title></rect>';
+  }).join("");
+  const labels = series.map((s,i) => ((series.length-1-i)%3===0)
+    ? '<text x="'+(padL+i*bw+bw/2).toFixed(1)+'" y="'+(H-8)+'" text-anchor="middle" font-size="10" '+
+      'fill="var(--muted)" font-family="var(--font-ui)">'+s.date.slice(5).replace("-","/")+'</text>' : "").join("");
+  const tline = '<line x1="'+padL+'" x2="'+(W-padR)+'" y1="'+y(target).toFixed(1)+'" y2="'+y(target).toFixed(1)+
+    '" stroke="var(--ink-2)" stroke-width="1.5" stroke-dasharray="4 3"/><text x="'+(W-padR)+'" y="'+
+    (y(target)-5).toFixed(1)+'" text-anchor="end" font-size="10" font-weight="600" fill="var(--ink-2)" '+
+    'font-family="var(--font-ui)">target '+target+'</text>';
+  return '<div style="overflow-x:auto"><svg viewBox="0 0 '+W+' '+H+'" width="100%" style="min-width:420px;'+
+    'display:block" role="img" aria-label="Daily link points over the last 14 days">'+
+    grid+bars+tline+labels+'</svg></div>';
+}
+
+/* ------------------------------------------------------------------ review */
+function renderReview(){
+  const st = S.day; if(!st) return;
+  if(!isOwner()){
+    const mine = st.rows.filter(r => r.status==="rejected" || r.status==="needs_fix");
+    $("#review-lede").textContent = "Jai approves each link. Anything sent back shows up here to fix.";
+    $("#review").innerHTML = mine.length
+      ? '<div class="tw"><table><thead><tr><th>Link</th><th>What to fix</th></tr></thead><tbody>'+
+        mine.map(r=>'<tr><td class="mono" style="word-break:break-all">'+esc(r.url)+'</td><td>'+
+          esc(r.note||"Sent back — replace with a stronger placement.")+'</td></tr>').join("")+'</tbody></table></div>'
+      : '<div class="card"><p class="hint" style="margin:0">Nothing sent back. Everything you logged today '+
+        'is either approved or waiting on review.</p></div>';
+    return;
+  }
+  $("#review-lede").textContent = "Approve what counts. Rejected links stop counting and go back to the associate as a fix.";
+  const pending = st.rows.filter(r => r.status==="pending"), tm = typeMap();
+  $("#review").innerHTML =
+    '<div class="card" style="margin-bottom:14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">'+
+      '<div><b>'+pending.length+'</b> waiting on you for '+esc(P().short)+' today.</div>'+
+      (pending.length?'<button class="btn good sm" id="approveall" type="button">Approve all '+pending.length+'</button>':'')+
+    '</div>'+
+    (st.rows.length
+      ? '<div class="tw"><table><thead><tr><th style="width:36%">Link</th><th>Pts</th><th>Flags</th>'+
+        '<th>Status</th><th style="width:24%">Action</th></tr></thead><tbody>'+
+        st.rows.slice().reverse().map(r => '<tr>'+
+          '<td><div class="mono" style="word-break:break-all">'+esc(r.url)+'</div><div class="hint">'+
+            esc((tm[r.type]||{}).l||r.type)+' · DA '+esc(r.da)+' · '+esc(r.anchor)+' · '+esc(r.author||"")+'</div></td>'+
+          '<td class="num"><b>'+r.pts+'</b></td>'+
+          '<td class="hint">'+(r.flags&&r.flags.length?esc(r.flags.join(" ")):"Clean")+'</td>'+
+          '<td><span class="pill '+(r.status==="needs_fix"?"fix":r.status)+'">'+
+            ({pending:"Pending",approved:"Approved",rejected:"Rejected",needs_fix:"Needs fix"}[r.status])+'</span></td>'+
+          '<td><div class="rowbtns">'+
+            '<button class="btn good sm" data-ok="'+esc(r.id)+'" type="button">Approve</button>'+
+            '<button class="btn warn sm" data-fix="'+esc(r.id)+'" type="button">Send back</button>'+
+            '<button class="btn bad sm" data-no="'+esc(r.id)+'" type="button">Reject</button>'+
+          '</div></td></tr>').join("")+'</tbody></table></div>'
+      : '<div class="card"><p class="hint" style="margin:0">Nothing logged for '+esc(P().short)+' today.</p></div>');
+
+  $("#review").onclick = async ev => {
+    const all = ev.target.closest("#approveall");
+    if(all) return decide(pending.map(r => ({id:r.id, status:"approved"})));
+    const ok = ev.target.closest("[data-ok]"), no = ev.target.closest("[data-no]"),
+          fx = ev.target.closest("[data-fix]");
+    if(ok) return decide([{id:ok.dataset.ok, status:"approved"}]);
+    if(no){ const n = prompt("Why is this rejected? The associate sees this note."); if(n===null) return;
+            return decide([{id:no.dataset.no, status:"rejected", note:n}]); }
+    if(fx){ const n = prompt("What should they change?"); if(n===null) return;
+            return decide([{id:fx.dataset.fix, status:"needs_fix", note:n}]); }
+  };
+}
+async function decide(decisions){
+  try { S.day = await api("/review", {method:"POST",
+          body: JSON.stringify({project:S.project, decisions})});
+        renderAll(); loadBoard().then(()=>{ if(S.tab==="board") renderAll(); }); }
+  catch(err){ toast(err.message); }
+}
+
+/* ------------------------------------------------------------------ settings */
+function renderSettings(){
+  if(!isOwner()){ $("#settings").innerHTML=""; return; }
+  const cur = S.cfg.level || 1, roster = S.cfg.roster || [];
+  const Lv = (S.meta.levels||[]).find(l => l.n === cur) || S.meta.levels[0];
+  $("#settings").innerHTML =
+    '<div class="card" style="margin-bottom:14px"><div class="card-h"><h3>Difficulty level</h3>'+
+      '<span class="eyebrow">Applies to both sites</span></div><div class="levelbar">'+
+      (S.meta.levels||[]).map(l => '<button class="lvl" type="button" data-l="'+l.n+'" aria-pressed="'+
+        (l.n===cur)+'"><b>L'+l.n+' · '+esc(l.name)+'</b><span>'+l.target+' pts · '+l.queries+
+        ' queries · DA '+l.min_avg_da+'+'+(l.high_value?' · '+l.high_value+' high-value':'')+
+        '</span></button>').join("")+'</div>'+
+      '<p class="hint" style="margin:12px 0 0">Right now: <b>'+Lv.target+' points</b>, <b>'+Lv.queries+
+      ' Ubersuggest queries</b>, average DA <b>'+Lv.min_avg_da+'+</b>, exact-match anchors under <b>'+
+      Math.round(Lv.max_exact*100)+'%</b>'+(Lv.index_rate?', <b>'+Math.round(Lv.index_rate*100)+
+      '%</b> verified live':'')+'.</p></div>'+
+    '<div class="card"><div class="card-h"><h3>Team &amp; assignments</h3>'+
+      '<span class="eyebrow">Superuser only</span></div>'+
+      '<div class="tw" style="border:0"><table style="min-width:420px"><thead><tr><th>Name</th><th>Site</th>'+
+      '<th>Role</th><th></th></tr></thead><tbody>'+
+      roster.map((r,i)=>'<tr><td><input value="'+esc(r.name)+'" data-n="'+i+'"></td><td><select data-p="'+i+'">'+
+        Object.values(S.meta.projects).map(p=>'<option value="'+p.id+'"'+(p.id===r.project?" selected":"")+
+        '>'+esc(p.short)+'</option>').join("")+'</select></td><td>'+
+        (r.owner?'<span class="chip role">Superuser</span>':'<span class="chip">Admin</span>')+'</td><td>'+
+        (r.owner?'':'<button class="btn ghost sm" data-rm="'+i+'" type="button">Remove</button>')+
+        '</td></tr>').join("")+'</tbody></table></div>'+
+      '<div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">'+
+        '<button class="btn" id="saveteam" type="button">Save team</button>'+
+        '<button class="btn ghost" id="addmember" type="button">Add associate</button>'+
+        '<button class="btn ghost" id="backupnow" type="button">Back up the desk now</button></div>'+
+      '<p class="hint" style="margin:12px 0 0">Admins can do everything on the desk — log links, run the '+
+      'keyword lab, see both sites. Only you can approve links, change the level, and edit this table.</p></div>';
+
+  $("#settings").onclick = async ev => {
+    const l = ev.target.closest("[data-l]"), rm = ev.target.closest("[data-rm]");
+    if(l) return putConfig({level: Number(l.dataset.l)});
+    if(rm){ const r = (S.cfg.roster||[]).slice(); r.splice(+rm.dataset.rm,1); return putConfig({roster:r}); }
+    if(ev.target.id==="addmember"){ const r=(S.cfg.roster||[]).slice();
+      r.push({name:"New associate", project:"diymart", owner:false}); return putConfig({roster:r}); }
+    if(ev.target.id==="saveteam"){
+      const r = (S.cfg.roster||[]).map((m,i)=>{
+        const n=document.querySelector('[data-n="'+i+'"]'), p=document.querySelector('[data-p="'+i+'"]');
+        return {name: n?(n.value.trim()||m.name):m.name, project: p?p.value:m.project, owner:!!m.owner};
+      });
+      return putConfig({roster:r});
+    }
+    if(ev.target.id==="backupnow"){
+      try { const res = await api("/backup",{method:"POST"}); toast("Backed up to "+res.path); }
+      catch(err){ toast(err.message); }
+    }
+  };
+}
+async function putConfig(patch){
+  try { S.cfg = await api("/config",{method:"PUT", body:JSON.stringify(patch)});
+        await loadDay(); await loadBoard(); renderAll(); toast("Saved."); }
+  catch(err){ toast(err.message); }
+}
+
+/* ------------------------------------------------------------------ confetti */
+function fireConfetti(){
+  if(matchMedia("(prefers-reduced-motion:reduce)").matches) return;
+  const c = $("#confetti"), ctx = c.getContext("2d");
+  c.style.display="block"; c.width=innerWidth; c.height=innerHeight;
+  const cols = [P().hue, "#2F7D4F", "#D6A243", "#E9EEEC", "#B85520"], bits=[];
+  for(let i=0;i<130;i++) bits.push({x:Math.random()*c.width, y:-20-Math.random()*c.height*0.5,
+    w:5+Math.random()*7, h:7+Math.random()*9, vy:2.2+Math.random()*3.4, vx:-1.4+Math.random()*2.8,
+    r:Math.random()*Math.PI, vr:-0.14+Math.random()*0.28, col:cols[i%cols.length]});
+  let f=0;
+  (function tick(){
+    ctx.clearRect(0,0,c.width,c.height);
+    bits.forEach(b=>{ b.x+=b.vx; b.y+=b.vy; b.r+=b.vr;
+      ctx.save(); ctx.translate(b.x,b.y); ctx.rotate(b.r); ctx.fillStyle=b.col;
+      ctx.fillRect(-b.w/2,-b.h/2,b.w,b.h); ctx.restore(); });
+    if(++f<230) requestAnimationFrame(tick);
+    else { ctx.clearRect(0,0,c.width,c.height); c.style.display="none"; }
+  })();
+}
+
+document.addEventListener("DOMContentLoaded", boot);
+
+</script>
+</body>
+</html>

@@ -45,6 +45,12 @@ app.include_router(seo_dashboard.router)
 app.include_router(seo_recommendations.router)
 app.include_router(seo_cron.router)
 
+# --- Backlink Ops (off-page SEO desk). Additive, feature-flagged.
+#     Returns False and logs if disabled or unhealthy; never raises.
+#     Remove these two lines to uninstall. See docs/BCP_AND_ROLLBACK.md.
+from app.backlink_ops import register as register_backlink_ops
+register_backlink_ops(app)
+
 
 @app.get("/")
 def root():

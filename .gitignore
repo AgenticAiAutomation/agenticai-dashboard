@@ -56,3 +56,10 @@ CREDENTIALS_JAI.md
 SEO_LIVE_APPROVED.txt
 uploads/
 *service-account*.json
+
+# Backlink Ops — its own env (holds an API key) and its own SQLite file.
+# *.db above already covers backlink_ops.db; this also catches the
+# -journal/-wal/-shm sidecar files SQLite writes alongside it.
+ops/backlink-ops.env
+instance/backlink_ops.db*
+backups/
