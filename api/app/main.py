@@ -1,5 +1,3 @@
-import logging
-
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -49,13 +47,9 @@ app.include_router(seo_cron.router)
 
 # --- Backlink Ops (off-page SEO desk). Additive, feature-flagged.
 #     Returns False and logs if disabled or unhealthy; never raises.
-#     Remove these lines to uninstall. See docs/BCP_AND_ROLLBACK.md.
-#     Explicit logger: FastAPI has no app.logger (that's Flask-only), and this
-#     app configures no handler for a bare "backlink_ops" logger, so without
-#     this the module's own mount/failure line would be silently swallowed.
-#     uvicorn.error is the logger uvicorn's own startup lines already use.
+#     Remove these two lines to uninstall. See docs/BCP_AND_ROLLBACK.md.
 from app.backlink_ops import register as register_backlink_ops
-register_backlink_ops(app, logger=logging.getLogger("uvicorn.error"))
+register_backlink_ops(app)
 
 
 @app.get("/")

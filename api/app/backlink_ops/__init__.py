@@ -20,6 +20,38 @@ __version__ = settings.VERSION
 _registered = False
 
 
+def _resolve_logger(app, explicit):
+    """Find a logger whose lines will actually be seen.
+
+    `logging.getLogger("backlink_ops")` is a trap: on a FastAPI host nothing
+    configures that name, so every line this module writes — including the
+    mount confirmation — is silently dropped. Flask hosts have `app.logger`;
+    ASGI hosts have an already-configured server logger. Use whichever exists.
+    Never adds a handler, changes a level, or touches logging config.
+    """
+    if explicit is not None:
+        return explicit
+    flask_logger = getattr(app, "logger", None)
+    if flask_logger is not None:
+        return flask_logger
+    for name in ("uvicorn.error", "gunicorn.error", "hypercorn.error", "uvicorn", "app"):
+        candidate = logging.getLogger(name)
+        if candidate.handlers or (candidate.parent and candidate.parent.handlers):
+            return candidate
+    root = logging.getLogger()
+    if root.handlers:
+        return logging.getLogger("backlink_ops")   # propagates to the configured root
+    # Nothing is configured at all (a bare script or a test). Make sure the
+    # module is not silent: one stream handler on our OWN logger only.
+    fallback = logging.getLogger("backlink_ops")
+    if not fallback.handlers:
+        h = logging.StreamHandler()
+        h.setFormatter(logging.Formatter("%(levelname)s %(message)s"))
+        fallback.addHandler(h)
+        fallback.setLevel(logging.INFO)
+    return fallback
+
+
 def _detect(app):
     """Returns ('fastapi'|'flask', adapter_module) or (None, None)."""
     mod = type(app).__module__ or ""
@@ -47,7 +79,7 @@ def register(app, logger=None):
     connections, logging handlers or extensions belonging to the host.
     """
     global _registered
-    log = logger or getattr(app, "logger", None) or logging.getLogger("backlink_ops")
+    log = _resolve_logger(app, logger)
 
     if not settings.ENABLED:
         log.info("[%s] disabled (BACKLINK_OPS_ENABLED != 1) — not mounted",
