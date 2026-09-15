@@ -176,3 +176,19 @@ def test_put_config_validates_levels_and_projects():
     # Associates cannot touch config at all.
     assert service.put_config(_assoc(), {"levels": {}})[0] == 403
     assert service.auto_review_run(_assoc())[0] == 403
+
+
+def test_run_refuses_links_on_our_own_sites(monkeypatch):
+    _fresh()
+    monkeypatch.setattr(autoreview, "fetch",
+                        lambda url, timeout=None: (200, '<a href="https://agenticaiautomation.co/">x</a>', None))
+    monkeypatch.setattr(autoreview.settings, "VERIFY_MIN_GAP", 0)
+    own = _log("https://www.agenticaiautomation.co/blog/some-post")        # our site
+    sister = _log("https://diymart.in/store")                              # another of ours
+    theirs = _log("https://blog.example/post")                             # a real backlink
+    s = autoreview.run(trigger="test")
+    dec = store.decisions_for("agenticai", store.today_ist())
+    assert dec[own]["status"] == "needs_fix" and "our own sites" in dec[own]["note"]
+    assert dec[sister]["status"] == "needs_fix"
+    assert dec[theirs]["status"] == "approved"
+    assert s["sent_back"] == 2 and s["approved"] == 1

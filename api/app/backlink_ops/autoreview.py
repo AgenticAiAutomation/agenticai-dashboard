@@ -151,6 +151,17 @@ def verify(entry, project):
 
 
 # --------------------------------------------------------------- the run
+def _own_domain(host, projects):
+    """The project domain `host` belongs to, if any — every site we run, not
+    just the one the link was logged under."""
+    h = (host or "").lower()
+    for p in projects.values():
+        d = (p.get("domain") or "").lower()
+        if d and (h == d or h.endswith("." + d)):
+            return d
+    return None
+
+
 def _same_host_count(entry, all_pending_today):
     h = entry["host"]
     return sum(1 for e in all_pending_today
@@ -186,6 +197,12 @@ def run(trigger="cron", actor="auto-review"):
         summary["checked"] += 1
 
         # Hard rules that need no page fetch.
+        own = _own_domain(e["host"], P)
+        if own:
+            _decide(e, "needs_fix", f"{own} is one of our own sites — a backlink has to be on "
+                                    "someone else's page.", "auto")
+            summary["sent_back"] += 1
+            continue
         if float(e.get("spam") or 0) > 5:
             _decide(e, "needs_fix", "Spam score is over 5% — pick a cleaner site.", "auto")
             summary["sent_back"] += 1
