@@ -15,9 +15,50 @@ Day-to-day operation. For failures, see `BCP_AND_ROLLBACK.md`.
 
 ## Daily, Jai
 
-1. **Review queue** — approve, send back, or reject. Rejected links stop
-   counting; sent-back links appear on the associate's Review tab with your note.
+1. **Review queue** — since v1.1 the automatic review (below) has already
+   approved the clear passes and bounced the clear failures. What is left is
+   marked *Needs a human look* with the reason. Approve, send back, or reject.
 2. Glance at **Scoreboard** — targets hit out of 14, streak, average points.
+
+## Automatic review (v1.1)
+
+The desk was designed so the superuser approves every link. At 30-40 links per
+associate per day that is a full-time job, so the first pass is automatic:
+
+1. Every pending link is **opened** and checked for a link to our domain — the
+   anchor text and the real `rel` attribute come from the page, not the form.
+   If the form said dofollow and the page says nofollow, the entry is corrected
+   and still approved (the note says so).
+2. **Hard rules**, no judgement needed, sent back with a one-line reason: page
+   404/410; page opened but our link is not on it; spam score over 5%; a third
+   link on the same site that day.
+3. Everything that passed goes to the AI in **one batched call** per run, which
+   judges relevance, whether the claimed DA is plausible for that domain, and
+   spam sites. `approve` / `needs_fix` (with a note to the associate) / `flag`
+   (only when it genuinely cannot tell). With the AI off, capped or down the
+   rules decide alone: a verified link is approved, an unverifiable one is
+   flagged for you — nothing is ever silently dropped.
+
+Sites that wall off bots or render links with JavaScript (Reddit, Quora,
+LinkedIn, Medium…) cannot be verified; the AI is told so and, without AI, they
+are flagged rather than bounced.
+
+Runs from cron once an hour, 9 AM–8 PM IST (12 runs a day, so at most 12 AI
+calls a day from this feature), or from **Difficulty & team → Run now**. Every
+decision is recorded in `bo_reviews` with reviewer `auto` or `ai`, and in the
+audit trail, with the reason — a human can always see why.
+
+```
+# ops/backlink-ops.env and the systemd unit, same value in both
+BACKLINK_OPS_AUTOREVIEW=1
+BACKLINK_OPS_CRON_SECRET=<openssl rand -hex 24>
+
+# root crontab (server clock is UTC; 03:30–14:30 UTC = 09:00–20:00 IST)
+30 3-14 * * *  cd /var/www/agenticai-dashboard && ops/auto-review.sh >> /var/log/backlink-ops-autoreview.log 2>&1
+```
+
+Turn it off without a deploy: `BACKLINK_OPS_AUTOREVIEW=0` and restart — links
+then wait for you as in v1.0.
 
 ## Raising the level
 
@@ -25,15 +66,38 @@ Raise only when **both** associates have cleared their target five consecutive
 working days. Settings → Difficulty level. Tell them before you do it; the target
 changing without warning is the fastest way to lose the habit.
 
-| Level | Points | Queries | Avg DA | High-value | Exact anchors | Verified live |
-|---|---|---|---|---|---|---|
-| 1 Warm-up | 60 | 3 | 20+ | — | < 40% | — |
-| 2 Steady | 75 | 4 | 25+ | 1 | < 35% | — |
-| 3 Push | 90 | 5 | 30+ | 2 | < 30% | 40% |
-| 4 Pro | 110 | 6 | 35+ | 3 | < 25% | 55% |
-| 5 Elite | 130 | 7 | 40+ | 4 | < 20% | 70% |
+v1.1 recalibrated the ladder for a team that logs 30-40 links a day each (the
+v1.0 60-point day was 4-10 links and measured nothing) and added a **links
+floor** — approved-or-pending links per associate per day — beside the points
+target. The numbers are editable per level under **Difficulty & team → Level
+targets** (points, links, queries, average DA, high-value); the table below is
+the shipped default, and *Back to defaults* restores it.
+
+| Level | Points | Links | Queries | Avg DA | High-value | Exact anchors | Verified live |
+|---|---|---|---|---|---|---|---|
+| 1 Warm-up | 250 | 40 | 3 | 20+ | — | < 40% | — |
+| 2 Steady | 300 | 45 | 4 | 25+ | 1 | < 35% | — |
+| 3 Push | 350 | 50 | 5 | 30+ | 2 | < 30% | 40% |
+| 4 Pro | 420 | 55 | 6 | 35+ | 3 | < 25% | 55% |
+| 5 Elite | 500 | 60 | 7 | 40+ | 4 | < 20% | 70% |
+
+The points targets are first estimates for that volume; watch a week of real
+scores and adjust from the desk rather than the code.
 
 Dropping a level is fine and costs nothing — better than a target nobody meets.
+
+## Adding a website
+
+**Difficulty & team → Websites → Add website.** Id (short, no spaces), domain,
+name, the page paths links may point to, one line on what the business is (the
+AI reads it), seed keywords for the Keyword Lab, and the *Live* tick. A site
+that is not ticked is hidden from associates — prepare it, then flip it on the
+day it launches. Seed sites (AgenticAI, DIYMart, WhatsAppAutomation) can be
+edited but not removed. Nothing here needs a deploy; it lives in `bo_config`.
+
+`whatsappautomation.co.in` ships in the list, **not live**, with `/` as its
+only page: the domain was still parked in Sept 2026. When the site is up, fill
+in its real paths and tick Live.
 
 ## Adding or changing an associate
 

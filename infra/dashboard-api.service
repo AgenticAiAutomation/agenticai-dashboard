@@ -23,6 +23,8 @@ Environment="BACKLINK_OPS_VIEWER_ROLES=viewer"
 Environment="BACKLINK_OPS_USER_HOOK=app.backlink_ops_hook:get_user_or_none"
 Environment="BACKLINK_OPS_TOKEN_STORAGE_KEY=access_token"
 Environment="BACKLINK_OPS_LOGIN_URL=/login/"
+Environment="BACKLINK_OPS_AUTOREVIEW=1"
+Environment="BACKLINK_OPS_CRON_SECRET=CHANGE-ME-on-the-server"
 Environment="BACKLINK_OPS_AI_PROVIDER=none"
 # -----------------------------------------------------------------------
 ExecStart=/var/www/agenticai-dashboard/api/venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 5004 --workers 2

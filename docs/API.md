@@ -71,8 +71,25 @@ Body: `{project, decisions:[{id, status, note?}]}`, batch-capable.
 `roster`, `bankCounts`, `today`.
 
 ### `GET /config` — any user · `PUT /config` — **superuser**
-PUT accepts `level` (1–5) and/or `roster`. Rejected if the roster would leave
-nobody as superuser — you cannot lock yourself out through the UI.
+PUT accepts any of `level` (1–5), `roster`, `levels` and `projects`. Rejected if
+the roster would leave nobody as superuser — you cannot lock yourself out
+through the UI.
+
+- `levels` (v1.1): `{"1": {"target": 300, "min_links": 40, "queries": 3,
+  "min_avg_da": 20, "high_value": 0}, ...}` — only those five fields, bounded;
+  `{}` restores the shipped ladder.
+- `projects` (v1.1): a list of `{id, name, short, domain, pages, niche,
+  keywords, active}`. Seed sites may be edited but never removed; a new site
+  needs `id`, `name` and `domain`. `pages` accepts a list or a comma string.
+
+### `POST /auto-review` — **superuser**, or cron with `X-Backlink-Ops-Cron`
+(v1.1) One automatic review pass over every pending link; see RUNBOOK
+"Automatic review". Returns `{"run": {checked, approved, sent_back, flagged,
+ai, seconds, ...}}`. The header must equal `BACKLINK_OPS_CRON_SECRET` (compared
+in constant time); with the secret unset only a superuser can trigger it.
+
+### `GET /auto-review` — **superuser**
+(v1.1) `{"last": <summary of the last run>, "enabled", "ai", "pending"}`.
 
 ### `GET /audit?limit=200` — **superuser**
 ### `POST /ai-selftest` — **superuser**

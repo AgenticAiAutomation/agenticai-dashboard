@@ -16,6 +16,35 @@ before it lands.
 
 ---
 
+## 2026-09-15 · backlink-ops v1.1.0 — the desk reviews itself
+
+Prompted by the first week live: every link waited for Jai (the opposite of
+the point), and the Level 1 target of 60 points was 4-10 links for a team that
+does 30-40 a day each.
+
+- **Automatic review** (`autoreview.py`, `POST /api/seo/backlink-ops/auto-review`,
+  `ops/auto-review.sh`). Hourly, 9 AM–8 PM IST: opens each pending link,
+  confirms our domain + anchor + real dofollow/nofollow on the page, applies
+  the hard rules (404, link absent, spam > 5%, third link on one site), and
+  sends the rest to the AI in one batched call. Approves and sends back on its
+  own; only the ambiguous reach the Review queue, marked *Needs a human look*.
+  Reviewer is recorded as `auto` or `ai`; every decision is in the audit trail
+  with its reason. Rules-only when the AI is off. `BACKLINK_OPS_AUTOREVIEW=0`
+  turns it off without a deploy.
+- **Ladder recalibrated, and a links floor.** Level 1 is now 250 points *and*
+  40 links a day (L2 300/45, L3 350/50, L4 420/55, L5 500/60). Tests updated
+  deliberately (`test_scoring.py`). The associates' checklist gains a line.
+- **Level targets editable on the desk** — points, links, queries, average DA
+  and high-value per level, bounded, stored in `bo_config['levels']`.
+- **Websites editable on the desk** — add a site (id, domain, name, pages,
+  niche, seed keywords, Live tick) without a deploy; `bo_config['projects']`
+  merges over the seed. Every project now carries a `domain` (the verifier
+  needs it). **WhatsAppAutomation.co.in** ships in the list, not live.
+- Inactive sites are hidden from associates' project switch; the superuser
+  sees them greyed.
+- Health reports version 1.1.0. Schema unchanged (v1): the run summary and
+  overrides reuse `bo_config`.
+
 ## 2026-09 · backlink-ops v1.0.0 — initial install
 
 Target: `agenticai-dashboard` (FastAPI). The Flask marketing site at
