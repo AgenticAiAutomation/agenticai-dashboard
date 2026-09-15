@@ -23,6 +23,14 @@ Why this can't just be `get_current_user` directly, wrapped in try/except
 Everything else — token decode, idle-timeout, is_active, the
 last_activity_at touch that keeps a session alive — is get_current_user's
 existing logic, reused as-is, not reimplemented.
+
+  3. The result is copied into a plain dict BEFORE the session closes.
+     get_current_user commits (the once-a-minute last_activity_at bump), and
+     SessionLocal keeps SQLAlchemy's default expire_on_commit=True, so after
+     that commit every attribute on the User row is expired. Hand the row
+     itself back, close the session, and the desk's first `user.email` raises
+     DetachedInstanceError. It only works inside the first minute after login
+     — which is exactly why a quick rehearsal never shows it.
 """
 from fastapi.security import HTTPAuthorizationCredentials
 
@@ -41,7 +49,14 @@ def get_user_or_none(request):
     credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
     db = SessionLocal()
     try:
-        return get_current_user(credentials=credentials, db=db)
+        user = get_current_user(credentials=credentials, db=db)
+        # Read while still attached: a detached, expired row cannot be read.
+        return {
+            "id": user.id,
+            "email": user.email,
+            "name": user.full_name,
+            "role": user.role,
+        }
     except Exception:
         # Expired / invalid / deactivated / not found — the desk treats all
         # of these as "no identity" rather than surfacing the dashboard's
