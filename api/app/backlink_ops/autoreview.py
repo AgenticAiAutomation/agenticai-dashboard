@@ -50,6 +50,7 @@ class _Links(HTMLParser):
 
     def handle_starttag(self, tag, attrs):
         if tag == "a":
+            self._flush()            # an <a> opened inside an unclosed <a>
             a = dict(attrs)
             self._cur = [a.get("href") or "", (a.get("rel") or "").lower(), []]
         elif tag == "title":
@@ -62,12 +63,22 @@ class _Links(HTMLParser):
             self.title += data
 
     def handle_endtag(self, tag):
-        if tag == "a" and self._cur is not None:
+        if tag == "a":
+            self._flush()
+        elif tag == "title":
+            self._title_on = False
+
+    def _flush(self):
+        """Record the open anchor, if any. Also called at end of input so an
+        unclosed <a> — sloppy HTML, or a page cut at MAX_BYTES — still counts."""
+        if self._cur is not None:
             href, rel, text = self._cur
             self.links.append((href, rel, " ".join("".join(text).split())))
             self._cur = None
-        elif tag == "title":
-            self._title_on = False
+
+    def close(self):
+        super().close()
+        self._flush()
 
 
 def _norm(s):
@@ -98,8 +109,9 @@ def inspect(html, our_domain, anchor):
     p = _Links()
     try:
         p.feed(html)
+        p.close()
     except Exception:  # noqa: BLE001 — broken HTML is still HTML
-        pass
+        p._flush()
     dom = our_domain.lower().lstrip(".")
     want = _norm(anchor)
     hits = []
