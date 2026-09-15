@@ -78,13 +78,40 @@ def test_rejected_entries_do_not_count():
 
 
 def test_level_one_completion_gate():
+    # v1.1 ladder: Level 1 is 250 points AND a floor of 40 links a day
+    # (the team already does 30-40; the old 60-point day measured nothing).
     rows = [entry(id=f"e{i}", type="guest_post", da=45,
-                  url=f"https://site{i}.com/p", anchor=f"anchor {i}") for i in range(5)]
+                  url=f"https://site{i}.com/p", anchor=f"anchor {i}") for i in range(40)]
     queries = [{"kw": "a"}, {"kw": "b"}, {"kw": "c"}]
     st = day_stats(rows, {}, queries, 1, "agenticai")
-    assert st["points"] >= 60
+    assert st["points"] >= 250
     assert st["done"] is True
     assert st["band"] == "great"
+
+
+def test_level_one_links_floor_is_enforced():
+    # 39 strong links clear the points target but not the 40-link floor.
+    rows = [entry(id=f"e{i}", type="guest_post", da=45,
+                  url=f"https://site{i}.com/p", anchor=f"anchor {i}") for i in range(39)]
+    st = day_stats(rows, {}, [{"kw": "a"}] * 3, 1, "agenticai")
+    assert st["points"] >= 250
+    assert st["done"] is False
+    links = next(r for r in st["reqs"] if r["k"] == "links")
+    assert links["ok"] is False and links["now"] == "39 / 40"
+
+
+def test_level_targets_can_be_overridden_from_config():
+    # The superuser edits targets on the desk; they land in bo_config['levels'].
+    rows = [entry(id=f"e{i}", type="directory", da=25, url=f"https://d{i}.com/p",
+                  anchor=f"a {i}") for i in range(10)]
+    cfg = {"level": 1, "levels": {"1": {"target": 50, "min_links": 10}}}
+    st = day_stats(rows, {}, [{"kw": "a"}] * 3, 1, "agenticai", cfg=cfg)
+    assert st["level"]["target"] == 50 and st["level"]["min_links"] == 10
+    assert st["done"] is True
+    # Out-of-range and non-numeric overrides are ignored, never crash.
+    bad = {"level": 1, "levels": {"1": {"target": "lots", "min_links": -5}}}
+    st2 = day_stats(rows, {}, [], 1, "agenticai", cfg=bad)
+    assert st2["level"]["target"] == 250 and st2["level"]["min_links"] == 0
 
 
 def test_level_three_demands_more():

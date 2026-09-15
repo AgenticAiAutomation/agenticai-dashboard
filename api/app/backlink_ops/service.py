@@ -16,8 +16,9 @@ from . import ai, audit, store
 from .config import settings
 from .identity import can_write, is_superuser
 from .scoring import day_stats, host_of
-from .seed import (DEFAULT_CONFIG, LEVELS, LINK_TYPES, PROJECTS, SEED_KEYWORDS,
-                   TYPE_MAP, level as level_for)
+from .seed import (DEFAULT_CONFIG, LEVELS, LEVEL_EDITABLE, LINK_TYPES, TYPE_MAP,
+                   level as level_for, levels as levels_of, projects as projects_of,
+                   seed_keywords)
 
 # --------------------------------------------------------------- guards
 ERR_AUTH = (401, {"error": "not_authenticated",
@@ -57,7 +58,7 @@ def _bad(message):
 
 def _project(value):
     p = str(value or "agenticai").strip().lower()
-    return p if p in PROJECTS else "agenticai"
+    return p if p in projects_of(store.get_config()) else "agenticai"
 
 
 def _stats(project, date):
@@ -65,7 +66,7 @@ def _stats(project, date):
     return day_stats(store.entries_for(project, date),
                      store.decisions_for(project, date),
                      store.queries_for(project, date),
-                     cfg.get("level", 1), project, store.bank_keywords(project))
+                     cfg.get("level", 1), project, store.bank_keywords(project), cfg)
 
 
 # --------------------------------------------------------------- health
@@ -88,9 +89,11 @@ def bootstrap(user, project=None):
         return ERR_AUTH
     cfg = store.get_config()
     return 200, {
-        "me": user, "config": cfg, "levels": LEVELS,
-        "level": level_for(cfg.get("level", 1)), "linkTypes": LINK_TYPES,
-        "projects": PROJECTS, "seedKeywords": SEED_KEYWORDS,
+        "me": user, "config": cfg, "levels": levels_of(cfg),
+        "level": level_for(cfg.get("level", 1), cfg), "linkTypes": LINK_TYPES,
+        "projects": projects_of(cfg),
+        "seedKeywords": {p: seed_keywords(p, cfg) for p in projects_of(cfg)},
+        "autoReview": store.get_meta("autoreview_last") if is_superuser(user) else None,
         "today": store.today_ist(), "readOnly": settings.READ_ONLY or not can_write(user),
         "aiEnabled": ai.available(), "version": settings.VERSION,
         "project": _project(project),
@@ -255,14 +258,14 @@ def board(user, days=14):
         days_back = 14
     points, queries = store.history(days_back)
     cfg = store.get_config()
-    L = level_for(cfg.get("level", 1))
+    L = level_for(cfg.get("level", 1), cfg)
     series = [{"author": a, "project": p, "date": d, "points": v,
                "queries": queries.get((a, p, d), 0),
                "done": v >= L["target"] and queries.get((a, p, d), 0) >= L["queries"]}
               for (a, p, d), v in points.items()]
     return 200, {"series": series, "level": L,
                  "roster": cfg.get("roster", DEFAULT_CONFIG["roster"]),
-                 "bankCounts": {p: len(store.bank_for(p)) for p in PROJECTS},
+                 "bankCounts": {p: len(store.bank_for(p)) for p in projects_of(cfg)},
                  "days": days_back, "today": store.today_ist()}
 
 
@@ -297,11 +300,88 @@ def put_config(user, body):
         if not any(m["owner"] for m in clean):
             return _bad("At least one person must stay superuser.")
         cfg["roster"] = clean
+    if "levels" in body:
+        # {"1": {"target": 300, "min_links": 40}, ...} — only editable fields, bounded.
+        raw = body["levels"]
+        if not isinstance(raw, dict):
+            return _bad("Levels must be an object keyed by level number.")
+        clean_levels = {}
+        for n, fields in raw.items():
+            if str(n) not in {str(L["n"]) for L in LEVELS} or not isinstance(fields, dict):
+                return _bad(f"Unknown level {n!r}.")
+            keep = {}
+            for k, (lo, hi) in LEVEL_EDITABLE.items():
+                if k in fields and fields[k] not in (None, ""):
+                    try:
+                        keep[k] = max(lo, min(hi, int(fields[k])))
+                    except (TypeError, ValueError):
+                        return _bad(f"Level {n}: {k} must be a whole number.")
+            if keep:
+                clean_levels[str(n)] = keep
+        cfg["levels"] = clean_levels
+    if "projects" in body:
+        # A list of sites. Seed sites can be edited (name, pages, active…) but
+        # not removed; new ones need at least an id, a name and a domain.
+        raw = body["projects"]
+        if not isinstance(raw, list):
+            return _bad("Projects must be a list.")
+        clean_projects = []
+        for p in raw:
+            if not isinstance(p, dict):
+                continue
+            pid = str(p.get("id") or "").strip().lower()
+            pid = "".join(ch for ch in pid if ch.isalnum() or ch in "-_")[:32]
+            if not pid:
+                return _bad("Every site needs a short id (letters and numbers).")
+            rec = {"id": pid}
+            for k in ("name", "short", "domain", "hue", "initial", "niche"):
+                if p.get(k) not in (None, ""):
+                    rec[k] = str(p[k]).strip()[:400 if k == "niche" else 80]
+            if "domain" in rec:
+                rec["domain"] = rec["domain"].lower().replace("https://", "").replace("http://", "").strip("/")
+                if "." not in rec["domain"] or " " in rec["domain"]:
+                    return _bad(f"'{rec['domain']}' does not look like a domain.")
+            if "pages" in p:
+                pages = p["pages"] if isinstance(p["pages"], list) else str(p["pages"]).split(",")
+                rec["pages"] = [("/" + str(x).strip().lstrip("/")) for x in pages if str(x).strip()][:60] or ["/"]
+            if "keywords" in p:
+                kws = p["keywords"] if isinstance(p["keywords"], list) else str(p["keywords"]).splitlines()
+                rec["keywords"] = [str(x).strip() for x in kws if str(x).strip()][:200]
+            if "active" in p:
+                rec["active"] = bool(p["active"])
+            if pid not in projects_of() and not (rec.get("name") and rec.get("domain")):
+                return _bad(f"New site '{pid}' needs a name and a domain.")
+            clean_projects.append(rec)
+        cfg["projects"] = clean_projects
     store.put_config(cfg, user.get("name", "superuser"))
     audit.stamp_user(user, "config.update",
                      detail={"level": cfg.get("level"),
-                             "roster_size": len(cfg.get("roster", []))})
+                             "roster_size": len(cfg.get("roster", [])),
+                             "level_overrides": sorted((cfg.get("levels") or {}).keys()),
+                             "projects": [p["id"] for p in cfg.get("projects") or []]})
     return 200, cfg
+
+
+# --------------------------------------------------------------- auto-review
+def auto_review_run(user):
+    """Superuser's "Run now". The cron path calls autoreview.run() directly
+    from the adapter after checking the shared secret."""
+    guard = _super(user)
+    if guard:
+        return guard
+    from . import autoreview
+    summary = autoreview.run(trigger="manual", actor=user.get("name", "superuser"))
+    return 200, {"run": summary}
+
+
+def auto_review_status(user):
+    if not user:
+        return ERR_AUTH
+    if not is_superuser(user):
+        return ERR_FORBID
+    return 200, {"last": store.get_meta("autoreview_last"),
+                 "enabled": settings.AUTOREVIEW, "ai": ai.available(),
+                 "pending": len(store.pending_entries(settings.AUTOREVIEW_MAX_AGE_DAYS))}
 
 
 # --------------------------------------------------------------- admin tools

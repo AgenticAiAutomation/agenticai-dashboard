@@ -270,6 +270,45 @@ def set_decision(entry_id, status, note, reviewer):
                      (entry_id, status, note, reviewer, now_iso()))
 
 
+def pending_entries(max_age_days=3, limit=500):
+    """Links with no decision yet (or an explicit 'pending' one), newest last.
+    Used by the auto-reviewer; older links are left to a human on purpose."""
+    rows = connect().execute(
+        "SELECT e.* FROM bo_entries e LEFT JOIN bo_reviews r ON r.entry_id = e.id "
+        "WHERE (r.status IS NULL OR r.status = 'pending') "
+        "AND e.date >= date('now', ?) ORDER BY e.created_at LIMIT ?",
+        ("-%d day" % int(max_age_days), int(limit)))
+    return [_entry_row(r) for r in rows]
+
+
+def set_entry_follow(entry_id, follow):
+    """The verifier saw the real rel attribute; record it so scoring uses the truth."""
+    conn = connect()
+    with conn:
+        conn.execute("UPDATE bo_entries SET follow=? WHERE id=?", (follow, entry_id))
+
+
+def get_meta(key, default=None):
+    """Small JSON blobs beside the settings (last auto-review run, etc.).
+    Lives in bo_config so no schema change is needed."""
+    row = connect().execute("SELECT value FROM bo_config WHERE key=?", (key,)).fetchone()
+    if not row:
+        return default
+    try:
+        return json.loads(row["value"])
+    except Exception:
+        return default
+
+
+def put_meta(key, value, actor="system"):
+    conn = connect()
+    with conn:
+        conn.execute("INSERT INTO bo_config(key, value, updated_by, updated_at) VALUES (?,?,?,?) "
+                     "ON CONFLICT(key) DO UPDATE SET value=excluded.value, "
+                     "updated_by=excluded.updated_by, updated_at=excluded.updated_at",
+                     (key, json.dumps(value), actor, now_iso()))
+
+
 # ----------------------------------------------------------------- queries + bank
 def add_query(q):
     conn = connect()

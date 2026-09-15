@@ -395,9 +395,11 @@ function applyBootstrap(b){
   S.me = b.me; S.cfg = b.config;
   S.meta = {levels:b.levels, level:b.level, linkTypes:b.linkTypes, projects:b.projects,
             seedKeywords:b.seedKeywords, today:b.today, readOnly:b.readOnly,
-            aiEnabled:b.aiEnabled, version:b.version};
+            aiEnabled:b.aiEnabled, version:b.version, autoReview:b.autoReview};
   const mine = (b.config.roster||[]).find(r => r.name === S.me.name);
   S.project = (mine && mine.project) || b.project || "agenticai";
+  if((S.meta.projects[S.project]||{}).active===false && !isOwner()){
+    const live = Object.values(S.meta.projects).find(p => p.active!==false); if(live) S.project = live.id; }
   if(b.readOnly) toast("The desk is in read-only mode while maintenance runs.");
 }
 const isOwner = () => S.me && S.me.role === "superuser";
@@ -418,8 +420,8 @@ async function loadBoard(){
 /* ------------------------------------------------------------------ shell */
 function renderShell(){
   const sw = $("#projswitch");
-  sw.innerHTML = Object.values(S.meta.projects).map(p =>
-    '<button type="button" data-p="'+p.id+'" aria-pressed="false"><span class="dot" style="background:'+
+  sw.innerHTML = Object.values(S.meta.projects).filter(p => p.active !== false || isOwner()).map(p =>
+    '<button type="button" data-p="'+p.id+'" aria-pressed="false"'+(p.active===false?' title="Not live yet — hidden from associates" style="opacity:.55"':'')+'><span class="dot" style="background:'+
     p.hue+'"></span>'+esc(p.short)+'</button>').join("");
   sw.addEventListener("click", async ev => {
     const b = ev.target.closest("button[data-p]"); if(!b || b.dataset.p===S.project) return;
@@ -820,10 +822,10 @@ function renderSettings(){
     '<div class="card" style="margin-bottom:14px"><div class="card-h"><h3>Difficulty level</h3>'+
       '<span class="eyebrow">Applies to both sites</span></div><div class="levelbar">'+
       (S.meta.levels||[]).map(l => '<button class="lvl" type="button" data-l="'+l.n+'" aria-pressed="'+
-        (l.n===cur)+'"><b>L'+l.n+' · '+esc(l.name)+'</b><span>'+l.target+' pts · '+l.queries+
+        (l.n===cur)+'"><b>L'+l.n+' · '+esc(l.name)+'</b><span>'+l.target+' pts · '+(l.min_links?l.min_links+' links · ':'')+l.queries+
         ' queries · DA '+l.min_avg_da+'+'+(l.high_value?' · '+l.high_value+' high-value':'')+
         '</span></button>').join("")+'</div>'+
-      '<p class="hint" style="margin:12px 0 0">Right now: <b>'+Lv.target+' points</b>, <b>'+Lv.queries+
+      '<p class="hint" style="margin:12px 0 0">Right now: <b>'+Lv.target+' points</b>, '+(Lv.min_links?'<b>'+Lv.min_links+' links</b>, ':'')+'<b>'+Lv.queries+
       ' Ubersuggest queries</b>, average DA <b>'+Lv.min_avg_da+'+</b>, exact-match anchors under <b>'+
       Math.round(Lv.max_exact*100)+'%</b>'+(Lv.index_rate?', <b>'+Math.round(Lv.index_rate*100)+
       '%</b> verified live':'')+'.</p></div>'+
@@ -842,11 +844,81 @@ function renderSettings(){
         '<button class="btn ghost" id="addmember" type="button">Add associate</button>'+
         '<button class="btn ghost" id="backupnow" type="button">Back up the desk now</button></div>'+
       '<p class="hint" style="margin:12px 0 0">Admins can do everything on the desk — log links, run the '+
-      'keyword lab, see both sites. Only you can approve links, change the level, and edit this table.</p></div>';
+      'keyword lab, see both sites. Only you can approve links, change the level, and edit this table.</p></div>'+
+
+    /* ---- v1.1: auto-review ---- */
+    '<div class="card" style="margin-top:14px"><div class="card-h"><h3>Automatic link review</h3>'+
+      '<span class="eyebrow">Runs hourly, 9am–8pm IST</span></div>'+
+      '<div id="ar-status">'+arSummary(S.meta.autoReview)+'</div>'+
+      '<div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">'+
+        '<button class="btn" id="ar-run" type="button">Run now</button></div>'+
+      '<p class="hint" style="margin:12px 0 0">Every pending link is opened and checked for our domain, the '+
+      'anchor and the real dofollow/nofollow. Clear passes are approved, clear failures sent back with a '+
+      'reason, and only the ambiguous wait for you in the Review queue.'+
+      (S.meta.aiEnabled?' The AI judges relevance and DA plausibility in one batched call per run.':
+       ' <b>AI is off</b> — rules only until BACKLINK_OPS_AI_KEY is set.')+'</p></div>'+
+
+    /* ---- v1.1: level targets ---- */
+    '<div class="card" style="margin-top:14px"><div class="card-h"><h3>Level targets</h3>'+
+      '<span class="eyebrow">Per associate, per day</span></div>'+
+      '<div class="tw" style="border:0"><table style="min-width:520px"><thead><tr><th>Level</th>'+
+      '<th>Points</th><th>Links</th><th>Ubersuggest queries</th><th>Avg DA</th><th>High-value</th></tr></thead><tbody>'+
+      (S.meta.levels||[]).map(l => '<tr><td><b>L'+l.n+'</b> '+esc(l.name)+'</td>'+
+        ['target','min_links','queries','min_avg_da','high_value'].map(k =>
+          '<td><input type="number" min="0" value="'+l[k]+'" data-lv="'+l.n+'" data-k="'+k+'" style="width:88px"></td>').join("")+
+        '</tr>').join("")+'</tbody></table></div>'+
+      '<div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">'+
+        '<button class="btn" id="savelevels" type="button">Save targets</button>'+
+        '<button class="btn ghost" id="resetlevels" type="button">Back to defaults</button></div>'+
+      '<p class="hint" style="margin:12px 0 0">"Links" is the floor of approved-or-pending links a day. '+
+      'Tell the team before you change a number — the checklist updates immediately.</p></div>'+
+
+    /* ---- v1.1: websites ---- */
+    '<div class="card" style="margin-top:14px"><div class="card-h"><h3>Websites</h3>'+
+      '<span class="eyebrow">Add a site without a deploy</span></div>'+
+      '<div id="sites">'+Object.values(S.meta.projects).map(siteRow).join("")+'</div>'+
+      '<div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">'+
+        '<button class="btn" id="savesites" type="button">Save websites</button>'+
+        '<button class="btn ghost" id="addsite" type="button">Add website</button></div>'+
+      '<p class="hint" style="margin:12px 0 0">A site that is not live is hidden from associates until you '+
+      'tick it. Pages are the paths links may point to, one per line or comma-separated. '+
+      'Seed keywords (one per line) feed the Keyword Lab for that site.</p></div>';
 
   $("#settings").onclick = async ev => {
     const l = ev.target.closest("[data-l]"), rm = ev.target.closest("[data-rm]");
     if(l) return putConfig({level: Number(l.dataset.l)});
+    if(ev.target.id==="ar-run"){
+      ev.target.disabled = true; ev.target.textContent = "Checking links…";
+      try { const res = await api("/auto-review",{method:"POST"}); S.meta.autoReview = res.run;
+            $("#ar-status").innerHTML = arSummary(res.run); await loadDay(); renderAll();
+            toast("Reviewed "+res.run.checked+" link"+(res.run.checked===1?"":"s")+"."); }
+      catch(err){ toast(err.message); }
+      finally { const b=$("#ar-run"); if(b){ b.disabled=false; b.textContent="Run now"; } }
+      return;
+    }
+    if(ev.target.id==="savelevels"){
+      const levels = {};
+      document.querySelectorAll("[data-lv]").forEach(i => {
+        (levels[i.dataset.lv] = levels[i.dataset.lv] || {})[i.dataset.k] = Number(i.value);
+      });
+      return putConfig({levels});
+    }
+    if(ev.target.id==="resetlevels") return putConfig({levels:{}});
+    if(ev.target.id==="addsite"){
+      $("#sites").insertAdjacentHTML("beforeend", siteRow({id:"", name:"", short:"", domain:"", pages:["/"],
+        niche:"", active:false, keywords:[], _new:true}));
+      return;
+    }
+    if(ev.target.id==="savesites"){
+      const projects = [...document.querySelectorAll("[data-site]")].map(row => {
+        const g = k => (row.querySelector('[data-f="'+k+'"]')||{}).value || "";
+        return {id: g("id").trim().toLowerCase(), name: g("name"), short: g("short"), domain: g("domain"),
+                pages: g("pages").split(/[\n,]/).map(s=>s.trim()).filter(Boolean),
+                niche: g("niche"), keywords: g("keywords").split("\n").map(s=>s.trim()).filter(Boolean),
+                active: !!(row.querySelector('[data-f="active"]')||{}).checked};
+      }).filter(p => p.id);
+      return putConfig({projects});
+    }
     if(rm){ const r = (S.cfg.roster||[]).slice(); r.splice(+rm.dataset.rm,1); return putConfig({roster:r}); }
     if(ev.target.id==="addmember"){ const r=(S.cfg.roster||[]).slice();
       r.push({name:"New associate", project:"diymart", owner:false}); return putConfig({roster:r}); }
@@ -865,8 +937,38 @@ function renderSettings(){
 }
 async function putConfig(patch){
   try { S.cfg = await api("/config",{method:"PUT", body:JSON.stringify(patch)});
+        // Levels and sites live in bootstrap; refetch so the UI reflects the merge.
+        if("levels" in patch || "projects" in patch){ const b = await api("/bootstrap"); applyBootstrap(b); }
         await loadDay(); await loadBoard(); renderAll(); toast("Saved."); }
   catch(err){ toast(err.message); }
+}
+/* v1.1 helpers for the superuser cards */
+function arSummary(r){
+  if(!r) return '<p class="hint" style="margin:0">Has not run yet.</p>';
+  if(r.skipped) return '<p class="hint" style="margin:0">Skipped — '+esc(r.skipped)+'</p>';
+  const when = r.at ? new Date(r.at).toLocaleString("en-IN",{dateStyle:"medium",timeStyle:"short"}) : "—";
+  return '<div style="display:flex;gap:18px;flex-wrap:wrap;font-size:13px">'+
+    '<div><span class="eyebrow">Last run</span><br><b>'+esc(when)+'</b> <span class="hint">('+esc(r.trigger||"")+')</span></div>'+
+    '<div><span class="eyebrow">Checked</span><br><b class="num">'+(r.checked||0)+'</b></div>'+
+    '<div><span class="eyebrow">Approved</span><br><b class="num" style="color:var(--good)">'+(r.approved||0)+'</b></div>'+
+    '<div><span class="eyebrow">Sent back</span><br><b class="num" style="color:var(--warn)">'+(r.sent_back||0)+'</b></div>'+
+    '<div><span class="eyebrow">For you</span><br><b class="num">'+(r.flagged||0)+'</b></div>'+
+    '<div><span class="eyebrow">AI</span><br><b>'+esc(r.ai||"off")+'</b></div></div>';
+}
+function siteRow(p){
+  const seeded = !p._new && (S.meta.seedKeywords||{})[p.id] || [];
+  const kws = (p.keywords && p.keywords.length ? p.keywords : seeded).join("\n");
+  return '<div class="card" data-site style="margin-bottom:10px;padding:12px">'+
+    '<div class="form">'+
+      '<div><label>Id (short, no spaces)</label><input data-f="id" value="'+esc(p.id||"")+'"'+(p._new?'':' readonly')+' placeholder="e.g. whatsappauto"></div>'+
+      '<div><label>Domain</label><input data-f="domain" value="'+esc(p.domain||"")+'" placeholder="example.co.in"></div>'+
+      '<div><label>Name</label><input data-f="name" value="'+esc(p.name||"")+'"></div>'+
+      '<div><label>Short label</label><input data-f="short" value="'+esc(p.short||"")+'"></div>'+
+      '<div class="f-full"><label>Pages links may point to</label><input data-f="pages" value="'+esc((p.pages||["/"]).join(", "))+'"></div>'+
+      '<div class="f-full"><label>What the business is (one line, for the AI)</label><input data-f="niche" value="'+esc(p.niche||"")+'"></div>'+
+      '<div class="f-full"><label>Seed keywords, one per line</label><textarea data-f="keywords" rows="3">'+esc(kws)+'</textarea></div>'+
+      '<div class="f-full" style="display:flex;align-items:center;gap:8px"><input type="checkbox" data-f="active" style="width:auto"'+(p.active!==false?' checked':'')+'> <span>Live — show to associates</span></div>'+
+    '</div></div>';
 }
 
 /* ------------------------------------------------------------------ confetti */

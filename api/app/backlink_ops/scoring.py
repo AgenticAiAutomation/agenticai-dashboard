@@ -17,7 +17,7 @@ Formula
          * repeat-domain decay (1.0, 0.7, 0.4 floor)
 """
 from urllib.parse import urlparse
-from .seed import TYPE_MAP, level as level_for, SEED_KEYWORDS
+from .seed import TYPE_MAP, level as level_for, seed_keywords
 
 
 def host_of(url):
@@ -73,18 +73,18 @@ def score_entry(entry, same_day_entries):
     return {"pts": round(pts, 1), "flags": flags, "tier": t["tier"]}
 
 
-def exact_anchor_share(entries, project, bank_keywords=()):
+def exact_anchor_share(entries, project, bank_keywords=(), cfg=None):
     if not entries:
         return 0.0
-    pool = {k.lower().strip() for k in list(SEED_KEYWORDS.get(project, [])) + list(bank_keywords)}
+    pool = {k.lower().strip() for k in seed_keywords(project, cfg) + list(bank_keywords)}
     exact = sum(1 for e in entries if str(e.get("anchor") or "").lower().strip() in pool)
     return exact / len(entries)
 
 
-def day_stats(entries, decisions, queries, cfg_level, project, bank_keywords=()):
+def day_stats(entries, decisions, queries, cfg_level, project, bank_keywords=(), cfg=None):
     """Returns the full per-day picture: scored rows, totals and the
     requirement checklist the associate has to clear."""
-    L = level_for(cfg_level)
+    L = level_for(cfg_level, cfg)
     rows, points, counted, high, da_sum, indexed, rejected = [], 0.0, 0, 0, 0.0, 0, 0
 
     for e in entries:
@@ -109,12 +109,18 @@ def day_stats(entries, decisions, queries, cfg_level, project, bank_keywords=())
     points = round(points, 1)
     avg_da = round(da_sum / counted) if counted else 0
     live = [e for e in entries if (decisions.get(e["id"]) or {}).get("status") != "rejected"]
-    exact = exact_anchor_share(live, project, bank_keywords)
+    exact = exact_anchor_share(live, project, bank_keywords, cfg)
     nq = len(queries)
 
     reqs = [
         {"k": "points",  "ok": points >= L["target"],
          "label": f"Reach {L['target']} link points", "now": f"{round(points)} / {L['target']}"},
+    ]
+    if L.get("min_links", 0) > 0:
+        reqs.append({"k": "links", "ok": counted >= L["min_links"],
+                     "label": f"Log {L['min_links']}+ links (approved or pending)",
+                     "now": f"{counted} / {L['min_links']}"})
+    reqs += [
         {"k": "queries", "ok": nq >= L["queries"],
          "label": f"Run {L['queries']} Ubersuggest queries", "now": f"{nq} / {L['queries']}"},
         {"k": "da",      "ok": counted > 0 and avg_da >= L["min_avg_da"],

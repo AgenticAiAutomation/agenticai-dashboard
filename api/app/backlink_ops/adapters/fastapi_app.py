@@ -3,6 +3,8 @@
 Builds an APIRouter for the JSON API and a second one for the page. Both are
 mounted by `register()`; neither touches an existing route.
 """
+import hmac
+
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 
@@ -40,6 +42,10 @@ def current_user(request: Request):
     if u:
         return u
     return normalise(uh.anonymous())
+
+
+def _same(a, b):
+    return hmac.compare_digest(str(a).encode(), str(b).encode())
 
 
 def _json(result):
@@ -110,6 +116,20 @@ def build_routers():
     @api.post("/backup")
     async def backup(request: Request):
         return _json(service.make_backup(current_user(request)))
+
+    # --- auto-review (v1.1). Cron calls with the shared secret; the desk's
+    #     "Run now" button calls as the superuser. Both end in autoreview.run().
+    @api.post("/auto-review")
+    async def auto_review(request: Request):
+        secret = request.headers.get("x-backlink-ops-cron") or ""
+        if settings.CRON_SECRET and secret and _same(secret, settings.CRON_SECRET):
+            from .. import autoreview
+            return _json((200, {"run": autoreview.run(trigger="cron")}))
+        return _json(service.auto_review_run(current_user(request)))
+
+    @api.get("/auto-review")
+    async def auto_review_status(request: Request):
+        return _json(service.auto_review_status(current_user(request)))
 
     @page.get("/", response_class=HTMLResponse)
     async def desk():

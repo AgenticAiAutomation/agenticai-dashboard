@@ -130,6 +130,20 @@ def build_blueprints():
     def backup():
         return _json(service.make_backup(current_user()))
 
+    @api.post("/auto-review")
+    def auto_review():
+        import hmac
+        secret = request.headers.get("X-Backlink-Ops-Cron") or ""
+        if settings.CRON_SECRET and secret and \
+                hmac.compare_digest(secret.encode(), settings.CRON_SECRET.encode()):
+            from .. import autoreview
+            return _json((200, {"run": autoreview.run(trigger="cron")}))
+        return _json(service.auto_review_run(current_user()))
+
+    @api.get("/auto-review")
+    def auto_review_status():
+        return _json(service.auto_review_status(current_user()))
+
     @page.get("/")
     def desk():
         return Response(service.page_html(), mimetype="text/html")

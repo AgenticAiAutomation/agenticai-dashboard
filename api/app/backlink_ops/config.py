@@ -68,11 +68,28 @@ class Settings:
     AI_TIMEOUT     = float(os.environ.get("BACKLINK_OPS_AI_TIMEOUT", "25"))
     AI_DAILY_CAP   = int(os.environ.get("BACKLINK_OPS_AI_DAILY_CAP", "200"))
 
+    # --- auto-review (v1.1) -----------------------------------------------
+    # A scheduled run opens every pending link, checks it is really there
+    # (our domain, the anchor, dofollow/nofollow), applies the hard rules, and
+    # sends the rest to the AI in ONE batched call. Approves / sends back on
+    # its own; only the ambiguous reach the superuser. See autoreview.py.
+    AUTOREVIEW     = _b("BACKLINK_OPS_AUTOREVIEW", "1")
+    # Shared secret for the cron caller (header X-Backlink-Ops-Cron). Blank =
+    # only a signed-in superuser can trigger a run ("Run now" on the desk).
+    CRON_SECRET    = os.environ.get("BACKLINK_OPS_CRON_SECRET", "")
+    VERIFY_TIMEOUT = float(os.environ.get("BACKLINK_OPS_VERIFY_TIMEOUT", "15"))
+    # Never re-open a page more often than this (seconds) — be a polite crawler.
+    VERIFY_MIN_GAP = int(os.environ.get("BACKLINK_OPS_VERIFY_MIN_GAP", "1"))
+    # Links older than this many days are left to the superuser, not re-opened.
+    AUTOREVIEW_MAX_AGE_DAYS = int(os.environ.get("BACKLINK_OPS_AUTOREVIEW_MAX_AGE_DAYS", "3"))
+    # Upper bound on links sent to the AI per run (keeps one call small).
+    AUTOREVIEW_BATCH = int(os.environ.get("BACKLINK_OPS_AUTOREVIEW_BATCH", "60"))
+
     # --- observability --------------------------------------------------
     LOG_PREFIX     = os.environ.get("BACKLINK_OPS_LOG_PREFIX", "backlink-ops")
     FEATURE_LOG    = os.environ.get("BACKLINK_OPS_FEATURE_LOG", "docs/FEATURE_LOG.md")
 
-    VERSION        = "1.0.0"
+    VERSION        = "1.1.0"
     SCHEMA_VERSION = 1
 
 

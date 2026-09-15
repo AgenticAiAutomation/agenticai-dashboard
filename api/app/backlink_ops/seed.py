@@ -11,6 +11,8 @@ PROJECTS = {
     "agenticai": {
         "id": "agenticai",
         "name": "AgenticAiAutomation.co",
+        "domain": "agenticaiautomation.co",
+        "active": True,
         "short": "AgenticAI",
         "hue": "#00998C",
         "initial": "A",
@@ -23,6 +25,8 @@ PROJECTS = {
     "diymart": {
         "id": "diymart",
         "name": "DIYMart.in",
+        "domain": "diymart.in",
+        "active": True,
         "short": "DIYMart",
         "hue": "#B85520",
         "initial": "D",
@@ -31,7 +35,52 @@ PROJECTS = {
         "pages": ["/store", "/gifting", "/home-decor", "/tools-hardware", "/craft-kits",
                   "/party-supplies", "/organizers", "/diy-ideas", "/corporate-gifting"],
     },
+    # Sister site to AgenticAI, WhatsApp automation only. The domain is still
+    # parked (Sept 2026), so it ships inactive: present in config, hidden from
+    # the project picker until the superuser flips `active` on the desk and
+    # fills in the real page paths.
+    "whatsappauto": {
+        "id": "whatsappauto",
+        "name": "WhatsAppAutomation.co.in",
+        "short": "WA Auto",
+        "domain": "whatsappautomation.co.in",
+        "active": False,
+        "hue": "#1F8F4E",
+        "initial": "W",
+        "niche": ("WhatsApp Business API automation for Indian SMEs — appointment reminders, "
+                  "order updates, lead capture, support bots and broadcast for clinics, "
+                  "salons, coaching institutes, e-commerce and CA firms."),
+        "pages": ["/"],
+    },
 }
+
+
+def projects(cfg=None):
+    """The live project map: seed defaults with any runtime overrides from
+    bo_config['projects'] merged on top, keyed by id. New sites can be added
+    from the desk without a deploy; seed entries can be edited but not removed."""
+    out = {k: dict(v) for k, v in PROJECTS.items()}
+    for p in (cfg or {}).get("projects") or []:
+        if not isinstance(p, dict) or not p.get("id"):
+            continue
+        base = out.get(p["id"], {"id": p["id"], "active": True, "pages": ["/"],
+                                 "hue": "#5B6B68", "initial": (p.get("short") or p["id"])[:1].upper()})
+        merged = dict(base)
+        for k in ("name", "short", "domain", "hue", "initial", "niche", "pages", "active"):
+            if k in p and p[k] not in (None, ""):
+                merged[k] = p[k]
+        merged["id"] = p["id"]
+        out[p["id"]] = merged
+    return out
+
+
+def seed_keywords(project, cfg=None):
+    """Seed list for a project: the shipped list, or the one entered on the
+    desk for a site added at runtime."""
+    for p in (cfg or {}).get("projects") or []:
+        if isinstance(p, dict) and p.get("id") == project and p.get("keywords"):
+            return [str(k).strip().lower() for k in p["keywords"] if str(k).strip()]
+    return list(SEED_KEYWORDS.get(project, []))
 
 SEED_KEYWORDS = {
     "agenticai": [
@@ -85,18 +134,27 @@ TYPE_MAP = {t["v"]: t for t in LINK_TYPES}
 
 # Difficulty ladder. Start at 1; raise only when both associates clear five
 # consecutive days (see docs/RUNBOOK.md, "Raising the level").
+#
+# v1.1 recalibration: the team already logs 30-40 links a day each, so a
+# 60-point day (4-10 links) measured nothing. Every level now carries a
+# `min_links` floor (approved-or-pending links per associate per day) and a
+# points target sized for that volume. `target`, `min_links` and `queries` are
+# editable per level from the desk (bo_config['levels']); see level() below.
 LEVELS = [
-    {"n": 1, "name": "Warm-up", "target":  60, "queries": 3, "min_avg_da": 20,
+    {"n": 1, "name": "Warm-up", "target": 250, "min_links": 40, "queries": 3, "min_avg_da": 20,
      "high_value": 0, "max_exact": 0.40, "index_rate": 0.00},
-    {"n": 2, "name": "Steady",  "target":  75, "queries": 4, "min_avg_da": 25,
+    {"n": 2, "name": "Steady",  "target": 300, "min_links": 45, "queries": 4, "min_avg_da": 25,
      "high_value": 1, "max_exact": 0.35, "index_rate": 0.00},
-    {"n": 3, "name": "Push",    "target":  90, "queries": 5, "min_avg_da": 30,
+    {"n": 3, "name": "Push",    "target": 350, "min_links": 50, "queries": 5, "min_avg_da": 30,
      "high_value": 2, "max_exact": 0.30, "index_rate": 0.40},
-    {"n": 4, "name": "Pro",     "target": 110, "queries": 6, "min_avg_da": 35,
+    {"n": 4, "name": "Pro",     "target": 420, "min_links": 55, "queries": 6, "min_avg_da": 35,
      "high_value": 3, "max_exact": 0.25, "index_rate": 0.55},
-    {"n": 5, "name": "Elite",   "target": 130, "queries": 7, "min_avg_da": 40,
+    {"n": 5, "name": "Elite",   "target": 500, "min_links": 60, "queries": 7, "min_avg_da": 40,
      "high_value": 4, "max_exact": 0.20, "index_rate": 0.70},
 ]
+# Which level fields the superuser may override at runtime, and their bounds.
+LEVEL_EDITABLE = {"target": (10, 5000), "min_links": (0, 500), "queries": (0, 50),
+                  "min_avg_da": (0, 100), "high_value": (0, 50)}
 
 DEFAULT_ROSTER = [
     {"name": "Jai",              "project": "agenticai", "owner": True},
@@ -107,6 +165,21 @@ DEFAULT_ROSTER = [
 DEFAULT_CONFIG = {"level": 1, "roster": DEFAULT_ROSTER}
 
 
-def level(n):
+def level(n, cfg=None):
+    """Level `n` with any runtime overrides from bo_config['levels'] applied.
+    Overrides are keyed by the level number as a string ({"1": {"target": 300}})
+    and limited to LEVEL_EDITABLE."""
     idx = max(0, min(int(n or 1) - 1, len(LEVELS) - 1))
-    return LEVELS[idx]
+    L = dict(LEVELS[idx])
+    ov = ((cfg or {}).get("levels") or {}).get(str(L["n"])) or {}
+    for k, (lo, hi) in LEVEL_EDITABLE.items():
+        if k in ov:
+            try:
+                L[k] = max(lo, min(hi, int(ov[k])))
+            except (TypeError, ValueError):
+                pass
+    return L
+
+
+def levels(cfg=None):
+    return [level(L["n"], cfg) for L in LEVELS]

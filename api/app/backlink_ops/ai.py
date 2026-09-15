@@ -17,7 +17,7 @@ import urllib.request
 
 from .config import settings
 from . import store
-from .seed import PROJECTS
+from .seed import projects as _projects
 
 
 # --------------------------------------------------------------- providers
@@ -123,7 +123,7 @@ def parse_ubersuggest(text):
 # --------------------------------------------------------------- keyword verdict
 def keyword_verdict(project, kw, pasted):
     nums = parse_ubersuggest(pasted)
-    P = PROJECTS[project]
+    P = _projects(store.get_config())[project]
     prompt = (
         f"You are the SEO lead reviewing one keyword for {P['name']}.\n"
         f"Business: {P['niche']}\n"
@@ -168,7 +168,7 @@ def _keyword_fallback(P, kw, nums):
 
 # --------------------------------------------------------------- day coach
 def coach(project, stats, level):
-    P = PROJECTS[project]
+    P = _projects(store.get_config())[project]
     rows = [{"url": r["url"], "type": r["type"], "da": r["da"], "spam": r["spam"],
              "follow": r["follow"], "anchor": r["anchor"], "target": r["target"], "pts": r["pts"]}
             for r in stats["rows"]]
@@ -217,6 +217,52 @@ def _coach_fallback(stats, L):
             "fixes": fixes,
             "tomorrow": ["Open with one high-value placement before any directories.",
                          f"Finish the {L['queries']} Ubersuggest queries before lunch."]}
+
+
+def review_batch(groups):
+    """One call for the whole hour's pending links (v1.1 auto-review).
+
+    `groups` is [{"project": {...}, "links": [{"id", "url", "host", "type",
+    "da", "spam", "follow", "anchor", "target", "page_title", "link_found"}]}].
+    Returns {id: {"verdict": "approve"|"needs_fix"|"flag", "note": str}} or
+    None when the AI is unavailable, capped, or answered with garbage — the
+    caller then decides on rules alone. Never raises.
+    """
+    if not groups:
+        return {}
+    parts = []
+    for g in groups:
+        P = g["project"]
+        parts.append(
+            f"SITE: {P['name']} ({P.get('domain','')}). Business: {P.get('niche','')}\n"
+            f"Links:\n{json.dumps(g['links'])[:12000]}")
+    prompt = (
+        "You are the SEO lead checking an off-page team's backlink submissions.\n"
+        "Every link below was ALREADY machine-checked: `link_found` is true when our "
+        "domain was seen on the page, false when the page opened but no link to us was "
+        "on it, null when the page could not be opened (bot wall, login, JavaScript).\n"
+        "Judge each link on: (1) is this site plausibly relevant or at least harmless "
+        "for the business, (2) is the claimed DA plausible for that domain (a random "
+        "blog claiming DA 80 is not), (3) is the anchor text natural, (4) is this a "
+        "known link farm, casino/adult/pharma spam, or an auto-generated page.\n"
+        "Verdicts: \"approve\" = counts today; \"needs_fix\" = send back to the associate "
+        "with a short, specific instruction; \"flag\" = a human must look (only when you "
+        "genuinely cannot tell, e.g. link_found null on a site you don't recognise).\n"
+        "Be generous with directories, profiles and Q&A on real sites — volume work is "
+        "expected — and strict on fake DA, spam sites and link_found=false.\n\n"
+        + "\n\n".join(parts) +
+        "\n\nReturn ONLY JSON: {\"verdicts\":[{\"id\":\"...\",\"verdict\":\"approve\"|\"needs_fix\"|\"flag\","
+        "\"note\":\"max 20 words, written to the associate, name what to change\"}]}")
+    out = _ask_json(prompt, "review")
+    if not out or not isinstance(out.get("verdicts"), list):
+        return None
+    ok = {"approve", "needs_fix", "flag"}
+    result = {}
+    for v in out["verdicts"]:
+        if isinstance(v, dict) and v.get("id") and v.get("verdict") in ok:
+            result[str(v["id"])] = {"verdict": v["verdict"],
+                                    "note": str(v.get("note") or "")[:240]}
+    return result
 
 
 def selftest():
