@@ -244,6 +244,10 @@ def run(trigger="cron", actor="auto-review"):
 
     # One AI call for the lot (capped), else rules alone.
     verdicts = None
+    if not candidates:
+        # Everything was settled by the hard rules (or there was nothing):
+        # "off" would read as misconfiguration on the desk.
+        summary["ai"] = "not needed" if ai.available() else "off"
     if candidates and ai.available():
         batch = candidates[:settings.AUTOREVIEW_BATCH]
         groups = {}
