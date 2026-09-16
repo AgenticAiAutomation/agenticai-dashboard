@@ -29,7 +29,8 @@ def _post_json(url, payload, headers, timeout):
 
 
 def _call_gemini(prompt):
-    model = settings.AI_MODEL or "gemini-2.5-flash"
+    # gemini-2.5-flash was retired for new accounts in 2026; Google points at 3.6.
+    model = settings.AI_MODEL or "gemini-3.6-flash"
     url = (f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
            f"?key={settings.AI_KEY}")
     data = _post_json(url,
