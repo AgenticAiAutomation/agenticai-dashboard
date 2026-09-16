@@ -14,6 +14,18 @@ GSC_SCOPES = ["https://www.googleapis.com/auth/webmasters.readonly"]
 GA4_SCOPES = ["https://www.googleapis.com/auth/analytics.readonly"]
 
 
+def _google_error(exc: Exception) -> str:
+    """One readable line from a Google client exception. The raw messages run
+    to several hundred characters and repeat the fix URL; keep the part a
+    person needs ("API has not been used in project ... Enable it")."""
+    text = " ".join(str(exc).split())
+    for marker in ('returned "', "403 ", "404 ", "429 "):
+        if marker in text:
+            text = text.split(marker, 1)[1]
+            break
+    return text.strip('" ')[:240]
+
+
 def _credentials(path: Optional[str], scopes: List[str], service: str):
     if not path:
         raise ServiceUnavailable(
@@ -69,8 +81,14 @@ class SearchConsole:
             "dimensions": dimensions or ["date", "query", "page"],
             "rowLimit": row_limit,
         }
-        response = service.searchanalytics().query(
-            siteUrl=self.site_url, body=body).execute()
+        try:
+            response = service.searchanalytics().query(
+                siteUrl=self.site_url, body=body).execute()
+        except Exception as exc:  # noqa: BLE001 — HttpError, auth refresh, network
+            # A Google-side refusal (API disabled, account not granted, quota)
+            # must surface as the error type the cron endpoints already handle,
+            # not take the whole daily audit down with a 500.
+            raise ServiceUnavailable("gsc", _google_error(exc)) from exc
 
         rows = []
         for row in response.get("rows", []):
@@ -122,7 +140,10 @@ class Analytics4:
             metrics=[Metric(name="sessions"), Metric(name="activeUsers")],
             date_ranges=[DateRange(start_date=start.isoformat(), end_date=end.isoformat())],
         )
-        response = client.run_report(request)
+        try:
+            response = client.run_report(request)
+        except Exception as exc:  # noqa: BLE001 — same reasoning as SearchConsole.query
+            raise ServiceUnavailable("ga4", _google_error(exc)) from exc
         return [
             {
                 "date": row.dimension_values[0].value,
