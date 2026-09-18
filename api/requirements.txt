@@ -29,3 +29,8 @@ pyotp==2.9.0
 google-auth==2.28.1
 google-api-python-client==2.120.0
 google-analytics-data==0.18.5
+
+# --- Blog Visual Engine ---
+# Allowlist HTML sanitiser for the legacy_html block, the one place user-supplied
+# markup can reach a page. Rust-backed successor to bleach; wheels everywhere.
+nh3==0.2.21

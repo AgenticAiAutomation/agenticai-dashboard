@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0a0908">
+  <meta http-equiv="Content-Security-Policy" content="{{CSP}}">
+  {{ENGINE_META}}
+
+  <title>{{TITLE}}</title>
+  <meta name="description" content="{{DESCRIPTION}}">
+  <link rel="canonical" href="{{CANONICAL}}">
+  <meta name="robots" content="{{ROBOTS}}">
+
+  <meta name="google-site-verification" content="e4Vkf6NJ7MihEXOeeDO5q8NiCbvjPqTCLhRdEnuW4pw">
+  <meta name="msvalidate.01" content="440E57D5A2CF8BB74B78F97868A1AEDF">
+  {{ANALYTICS}}
+
+  <meta property="og:type" content="article">
+  <meta property="og:site_name" content="Agentic AI Automation">
+  <meta property="og:title" content="{{TITLE}}">
+  <meta property="og:description" content="{{DESCRIPTION}}">
+  <meta property="og:url" content="{{CANONICAL}}">
+  <meta property="og:image" content="{{OG_IMAGE}}">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="{{OG_IMAGE_ALT}}">
+  <meta property="og:locale" content="en_IN">
+  <meta property="article:published_time" content="{{PUBLISHED_ISO}}">
+
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:site" content="@AgenticAIGlobal">
+  <meta name="twitter:title" content="{{TITLE}}">
+  <meta name="twitter:description" content="{{DESCRIPTION}}">
+  <meta name="twitter:image" content="{{OG_IMAGE}}">
+
+  <link rel="icon" href="/static/assets/img/favicon.svg" type="image/svg+xml">
+  <link rel="icon" href="/static/images/favicon.png" type="image/png" sizes="132x132">
+  <link rel="apple-touch-icon" href="/static/images/favicon.png">
+  <link rel="manifest" href="/static/assets/site.webmanifest">
+
+  <!-- Same two preloads as every page on the site: measured CLS 0 with them,
+       0.142 without. The site's own stylesheets carry the chrome; the article
+       body's styles are compiled from design_tokens.json and inlined below. -->
+  <link rel="preload" href="/static/assets/fonts/archivo-wght-latin.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="/static/assets/fonts/plexsans-var-latin.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="/static/assets/css/tokens.css">
+  <link rel="stylesheet" href="/static/assets/css/base.css">
+  <link rel="stylesheet" href="/static/assets/css/components.css">
+  <style>{{CSS}}</style>
+  <link rel="stylesheet" href="{{CSS_DEFERRED_HREF}}">
+
+{{JSONLD}}
+  {{PREFERRED_SOURCES_SCRIPT}}
+</head>
+<body class="page-blog page-blog-v2" data-market="india">
+
+<a class="skip-link" href="#main">Skip to content</a>
+{{HEADER}}
+
+<div class="readbar" aria-hidden="true"><div class="fill"></div></div>
+
+<main id="main">
+
+<div class="narrow">
+  <nav class="breadcrumbs" aria-label="Breadcrumb">
+    <ol>
+      <li><a href="/">Home</a> <span class="sep" aria-hidden="true">/</span></li>
+      <li><a href="/blog">Blog</a> <span class="sep" aria-hidden="true">/</span></li>
+      <li><span aria-current="page">{{ARTICLE_TITLE}}</span></li>
+    </ol>
+  </nav>
+</div>
+
+{{DRAFT}}
+
+<section class="page-head">
+  <div class="narrow">
+    <p class="kicker"><span class="pip"></span>Blog</p>
+    <h1 class="display">{{ARTICLE_TITLE}}</h1>
+    <p class="postmeta">
+      <time datetime="{{PUBLISHED_ISO}}">{{PUBLISHED_DISPLAY}}</time>
+      {{UPDATED}}
+      <span class="sep" aria-hidden="true">&middot;</span>
+      {{READING_MINUTES}} min read
+      <span class="sep" aria-hidden="true">&middot;</span>
+      {{AUTHOR_NAME}}
+    </p>
+  </div>
+</section>
+
+<section class="v2-layout">
+  <div class="v2-hero narrow">{{HERO}}</div>
+  {{TOC}}
+  <article class="v2-body" data-words="{{WORD_COUNT}}">
+{{BODY}}
+  </article>
+  <div class="narrow v2-after">
+    {{FROM_AUTHOR}}
+    {{AUTHOR_BOX}}
+    {{RELATED}}
+    <section class="postcta">
+      <h2>Want this built for you?</h2>
+      <p>See <a href="/services">what each service costs and who it is wrong
+        for</a>, or bring one process you already know is broken to a
+        45-minute audit.</p>
+      <p><a class="btn btn-hot" href="https://calendly.com/agenticaiautomation">Free 45-min audit</a></p>
+    </section>
+  </div>
+</section>
+
+</main>
+
+{{FOOTER}}
+
+<script src="/static/assets/js/site.js" defer></script>
+</body>
+</html>

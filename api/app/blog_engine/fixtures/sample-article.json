@@ -1,0 +1,351 @@
+{
+  "$comment": "Handwritten fixture for Phase 1. Every one of the 21 block types appears at least once. Image paths resolve under /static/blog/ (the site's alias to the dashboard media dir); scripts/render_fixture.py generates placeholder files for them.",
+  "meta": {
+    "slug": "invoice-processing-openbots-document-ai-74-percent-faster",
+    "title": "How a logistics firm cut invoice processing time 74% with OpenBots and document AI",
+    "meta_title": "Invoice processing 74% faster with OpenBots + document AI",
+    "meta_description": "A 40,000-invoice migration from manual keying to OpenBots with a document-AI front end: what broke, what it cost, and the numbers after ninety days.",
+    "published_at": "2026-09-18T09:00:00+00:00",
+    "updated_at": "2026-09-18T09:00:00+00:00",
+    "category": "Document processing",
+    "primary_keyword": "invoice processing automation",
+    "hero": {
+      "src": "/static/blog/engine-demo/hero-queue.jpg",
+      "alt": "OpenBots orchestrator queue showing 1,240 pending invoice items before the document-AI handoff",
+      "width": 1600,
+      "height": 900,
+      "layout": "inset",
+      "priority": true
+    },
+    "related": [
+      ["Intelligent document processing: what actually breaks", "/blog/intelligent-document-processing-what-actually-breaks"],
+      ["The OpenBots cost model, explained", "/blog/openbots-cost-model-explained"]
+    ],
+    "from_author_story": "A logistics client sent us 40,000 scanned bills of lading across 11 layouts. Our first pass read 62% cleanly. The failures were almost all one carrier's carbon-copy forms, and the fix was not a better model — it was a ₹4,000 scanner setting."
+  },
+  "blocks": [
+    {
+      "id": "blk_kt01",
+      "type": "key_takeaways",
+      "content": [
+        [{"text": "Manual keying of 40,000 invoices a year cost 2.3 FTE; the automated pipeline runs on 0.4 FTE of exception handling."}],
+        [{"text": "Document AI read 91% of invoices cleanly on day one; the remaining 9% were three vendor layouts, fixed with templates, not models."}],
+        [{"text": "Cycle time fell from 6.1 days to 1.6 days; the 74% figure is measured at the ninety-day mark, not the demo."}],
+        [{"text": "Total spend was ₹18.4 lakh including licences; payback landed in month seven."}]
+      ]
+    },
+    {
+      "id": "blk_p001",
+      "type": "paragraph",
+      "attrs": {"variant": "lead"},
+      "content": [{"text": "Every automation vendor has a slide with a 90% number on it. This is the story of what the number looked like on a real accounts-payable desk in Bhiwandi, with the parts that went wrong left in."}]
+    },
+    {
+      "id": "blk_p002",
+      "type": "paragraph",
+      "content": [
+        {"text": "The client is a mid-sized freight forwarder handling around 3,300 supplier invoices a month. Before the project, four people keyed those invoices into Tally by hand, matched them against purchase orders in a spreadsheet, and chased approvals over WhatsApp. The process was not broken. It was just "},
+        {"text": "slow in a way nobody had measured", "marks": [{"type": "highlight", "attrs": {"token": "amber"}}]},
+        {"text": "."}
+      ]
+    },
+    {
+      "id": "blk_h001",
+      "type": "heading",
+      "attrs": {"level": 2, "gradient": true},
+      "content": [{"text": "What actually breaks in production"}]
+    },
+    {
+      "id": "blk_p003",
+      "type": "paragraph",
+      "content": [
+        {"text": "Demos run on clean PDFs. Production runs on whatever the vendor's accounts team scanned at 4pm on a Friday. We measured the first 5,000 documents through the pipeline and sorted every failure by cause. The result is the chart below, and it is not what the "},
+        {"text": "vendor benchmarks", "marks": [{"type": "link", "attrs": {"href": "https://cloud.google.com/document-ai/docs/processors-list", "rel": "nofollow"}}]},
+        {"text": " would have predicted."}
+      ]
+    },
+    {
+      "id": "blk_i001",
+      "type": "image",
+      "attrs": {
+        "src": "/static/blog/engine-demo/failures-board.jpg",
+        "alt": "Whiteboard listing the five invoice failure causes with tally marks, carbon-copy forms far ahead",
+        "caption": "The failure board on day three. Carbon-copy forms from one carrier caused more rejects than the other four causes combined.",
+        "credit": "Agentic AI Automation",
+        "width": 1600,
+        "height": 900,
+        "layout": "breakout"
+      }
+    },
+    {
+      "id": "blk_p004",
+      "type": "paragraph",
+      "content": [
+        {"text": "The important finding: "},
+        {"text": "the model was not the bottleneck", "marks": [{"type": "bold"}]},
+        {"text": ". A ₹4,000 change to the scanner's contrast preset at the carrier's office fixed 61% of all rejects. We had budgeted three weeks of model tuning for that. It took one phone call and a "},
+        {"text": "settings.json", "marks": [{"type": "code"}]},
+        {"text": " edit."}
+      ]
+    },
+    {
+      "id": "blk_s001",
+      "type": "stat_band",
+      "content": [
+        {"value": "6.1", "label": "days per invoice, before", "numeric": 6.1, "suffix": "d"},
+        {"value": "1.6", "label": "days per invoice, after ninety days", "numeric": 1.6, "suffix": "d"},
+        {"value": "91", "label": "read cleanly on day one", "numeric": 91, "suffix": "%"},
+        {"value": "7", "label": "months to payback", "numeric": 7}
+      ]
+    },
+    {
+      "id": "blk_h002",
+      "type": "heading",
+      "attrs": {"level": 2},
+      "content": [{"text": "The pipeline, end to end"}]
+    },
+    {
+      "id": "blk_f001",
+      "type": "process_flow",
+      "attrs": {"title": "Invoice pipeline after the build", "layout": "breakout"},
+      "content": [
+        {"label": "Vendor email", "sub": "PDF / scan", "kind": "system"},
+        {"label": "Document AI", "sub": "extract fields", "kind": "bot"},
+        {"label": "Confidence gate", "sub": "< 0.85 → human", "kind": "decision"},
+        {"label": "OpenBots", "sub": "PO match + Tally", "kind": "bot"},
+        {"label": "Approver", "sub": "WhatsApp tap", "kind": "human"},
+        {"label": "Paid", "sub": "1.6 days avg", "kind": "result"}
+      ]
+    },
+    {
+      "id": "blk_p005",
+      "type": "paragraph",
+      "content": [{"text": "Six stages, two of which involve a person. The confidence gate is the part most teams skip and the part that made this work: anything the model is unsure about goes to a human before it touches the ledger, so the accounts head never had to un-trust the system."}]
+    },
+    {
+      "id": "blk_st01",
+      "type": "steps",
+      "attrs": {"title": "How the confidence gate is set up", "total_time": "PT45M"},
+      "content": [
+        {
+          "title": "Log every extraction with its confidence score",
+          "body": [{"text": "Document AI returns a per-field confidence. Store all of them, not just the failures — you need the distribution to pick a threshold."}]
+        },
+        {
+          "title": "Pick the threshold from the data, not from a default",
+          "body": [{"text": "We plotted a week of scores. 0.85 caught 96% of the wrong reads while sending only 11% of invoices to a human. The vendor default of 0.7 would have let through 3× as many errors."}]
+        },
+        {
+          "title": "Route low-confidence items to a queue with the image beside the fields",
+          "body": [{"text": "The reviewer sees the scan and the extracted values side by side and corrects only the flagged field. Average handling time: 40 seconds."}]
+        }
+      ]
+    },
+    {
+      "id": "blk_h003",
+      "type": "heading",
+      "attrs": {"level": 3},
+      "content": [{"text": "Where the time goes"}]
+    },
+    {
+      "id": "blk_c001",
+      "type": "chart",
+      "attrs": {
+        "kind": "bar",
+        "title": "Hours per 1,000 invoices, by stage",
+        "unit": "h",
+        "labels": ["Keying", "PO match", "Approval chase", "Exceptions"],
+        "series": [
+          {"name": "Before", "values": [112, 46, 38, 14]},
+          {"name": "After", "values": [0, 4, 6, 21]}
+        ],
+        "layout": "breakout",
+        "source": "Client time-and-motion study, June and September 2026"
+      }
+    },
+    {
+      "id": "blk_t001",
+      "type": "table",
+      "attrs": {
+        "caption": "OpenBots vs UiPath vs Power Automate — licence cost per unattended bot per year",
+        "has_header": true,
+        "align": ["left", "right", "right", "left"],
+        "sortable": true,
+        "mobile": "stack"
+      },
+      "content": [
+        [{"text": "Platform"}, {"text": "Year 1"}, {"text": "Year 3"}, {"text": "Notes"}],
+        [{"text": "OpenBots"}, {"text": "₹0"}, {"text": "₹0"}, {"text": "Open source; support contract optional"}],
+        [{"text": "UiPath"}, {"text": "₹4,20,000"}, {"text": "₹12,60,000"}, {"text": "Per unattended robot"}],
+        [{"text": "Power Automate"}, {"text": "₹1,26,000"}, {"text": "₹3,78,000"}, {"text": "Per bot, hosted RPA add-on"}]
+      ]
+    },
+    {
+      "id": "blk_ca01",
+      "type": "callout",
+      "attrs": {"kind": "tip"},
+      "content": [{"text": "Licence cost is the number vendors want you to compare. Exception-handling hours are the number that actually moves. In this project, exceptions went up — from 14 to 21 hours per thousand — because the pipeline now surfaces problems that used to be silently keyed wrong."}]
+    },
+    {
+      "id": "blk_h004",
+      "type": "heading",
+      "attrs": {"level": 2},
+      "content": [{"text": "Before and after"}]
+    },
+    {
+      "id": "blk_cs01",
+      "type": "compare_slider",
+      "attrs": {
+        "before": {
+          "src": "/static/blog/engine-demo/queue-before.jpg",
+          "alt": "Spreadsheet-based invoice tracker with 312 rows marked pending in red",
+          "width": 1600,
+          "height": 900
+        },
+        "after": {
+          "src": "/static/blog/engine-demo/queue-after.jpg",
+          "alt": "OpenBots orchestrator dashboard with 27 items in the exception queue and the rest cleared",
+          "width": 1600,
+          "height": 900
+        },
+        "label_before": "Spreadsheet, June",
+        "label_after": "Orchestrator, September",
+        "caption": "Same Monday morning, three months apart."
+      }
+    },
+    {
+      "id": "blk_g001",
+      "type": "gallery",
+      "attrs": {"caption": "The two layouts that caused most of the rejects, before and after the scanner preset change."},
+      "content": [
+        {"src": "/static/blog/engine-demo/scan-bad.jpg", "alt": "Low-contrast carbon-copy invoice scan with faint totals", "width": 1200, "height": 900},
+        {"src": "/static/blog/engine-demo/scan-good.jpg", "alt": "Same invoice rescanned with the high-contrast preset, totals legible", "width": 1200, "height": 900}
+      ]
+    },
+    {
+      "id": "blk_q001",
+      "type": "quote",
+      "attrs": {"attribution": "Head of Accounts", "role": "Finance lead", "company": "Client (name withheld)"},
+      "content": [{"text": "The thing I did not expect was trusting it. The queue shows me exactly what it was unsure about, so I stopped checking the ones it was sure about after the second week."}]
+    },
+    {
+      "id": "blk_h005",
+      "type": "heading",
+      "attrs": {"level": 2},
+      "content": [{"text": "Cost model"}]
+    },
+    {
+      "id": "blk_c002",
+      "type": "chart",
+      "attrs": {
+        "kind": "donut",
+        "title": "Where the ₹18.4 lakh went",
+        "unit": "₹",
+        "labels": ["Build", "Document AI usage (yr 1)", "Infrastructure", "Training and change"],
+        "series": [{"name": "Spend", "values": [1120000, 310000, 180000, 230000]}]
+      }
+    },
+    {
+      "id": "blk_co01",
+      "type": "code",
+      "attrs": {"language": "python", "caption": "The confidence gate, in full"},
+      "content": "THRESHOLD = 0.85\n\ndef route(extraction):\n    low = [f for f, c in extraction.confidence.items() if c < THRESHOLD]\n    if low:\n        return queue.human_review(extraction, fields=low)\n    return openbots.submit(extraction)"
+    },
+    {
+      "id": "blk_l001",
+      "type": "list",
+      "attrs": {"style": "numbered"},
+      "content": [
+        [{"text": "Week 1–2: shadow mode. The pipeline ran beside the manual process; nothing it produced was posted."}],
+        [{"text": "Week 3–6: assisted mode. Humans approved every bot posting from the queue."}],
+        [{"text": "Week 7 onward: exception mode. Only low-confidence items reach a person."}]
+      ]
+    },
+    {
+      "id": "blk_l002",
+      "type": "list",
+      "attrs": {"style": "checklist"},
+      "content": [
+        {"content": [{"text": "Confidence logging on every field"}], "checked": true},
+        {"content": [{"text": "Threshold chosen from a week of real scores"}], "checked": true},
+        {"content": [{"text": "Scanner presets standardised at the top three vendors"}], "checked": true},
+        {"content": [{"text": "Second approver tier for invoices over ₹5 lakh"}], "checked": false}
+      ]
+    },
+    {
+      "id": "blk_ca02",
+      "type": "callout",
+      "attrs": {"kind": "result", "title": "Ninety-day result"},
+      "content": [
+        {"text": "3,300 invoices a month, "},
+        {"text": "1.6-day", "marks": [{"type": "emphasis", "attrs": {"token": "positive"}}]},
+        {"text": " average cycle time, 0.4 FTE of exception handling, and an accounts head who stopped checking."}
+      ]
+    },
+    {
+      "id": "blk_v001",
+      "type": "video",
+      "attrs": {
+        "kind": "youtube",
+        "youtube_id": "dQw4w9WgXcQ",
+        "poster": "/static/blog/engine-demo/clip-poster.jpg",
+        "title": "Ninety seconds inside the exception queue",
+        "description": "A reviewer clears three low-confidence invoices in the OpenBots queue, showing the scan beside the extracted fields.",
+        "upload_date": "2026-09-10",
+        "duration": "PT1M32S",
+        "caption": "The exception queue, as the reviewer sees it."
+      }
+    },
+    {
+      "id": "blk_d001",
+      "type": "divider",
+      "attrs": {"style": "glyph"}
+    },
+    {
+      "id": "blk_h006",
+      "type": "heading",
+      "attrs": {"level": 2},
+      "content": [{"text": "What the client said publicly"}]
+    },
+    {
+      "id": "blk_e001",
+      "type": "embed",
+      "attrs": {
+        "provider": "linkedin",
+        "url": "https://www.linkedin.com/company/agenticaiautomation/",
+        "title": "Agentic AI Automation on LinkedIn",
+        "preview_text": "The post announcing the go-live, with the accounts team's own numbers."
+      }
+    },
+    {
+      "id": "blk_lg01",
+      "type": "legacy_html",
+      "attrs": {
+        "html": "<p>This paragraph was migrated from the old article as-is. It is allowed <strong>bold</strong> and a <a href=\"/services\">link</a>, and anything else is stripped: <script>alert(1)</script><img src=x onerror=alert(1)></p>",
+        "source": "html"
+      }
+    },
+    {
+      "id": "blk_fq01",
+      "type": "faq",
+      "content": [
+        {"question": "Does this need UiPath, or does OpenBots do the whole job?", "answer": [{"text": "OpenBots ran the entire posting and matching flow here. UiPath was evaluated and would have added roughly ₹4.2 lakh per bot per year in licences for the same work. The document-AI step is a separate service either platform can call."}]},
+        {"question": "How long did the build take?", "answer": [{"text": "Eleven weeks from kickoff to exception mode, including two weeks of shadow running. The build itself was about six weeks; the rest was the confidence threshold, vendor scanner fixes and approver training."}]},
+        {"question": "What happens when a vendor changes their invoice layout?", "answer": [{"text": "The confidence gate catches it. New layouts score low, go to a human, and the corrections feed a template for that vendor. In ninety days this happened four times and never reached the ledger uncorrected."}]},
+        {"question": "Is 74% typical?", "answer": [{"text": "No single number is typical. This client had a long approval chase and a spreadsheet matching step, both of which vanished. A firm that already had an ERP with PO matching would see less on cycle time and more on keying hours."}]},
+        {"question": "Who owns the code afterwards?", "answer": [{"text": "The client does, in their own repository, with the runbook. That is standard on every build we do — one process, one price, one date, and the code is yours."}]}
+      ]
+    },
+    {
+      "id": "blk_cta1",
+      "type": "cta",
+      "attrs": {
+        "heading": "Have an accounts-payable desk like this one?",
+        "text": "Bring one process you already know is slow to a 45-minute audit. We will tell you whether document AI, RPA, or a scanner preset is the actual fix.",
+        "button_label": "Book the free audit",
+        "href": "https://calendly.com/agenticaiautomation",
+        "kind": "calendly"
+      }
+    }
+  ]
+}

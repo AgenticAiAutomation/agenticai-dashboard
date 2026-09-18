@@ -1,0 +1,88 @@
+{
+  "$comment": "Single source for the blog engine. The dashboard preview and the public article page both compile from this file. Colour values are the marketing site's own palette (static/assets/css/tokens.css) mapped onto role names; the site is single-theme dark by intent, so there is no light variant. Writers pick token names, never hex.",
+  "version": 1,
+  "color": {
+    "ink":             "#faf7f1",
+    "ink-muted":       "#a99d89",
+    "ink-faint":       "#6d6254",
+    "surface":         "#0a0908",
+    "surface-raised":  "#15120e",
+    "surface-raised-2":"#1d1913",
+    "brand":           "#ff5a00",
+    "brand-hi":        "#ff7d33",
+    "accent":          "#ffd400",
+    "signal-positive": "#2fd07f",
+    "signal-warning":  "#ffa23a",
+    "signal-negative": "#ff4d3d",
+    "rule":            "rgba(250,247,241,.10)",
+    "rule-2":          "rgba(250,247,241,.18)",
+    "rule-3":          "rgba(250,247,241,.28)",
+    "on-bright":       "#170800"
+  },
+  "highlight": {
+    "$comment": "Marker highlights: a bright background with dark text on it. Each pair is contrast-tested at >=4.5:1 by tests/blog_engine_test.py. Writers use highlight.amber, never a hex.",
+    "amber": { "bg": "#ffd400", "fg": "#170800" },
+    "mint":  { "bg": "#7ff0b8", "fg": "#0a0908" },
+    "sky":   { "bg": "#8ed0ff", "fg": "#0a0908" },
+    "rose":  { "bg": "#ffb3c1", "fg": "#170800" }
+  },
+  "font": {
+    "display": "\"Archivo\",\"Archivo Fallback\",sans-serif",
+    "body":    "\"IBM Plex Sans\",\"Plex Sans Fallback\",sans-serif",
+    "mono":    "\"IBM Plex Mono\",\"Plex Mono Fallback\",monospace",
+    "$comment": "Two families above the fold (Archivo, Plex Sans); Plex Mono only for labels and code. All self-hosted woff2 on the site, font-display swap, Archivo preloaded."
+  },
+  "type": {
+    "$comment": "Fluid clamp() scale. Body 15->18px, h1 1.8->3.4rem, measure capped at 68ch.",
+    "body":    "clamp(15px, 0.9rem + 0.35vw, 18px)",
+    "lead":    "clamp(18px, 1rem + 0.6vw, 22px)",
+    "small":   "clamp(13px, 0.8rem + 0.2vw, 15px)",
+    "h1":      "clamp(1.8rem, 1.2rem + 2.4vw, 3.4rem)",
+    "h2":      "clamp(1.45rem, 1.05rem + 1.4vw, 2.2rem)",
+    "h3":      "clamp(1.2rem, 1rem + 0.7vw, 1.55rem)",
+    "h4":      "clamp(1.05rem, 0.95rem + 0.4vw, 1.25rem)",
+    "stat":    "clamp(2.4rem, 1.4rem + 3.6vw, 4.6rem)",
+    "measure": "68ch",
+    "line":    { "body": 1.65, "tight": 1.15, "lead": 1.45 }
+  },
+  "space": {
+    "$comment": "4px base, 8 steps.",
+    "1": "4px", "2": "8px", "3": "12px", "4": "16px",
+    "5": "24px", "6": "32px", "7": "48px", "8": "72px"
+  },
+  "radius": { "1": "4px", "2": "8px", "3": "14px" },
+  "shadow": {
+    "1": "0 1px 2px rgba(0,0,0,.4)",
+    "2": "0 6px 20px -8px rgba(0,0,0,.6)",
+    "3": "0 18px 48px -18px rgba(0,0,0,.75)"
+  },
+  "layout": {
+    "column":   "68ch",
+    "breakout": "min(1100px, 100vw - 32px)",
+    "gutter":   "16px",
+    "toc-min-width": "1100px"
+  },
+  "effects": {
+    "$comment": "Named effects writers may apply, with per-article limits enforced at save time (validate.py).",
+    "lead_paragraph":    { "where": ["paragraph"], "limit_per_section": 1 },
+    "gradient_headline": { "where": ["heading:h2"], "limit_per_article": 2 },
+    "marker_highlight":  { "where": ["inline"],     "limit_per_article": 4 },
+    "drop_number":       { "where": ["steps", "stat_band"] },
+    "breakout":          { "where": ["image", "table", "chart", "process_flow", "gallery", "compare_slider", "video"] },
+    "sticky_label":      { "where": ["heading:h2"], "auto": true }
+  },
+  "rhythm": {
+    "$comment": "The anti-wall-of-text rule (work order 5.3).",
+    "max_words_between_visuals": 250,
+    "words_per_visual": 400,
+    "visual_block_types": ["image", "gallery", "compare_slider", "video", "table", "chart", "process_flow", "stat_band", "quote", "callout", "steps", "code"],
+    "require_key_takeaways_above_fold": true,
+    "require_faq": true
+  },
+  "motion": {
+    "$comment": "All motion is transform/opacity only and is removed entirely under prefers-reduced-motion.",
+    "reveal_rise": "12px",
+    "reveal_ms": 480,
+    "ease": "cubic-bezier(.2,.7,.2,1)"
+  }
+}

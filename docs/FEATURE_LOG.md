@@ -117,3 +117,28 @@ Rollback:   git checkout server-state-20260824-pre-expand is the same tree;
             full restore: tarballs in /var/backups/blogengine/
 Verified by: fingerprint of every file before/after identical; /blog 200;
             origin/main == production HEAD
+
+## [BLOG_ENGINE_V2 — Phase 1] 2026-09-18
+Added:      api/app/blog_engine/ — block schema (21 types, pydantic, discriminated
+            on type), validators (effect limits, rhythm, structure, meta), renderer
+            (blocks -> static HTML, SVG charts and process flow, JSON-LD for
+            BlogPosting/BreadcrumbList/FAQPage/HowTo/VideoObject/Quotation),
+            design_tokens.json -> scoped critical (7 KB inline) + deferred
+            (12 KB, content-hashed) stylesheet; nh3 sanitiser for legacy_html;
+            fixture with every block type; scripts/render_fixture.py;
+            scripts/gen_block_schema_doc.py; tests/blog_engine.py (86 checks);
+            docs/blog-engine/{architecture,block-schema,design-tokens}.md.
+            Site: BLOG_ENGINE_V2 flag in app.py (26 lines) serving
+            published/articles/<slug>/index.html when present; tests/blog_engine_flag.py.
+Changed:    nothing on any existing path. Legacy article output byte-identical
+            with the flag on or off (tested).
+Migration:  none. No DB change in this phase.
+Flag state: BLOG_ENGINE_V2 default false. Not set on production.
+Rollback:   unset the flag (or leave it unset). The engine package is inert
+            until called; the site ignores index.html files when the flag is off.
+Verified by: fixture served through the real Flask app locally — 0 console
+            errors, 0 CSP violations, no horizontal scroll at 360px, full content
+            with JavaScript disabled, no animation under reduced motion, keyboard
+            reaches TOC/FAQ/table/CTA; ETag + 304; traversal blocked. Deviation
+            from §11: CSP allows googletagmanager.com, news.google.com and
+            gstatic.com (analytics and Preferred Sources the site already runs).
