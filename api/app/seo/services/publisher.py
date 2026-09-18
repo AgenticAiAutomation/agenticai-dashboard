@@ -120,6 +120,7 @@ def publish(
     from_author_story: Optional[str],
     published_at: Optional[datetime] = None,
     is_draft: bool = False,
+    extra: Optional[Dict[str, Any]] = None,
 ) -> PublishedArticle:
     """Write one article to the output directory. Overwrites any previous version."""
     _ensure_dir(settings.SITE_CONTENT_DIR)
@@ -165,6 +166,10 @@ def publish(
         # them from the index and the sitemap and marks them noindex.
         "is_draft": is_draft,
     }
+    # Additive fields (blog engine: content_format). Never overrides the keys
+    # above, so the site's contract stays exactly what it was.
+    for key, value in (extra or {}).items():
+        document.setdefault(key, value)
 
     payload = json.dumps(document, ensure_ascii=False, indent=2).encode("utf-8")
     path = os.path.join(settings.SITE_CONTENT_DIR, f"{slug}.json")
@@ -213,3 +218,39 @@ def published_slugs() -> List[str]:
         return []
     return sorted(name[:-5] for name in os.listdir(directory)
                   if name.endswith(".json"))
+
+
+# ---------------------------------------------------------------------------
+# Blog Visual Engine outputs
+# ---------------------------------------------------------------------------
+def publish_page(slug: str, html: str) -> str:
+    """Write the pre-rendered article page the site serves as a file."""
+    directory = os.path.join(settings.SITE_CONTENT_DIR, slug)
+    _ensure_dir(directory)
+    path = os.path.join(directory, "index.html")
+    _write_atomic(path, html.encode("utf-8"))
+    return path
+
+
+def unpublish_page(slug: str) -> bool:
+    path = os.path.join(settings.SITE_CONTENT_DIR, slug, "index.html")
+    if not os.path.isfile(path):
+        return False
+    os.unlink(path)
+    try:
+        os.rmdir(os.path.dirname(path))
+    except OSError:
+        pass
+    return True
+
+
+def publish_engine_css() -> str:
+    """Write the content-hashed deferred stylesheet. Idempotent: same content,
+    same name, so republishing every article costs one write of one file."""
+    from app.blog_engine import css
+    directory = os.path.join(settings.SITE_MEDIA_DIR, "engine")
+    _ensure_dir(directory)
+    path = os.path.join(directory, css.deferred_filename())
+    if not os.path.isfile(path):
+        _write_atomic(path, css.build_deferred().encode("utf-8"))
+    return path

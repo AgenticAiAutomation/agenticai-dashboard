@@ -69,6 +69,12 @@ class SeoArticle(Base):
     updated_at = Column(TIMESTAMP(timezone=True), server_default=func.now(), onupdate=func.now())
     published_at = Column(TIMESTAMP(timezone=True))
 
+    # Blog Visual Engine (alembic 003). Additive: the markdown columns above stay
+    # the source for 'legacy' articles; 'blocks' articles are authored as a block
+    # array and the markdown becomes a derived projection for the scorer.
+    content_blocks = Column(JSONB)
+    content_format = Column(Text, nullable=False, server_default="legacy", default="legacy")
+
 
 class SeoArticleSource(Base):
     __tablename__ = "seo_article_sources"
@@ -109,6 +115,24 @@ class SeoArticleVersion(Base):
     score_json = Column(JSONB)
     saved_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"))
     saved_at = Column(TIMESTAMP(timezone=True), server_default=func.now())
+
+
+class SeoArticleRevision(Base):
+    """Autosave history for block articles. Last 50 kept per article."""
+    __tablename__ = "seo_article_revisions"
+    __table_args__ = (
+        UniqueConstraint("article_id", "revision_number", name="uq_seo_article_revision"),
+    )
+
+    id = _uuid_pk()
+    article_id = Column(UUID(as_uuid=True), ForeignKey("seo_articles.id", ondelete="CASCADE"),
+                        nullable=False, index=True)
+    revision_number = Column(Integer, nullable=False)
+    content_blocks = Column(JSONB, nullable=False)
+    meta = Column(JSONB, nullable=False, default=dict)
+    note = Column(Text)
+    created_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"))
+    created_at = Column(TIMESTAMP(timezone=True), server_default=func.now())
 
 
 class SeoScore(Base):

@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
+import { blocksApi } from '@/lib/blocks';
 import Shell from '@/components/Shell';
 import { Card, EmptyState, ErrorBanner, ScoreBadge, Skeleton, StatusBadge } from '@/components/ui';
 import {
@@ -28,6 +29,10 @@ export default function ArticlesPage() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  /* The block editor link only appears when BLOG_ENGINE_V2 is on for the
+     API, so the list looks exactly as it does today while the flag is off. */
+  const [blocksOn, setBlocksOn] = useState(false);
+  useEffect(() => { blocksApi.status().then((r) => setBlocksOn(r.data.enabled)).catch(() => setBlocksOn(false)); }, []);
   const [filters, setFilters] = useState({
     status: '',
     type: '',
@@ -257,6 +262,18 @@ export default function ArticlesPage() {
                       >
                         Edit
                       </Link>
+                      {blocksOn && (
+                        <>
+                          <span className="mx-2 text-line">|</span>
+                          <Link
+                            href={`/dashboard/seo/articles/edit-v2/?id=${article.id}`}
+                            className="text-xs text-primary hover:underline"
+                            title="Block editor (Blog Visual Engine v2)"
+                          >
+                            Blocks
+                          </Link>
+                        </>
+                      )}
                       <span className="mx-2 text-line">|</span>
                       <Link
                         href={`/dashboard/seo/articles/author-review/?id=${article.id}`}

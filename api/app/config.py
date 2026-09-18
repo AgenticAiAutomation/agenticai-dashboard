@@ -23,6 +23,24 @@ class Settings(BaseSettings):
     # Set this True to bring the manual gate back (during a migration, say), and
     # publishing again requires SEO_LIVE_APPROVAL_FILE dated within 24 hours.
     SEO_REQUIRE_GOLIVE_APPROVAL: bool = False
+
+    # --- Blog Visual Engine ---
+    # Off: the block editor and block publishing endpoints answer 404 and the
+    # publisher writes only the legacy JSON. On: block articles are rendered to
+    # published/articles/<slug>/index.html for the site to serve as a file.
+    # The site has its own BLOG_ENGINE_V2 switch for serving those files.
+    BLOG_ENGINE_V2: bool = False
+    # The blog's named author (work order 8.2 — Person with credentials for
+    # E-E-A-T). Jai approved using his name on 2026-09-18. Wording is config so
+    # it can be corrected without a deploy of code.
+    BLOG_AUTHOR_NAME: str = "Jai Prajapati"
+    BLOG_AUTHOR_TITLE: str = "Founder, Agentic AI Automation"
+    BLOG_AUTHOR_BIO: str = ("Nine years building RPA and automation for finance, logistics and "
+                            "healthcare teams. UiPath certified. Writes about what actually "
+                            "breaks in production.")
+    BLOG_AUTHOR_PHOTO: str = ""          # site-relative path, e.g. /static/blog/authors/jai.jpg
+    BLOG_AUTHOR_LINKEDIN: str = "https://www.linkedin.com/company/agenticaiautomation/"
+    BLOG_AUTHOR_CREDENTIALS: str = "UiPath Certified RPA Developer;9 years in RPA and process automation"
     SEO_LIVE_APPROVAL_FILE: str = "/var/www/agenticai-dashboard/SEO_LIVE_APPROVED.txt"
 
     # --- Publishing output ---

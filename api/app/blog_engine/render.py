@@ -498,7 +498,7 @@ def _inline_script_hashes(html: str) -> List[str]:
     import base64
     import hashlib
     out = []
-    for body in re.findall(r"<script(?![^>]*src=)[^>]*>(.*?)</script>", html, re.S):
+    for body in re.findall(r"<script(?![^>]*\bsrc=)[^>]*>(.*?)</script>", html, re.S):
         out.append(base64.b64encode(hashlib.sha256(body.encode("utf-8")).digest()).decode())
     return out
 
@@ -508,6 +508,7 @@ DEFERRED_CSS_URL_BASE = "/static/blog/engine"
 
 def render_page(blocks: Sequence[Block], meta: ArticleMeta, *,
                 analytics: bool = True, preferred_sources: bool = True,
+                csp: bool = True, inline_all_css: bool = False,
                 chrome_version: str = "2026-09-18") -> Tuple[str, RenderResult]:
     """A complete document: chrome + head + article + JSON-LD. Returns (html, result).
 
@@ -518,7 +519,9 @@ def render_page(blocks: Sequence[Block], meta: ArticleMeta, *,
     from app.blog_engine import css as css_mod
     from app.blog_engine import seo  # imported here: seo depends on this module's types
 
-    css = css_mod.build_critical()
+    # The editor preview inlines everything: the deferred file only exists on
+    # the site after the first publish, and a preview must be exact before it.
+    css = css_mod.build_critical() + (css_mod.build_deferred() if inline_all_css else "")
     deferred_href = f"{DEFERRED_CSS_URL_BASE}/{css_mod.deferred_filename()}"
 
     result = render_article(blocks)
@@ -568,7 +571,7 @@ def render_page(blocks: Sequence[Block], meta: ArticleMeta, *,
     # while letting exactly that snippet run. If the snippet changes, the hash
     # follows it automatically.
     inline_hashes = " ".join(f"'sha256-{h}'" for h in _inline_script_hashes(analytics_html))
-    csp = (f"default-src 'self'; script-src 'self' {inline_hashes} https://www.googletagmanager.com https://news.google.com; "
+    csp_value = (f"default-src 'self'; script-src 'self' {inline_hashes} https://www.googletagmanager.com https://news.google.com; "
            "style-src 'self' 'unsafe-inline'; img-src 'self' data: https://www.google-analytics.com https://i.ytimg.com https://www.gstatic.com; "
            "font-src 'self'; connect-src 'self' https://www.google-analytics.com https://analytics.google.com "
            "https://www.googletagmanager.com; frame-src https://www.youtube-nocookie.com https://news.google.com; "
@@ -589,11 +592,11 @@ def render_page(blocks: Sequence[Block], meta: ArticleMeta, *,
         "OG_IMAGE": attr(og_image),
         "OG_IMAGE_ALT": attr(og_alt),
         "ROBOTS": robots,
-        "CSP": csp,
+        "CSP_META": (f'<meta http-equiv="Content-Security-Policy" content="{csp_value}">' if csp else ""),
         "ANALYTICS": analytics_html,
         "PREFERRED_SOURCES_SCRIPT": ps_script,
         "CSS": css,
-        "CSS_DEFERRED_HREF": attr(deferred_href),
+        "CSS_DEFERRED_LINK": "" if inline_all_css else f'<link rel="stylesheet" href="{attr(deferred_href)}">',
         "JSONLD": "\n".join(f'<script type="application/ld+json">{json.dumps(d, ensure_ascii=False)}</script>' for d in jsonld),
         "HEADER": header,
         "ARTICLE_TITLE": esc(meta.title),

@@ -142,3 +142,33 @@ Verified by: fixture served through the real Flask app locally — 0 console
             reaches TOC/FAQ/table/CTA; ETag + 304; traversal blocked. Deviation
             from §11: CSP allows googletagmanager.com, news.google.com and
             gstatic.com (analytics and Preferred Sources the site already runs).
+
+## [BLOG_ENGINE_V2 — Phase 2] 2026-09-18
+Added:      alembic 003 (content_blocks JSONB, content_format, seo_article_revisions —
+            additive, downgrade tested); blocks endpoints under
+            /api/seo/articles/{id}/blocks (get/save/preview/revisions/restore/publish)
+            and /api/seo/media/upload; blog-engine/status; markdown projection so the
+            existing scorer and Rank Math work on block articles; FAQ table synced from
+            the faq block; block editor at /dashboard/seo/articles/edit-v2 (slash menu,
+            drag + Alt+arrow reorder, duplicate/delete/convert, rich text with marks,
+            Docs/Word paste → blocks, autosave 5 s, live preview desktop/mobile,
+            checks with jump-to-block, revisions + restore, publish with admin
+            override); Blocks link on the Articles list when the engine is on;
+            scripts/migrate_article_to_blocks.py (dry run by default, one article),
+            scripts/rerender_all.py, scripts/rollback_blocks.py;
+            BLOG_AUTHOR_* config (Person author with credentials — Jai's decision);
+            docs/blog-engine/{writer-guide,runbook}.md; tests/blog_engine_api.py (49).
+Changed:    app/database.py engine gets pool_pre_ping=True (a dropped DB connection
+            is replaced instead of surfacing as a 500). publisher.publish() accepts
+            `extra` for additive JSON fields. No existing route changed.
+Migration:  alembic upgrade head (003). Reversible: scripts/rollback_blocks.py.
+Flag state: BLOG_ENGINE_V2 default false on the API and the site. Not set on production.
+Rollback:   see docs/blog-engine/runbook.md — flag off first; schema only if needed.
+Verified by: 86 offline + 49 API (disposable DB on the VPS, tunnelled) + 23 browser
+            checks driving the editor as a writer (type, Ctrl+B, Enter split, slash
+            menu, paste from Docs → heading/list/paragraph blocks, autosave,
+            preview with site chrome, mobile toggle, keyboard reorder, restore,
+            viewer read-only). Known: preview fonts need one nginx CORS header on
+            the site (runbook); legacy markdown tables were already broken by
+            _normalise_markdown — left as-is on the legacy path, fixed in the
+            converter.

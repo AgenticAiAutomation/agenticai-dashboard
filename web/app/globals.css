@@ -97,3 +97,15 @@ body {
            border;
   }
 }
+
+/* Block editor: rich-text fields show their placeholder while empty. */
+.rt-empty:empty::before,
+.rt-empty::before {
+  content: attr(data-placeholder);
+  color: #64748b;
+  pointer-events: none;
+}
+.rt:not(.rt-empty)::before { content: none; }
+.rt mark { padding: 0 0.2em; border-radius: 2px; }
+.rt code { font-family: ui-monospace, monospace; font-size: 0.9em; background: #1b2434; padding: 0 0.3em; border-radius: 3px; }
+.rt a { color: #6e9bf2; text-decoration: underline; }

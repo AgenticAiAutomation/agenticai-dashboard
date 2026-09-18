@@ -1,9 +1,9 @@
 # Blog Visual Engine — architecture
 
-Status: Phase 1 (schema, validators, renderer, tokens, public CSS) shipped
-2026-09-18 behind `BLOG_ENGINE_V2`, default off. Nothing on the live blog
-changes until the flag is flipped, and flipping it back restores today's
-behaviour exactly.
+Status: Phase 1 (schema, validators, renderer, tokens, public CSS) and
+Phase 2 (editor, storage, revisions, publish, migration) shipped 2026-09-18
+behind `BLOG_ENGINE_V2`, default off. Nothing on the live blog changes until
+the flag is flipped, and flipping it back restores today's behaviour exactly.
 
 ## Why blocks
 
@@ -59,8 +59,45 @@ Two apps, one directory, one direction. The dashboard writes; the site reads.
 | `media/engine/blog-engine.<hash>.css` | dashboard publisher | browser via nginx `/static/blog/` | below-the-fold block styles, immutable cache |
 | `media/**` | dashboard media pipeline | browser via nginx `/static/blog/` | images, posters, clips |
 
-The JSON gains `content_format: "blocks"` on v2 articles (Phase 2). The site
-does not need it; it is there so a re-render script can find them.
+The JSON gains `content_format: "blocks"` on v2 articles. The site does not
+need it; it is there so `scripts/rerender_all.py` can find them. Its `html`
+field is the rendered article body, so a block article still renders through
+the legacy template if the site's flag is off or `index.html` is missing —
+that is fallback ladder step 1.
+
+## Storage and the editor (Phase 2)
+
+`seo_articles.content_blocks` (JSONB) is the source for a block article;
+`content_format` is `'legacy'` for every existing row and `'blocks'` once an
+article is saved from the block editor. The markdown columns are never
+dropped; on every block save the API writes a **markdown projection**
+(`convert.blocks_to_markdown`) into `team_edit_md` and syncs the FAQ table
+from the `faq` block, so the existing 27-parameter scorer, Rank Math checks,
+`/score`, and the legacy `html` fallback all keep working with no knowledge
+of blocks. Phase 4 adds block-aware parameters on top; nothing is replaced.
+
+`seo_article_revisions` keeps the last 50 saves per article with the meta
+fields at that moment; restore writes a new revision rather than rewinding.
+
+Endpoints (all 404 with the flag off; roles are the existing JWT roles):
+
+| route | role | does |
+|---|---|---|
+| `GET /api/seo/blog-engine/status` | any | whether the engine is on (drives the Blocks link) |
+| `GET /articles/{id}/blocks` | any | blocks, meta, report, `can_edit` / `can_publish` |
+| `PUT /articles/{id}/blocks` | seo_lead+ | validate (422 names the block), store, project markdown, sync FAQs, revision, report |
+| `POST /articles/{id}/blocks/preview` | any | the exact page for the editor iframe: no CSP meta, no analytics, both stylesheets inlined |
+| `GET …/blocks/revisions`, `POST …/revisions/{n}/restore` | any / seo_lead+ | history |
+| `POST /articles/{id}/blocks/publish` | admin | score ≥ 80 (not overridable), legacy blockers, block validators (admin override with an audited reason), then `index.html` + JSON + deferred CSS + IndexNow |
+| `POST /api/seo/media/upload` | seo_lead+ | image for a block: MIME sniffed by decoding, EXIF stripped, ≤10 MB, no SVG, max 2400 px wide |
+
+The editor (`web/app/dashboard/seo/articles/edit-v2/`) is three columns:
+blocks, live preview, sidebar. Inline text is a contenteditable serialised to
+runs-with-marks on every input (`components/blocks/RichText.tsx`); HTML never
+leaves the component. Paste walks the pasted DOM the same way, so a Docs
+`<span style="font-weight:700">` becomes a bold mark and a `<ul>` becomes a
+list block. Autosave five seconds after the last change; Ctrl+S saves now.
+Viewers get the same page read-only; seo_lead sees no Publish button.
 
 ## Page chrome
 

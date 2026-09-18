@@ -45,6 +45,10 @@ app.include_router(seo_dashboard.router)
 app.include_router(seo_recommendations.router)
 app.include_router(seo_cron.router)
 
+# Blog Visual Engine — every route answers 404 until BLOG_ENGINE_V2 is on.
+from app.blog_engine.routes import router as blog_engine_router  # noqa: E402
+app.include_router(blog_engine_router)
+
 # --- Backlink Ops (off-page SEO desk). Additive, feature-flagged.
 #     Returns False and logs if disabled or unhealthy; never raises.
 #     Remove these two lines to uninstall. See docs/BCP_AND_ROLLBACK.md.
