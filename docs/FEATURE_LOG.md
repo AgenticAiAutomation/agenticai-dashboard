@@ -104,3 +104,16 @@ every visitor as anonymous:
   reloading in a loop. Opt-in; blank = as shipped. Served same-origin with the
   frontend via nginx (`sites-available/dashboard-frontend`). See RUNBOOK.
 - 2026-09-14T11:57:33Z · backlink-ops · install · d1e472e · by unknown
+
+## [BLOG_ENGINE_V2 — Phase 0] 2026-09-18
+Added:      docs/state/2026-09-18-preflight.txt; /var/backups/blogengine/
+            (site + dashboard tarballs, DB dump, SHA256SUMS; restore rehearsed)
+Changed:    marketing site now on tracked main 315e830 — blog.py and 17
+            uncommitted edits committed to rescue/prod-state-20260918,
+            main fast-forwarded to it; no file on disk changed, no restart
+Migration:  none
+Flag state: BLOG_ENGINE_V2 not yet introduced (default false when it is)
+Rollback:   git checkout server-state-20260824-pre-expand is the same tree;
+            full restore: tarballs in /var/backups/blogengine/
+Verified by: fingerprint of every file before/after identical; /blog 200;
+            origin/main == production HEAD

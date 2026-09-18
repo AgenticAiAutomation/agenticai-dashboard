@@ -1,0 +1,173 @@
+Blog Visual Engine — Phase 0 preflight
+Captured 2026-09-18 12:05 UTC on srv1707096 (187.127.173.209), read-only.
+Work order: WORKORDER-blog-visual-engine.md §2
+
+Finding: the marketing site (/var/www/agenticai) was serving from branch
+server-state-20260824-pre-expand, two commits ahead of main, with 17
+uncommitted template/static edits and an UNTRACKED blog.py that app.py
+imports. main == origin/main == 23092a0 and is a strict ancestor of HEAD,
+so reconciliation is a fast-forward with no tree change.
+
+Dashboard (/var/www/agenticai-dashboard) was clean on master 2f65f77,
+one commit behind origin/master e2881b8; published/ is untracked by design.
+
+======================================================================
+1. INSPECTION
+======================================================================
+=== host / disk ===
+srv1707096
+/dev/sda1        48G   22G   26G  46% /
+               total        used        free      shared  buff/cache   available
+Mem:            3915        1911         233          15        2067        2003
+
+=== SITE repo: /var/www/agenticai ===
+server-state-20260824-pre-expand
+016c363 Add Google Preferred Sources button site-wide
+b6edd5b server state before /expand: rebuild + gtm pass as deployed 23 Aug
+23092a0 Add Bing Webmaster Tools verification; move both tokens into config
+--- remotes ---
+origin	https://github.com/AgenticAiAutomation/AgenticWeb.git (fetch)
+origin	https://github.com/AgenticAiAutomation/AgenticWeb.git (push)
+--- status ---
+ M static/llms-full.txt
+ M static/llms.txt
+ M templates/404.html
+ M templates/about.html
+ M templates/base.html
+ M templates/blog-post.html
+ M templates/blog.html
+ M templates/case-studies.html
+ M templates/contact.html
+ M templates/index.html
+ M templates/industries.html
+ M templates/privacy.html
+ M templates/services.html
+ M templates/singapore.html
+ M templates/terms.html
+ M templates/uae.html
+ M templates/uk.html
+?? blog.py
+?? templates/partials/analytics.html
+--- branches ---
+  main
+* server-state-20260824-pre-expand
+  remotes/origin/HEAD -> origin/main
+  remotes/origin/main
+--- main vs current ---
+23092a0
+23092a0
+
+=== DASHBOARD repo: /var/www/agenticai-dashboard ===
+master
+2f65f77 fix(seo): a Google refusal degrades the audit instead of crashing it
+3914c47 chore(seo): Gemini default model gemini-3.6-flash; env example points at Gemini
+?? published/
+
+=== sizes ===
+29M	/var/www/agenticai
+867M	/var/www/agenticai-dashboard
+417M	/var/www/agenticai-dashboard/web/node_modules
+136M	/var/www/agenticai-dashboard/web/.next
+296M	/var/www/agenticai-dashboard/api/venv
+2.2M	/var/www/agenticai-dashboard/published
+(no /var/backups/blogengine yet)
+
+=== services ===
+agenticai      active
+dashboard-api  active
+nginx          active
+postgresql     active
+
+=== published articles ===
+ai-workforce-company-unlock-smarter-operations-with-agentic-ai.json
+dental-clinic-ai-automation-dental-clinic-before-and-after.json
+hospital-agentic-ai-automation-the-future-of-smart-healthcare.json
+how-agentic-ai-automation-enhances-traditional-rpa-in-banking-a-case.json
+how-agentic-ai-automation-is-transforming-business-process-automation.json
+how-ai-agents-are-revolutionizing-kyc-compliance-and-customer.json
+how-ai-automation-transformed-a-ca-firm.json
+how-rpa-automation-helps-ca-firms-automate-90-of-repetitive-tasks-at.json
+how-the-best-ai-automation-experts-in-dubai-can-transform-wealth.json
+openbots-uipath-power-automate-robotmotion-rpa-comparison.json
+
+======================================================================
+2. ANCESTRY / HYGIENE
+======================================================================
+=== is main an ancestor of HEAD? ===
+YES - HEAD is a linear descendant of main (fast-forward possible)
+=== commits on HEAD not on main ===
+016c363 Add Google Preferred Sources button site-wide
+b6edd5b server state before /expand: rebuild + gtm pass as deployed 23 Aug
+=== commits on main not on HEAD ===
+=== origin/main == main? ===
+yes
+=== .gitignore ===
+__pycache__/
+*.pyc
+.env
+venv/
+.venv/
+.DS_Store
+Thumbs.db
+*.log
+=== anything ignored that matters? ===
+!! __pycache__/
+!! venv/
+=== app.py imports blog? ===
+15:import blog
+=== diffstat of uncommitted ===
+ templates/uae.html          |   1 +
+ templates/uk.html           |   1 +
+ 17 files changed, 222 insertions(+), 1 deletion(-)
+=== service unit ===
+User=root
+WorkingDirectory=/var/www/agenticai
+ExecStart=/var/www/agenticai/venv/bin/gunicorn app:app --bind 127.0.0.1:5001 --workers 2 --timeout 60
+
+======================================================================
+3. BACKUPS (/var/backups/blogengine)
+======================================================================
+=== tar site ===
+ok
+=== tar dashboard (full, incl. node_modules/venv) ===
+ok
+=== pg_dump ===
+ok
+=== integrity ===
+gzip ok  agenticai-20260918.tar.gz
+gzip ok  agenticai-dashboard-20260918.tar.gz
+gzip ok  agenticai_dashboard-20260918.sql.gz
+site tar entries:      1851
+dashboard tar entries: 29963
+sql lines:             4152
+sql tables:            21
+=== restore rehearsal (site tarball -> /tmp, diff against live) ===
+RESTORE OK - extracted tree identical to live
+blog.py in backup: yes
+=== checksums ===
+f416f37889909bb43500b26ba30cf9d73ac2ed7698d4d9685dc3679aa96394f7  agenticai-20260918.tar.gz
+69f256abbb412eac9c1d2798a93c946fcac4e43466c3a217b4c53e1b49074880  agenticai-dashboard-20260918.tar.gz
+bbf6c160456b999d1d176a3e755b16744788fc8668275fa017b0d9d5a45df127  agenticai_dashboard-20260918.sql.gz
+total 171M
+-rw-r--r-- 1 root root  296 Sep 18 12:06 SHA256SUMS-20260918.txt
+-rw-r--r-- 1 root root 6.9M Sep 18 12:05 agenticai-20260918.tar.gz
+-rw-r--r-- 1 root root 164M Sep 18 12:06 agenticai-dashboard-20260918.tar.gz
+-rw-r--r-- 1 root root 231K Sep 18 12:06 agenticai_dashboard-20260918.sql.gz
+/dev/sda1        48G   22G   26G  46% /
+
+======================================================================
+4. RESCUE RESULT (script run by Jai on the server, pushed from local)
+======================================================================
+branch: main
+HEAD:   315e830 Rescue production state: untracked blog.py and 17 uncommitted edits
+rescue: 315e830
+uncommitted: 0
+blog: HTTP 200
+origin/main:                     315e830 (fast-forwarded from 23092a0)
+origin/rescue/prod-state-20260918: 315e830
+Trees identical; fingerprint check in /root/p0-rescue.sh passed - no file on
+disk changed. Services untouched. The previous branch
+server-state-20260824-pre-expand is left in place, now an ancestor of main.
+
+Exit criteria (§2): 1 captured  2 backed up + restore rehearsed
+                    3 committed + pushed  4 reconciled, prod on tracked main
