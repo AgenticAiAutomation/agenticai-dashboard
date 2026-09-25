@@ -16,6 +16,88 @@ before it lands.
 
 ---
 
+## 2026-09-25 · wa-funnel v1.0.0 + wa-leads v1.0.0 — a form in front of WhatsApp, and the desk behind it
+
+Two pieces, one pipeline. `wa.agenticaiautomation.co` asks four short questions
+before a visitor can message us — only the questions their earlier answers make
+relevant — and `/dashboard/leads` is where the team works the result.
+
+### The funnel (separate repo, separate service)
+
+Flask + gunicorn + SQLite on **port 5006**, `wa-funnel.service`, its own nginx
+block. Nothing on the marketing site (5001), the blog, Leadwa (5002),
+agentic-platform (5003), the dashboard API (5004) or content-brain (5005) is
+touched, and `ops/healthcheck.sh` fails the deploy if any neighbouring port
+stops answering.
+
+**On 5006, not 5005.** The spec said 5005 was free; it is not —
+`content-brain.service` is bound to it, and taking it would have broken that
+service. That near-miss produced `docs/VPS_SERVICES.md`, now the one registry
+of what runs on this box; several older deploy docs here still name the
+dashboard API as 5003 and now point at it. It also records two findings not
+fixed: content-brain answers on `187.127.173.209:5005` from the public
+internet (binds 0.0.0.0, no nginx block), and `ufw status` is inactive.
+
+- **Branching flow** — intent decides which service chips appear; picking an
+  industry reveals a subtype list and a pain-point checklist written for that
+  industry. Eight sectors, taken from the reference build
+  `wa-funnel-sample.html` along with all of the copy.
+- **Relevancy score, server-side only, out of 100.** Qualify at 60, tunable
+  through `QUALIFY_THRESHOLD` in the unit file — no redeploy. The score is
+  never sent to the browser; a test asserts that. Above the line a visitor
+  gets a prefilled `wa.me` deep link, below it a "within 2 business days"
+  promise. **Every lead is stored and notifies the team either way** — the
+  threshold only decides which screen they see.
+- **Consent is required and timestamped.** No link and no notification without
+  it; the refusal is in the route, not just the template.
+- **Industries live in `config/industries.json`**, not in code — a sector is a
+  text edit and a restart. Same for dial codes, languages and chips.
+- **Abuse:** server-side validation against that config, 5 attempts per IP per
+  hour counting failures, honeypot, 24h dedupe on number + email, salted IP
+  hashes.
+- **Fallback:** if gunicorn is down nginx serves a static page with a plain
+  WhatsApp link instead of a 502. Rollback is four levels. Works with
+  JavaScript off. 44 tests.
+
+### The leads desk (this repo, `/dashboard/leads`)
+
+A CRM over the funnel's leads, added as a self-contained module under
+`api/app/wa_leads/` and **off unless `WA_LEADS_ENABLED=1`**. With the flag off
+the endpoints do not exist and the dashboard is unchanged; with it on but the
+funnel not yet deployed they answer 503 naming the missing file, so the page
+explains itself instead of erroring. Registration mirrors backlink-ops: it
+logs and returns False rather than raising, because a feature must not be able
+to take the dashboard down — and this one depends on a file owned by a
+different service.
+
+- **Pipeline:** new → contacted → on hold → converted | rejected. Any move is
+  allowed, because that is what happens; what is enforced is that every move
+  is recorded in `lead_status_events` with the actor, the timestamp, the
+  previous status and an optional note. The update and the history row go in
+  one transaction.
+- **One database, no sync.** The dashboard opens the funnel's SQLite directly
+  (both run as `www-data`; the funnel sets WAL). Listing connections are
+  read-only via a `file:…?mode=ro` URI — a test asserts a read path cannot
+  write. The dashboard never creates, edits or deletes a lead.
+- **Reading is open to any signed-in user; writing is not.**
+  `WA_LEADS_WRITE_ROLES` gates it, `/meta` returns `can_write` so the page
+  hides controls it would only be refused on, and every change is attributed.
+- **Conversion rate counts decided leads only.** Counting open leads as
+  "not yet converted" makes the rate fall whenever marketing works.
+- The **fit score** is shown here — hidden from the visitor, and the whole
+  point internally, so it sorts and filters. A lead with **no consent** is
+  flagged red and gets no one-click `wa.me` link. The **`ip_hash` is stripped
+  server-side** and never reaches the browser.
+- Filter by status, industry, fit and age; search name, email or number; sort
+  any column; paginated. `sort` is allowlisted before it reaches the ORDER BY
+  — a test posts a `DROP TABLE` as the sort key.
+- 44 store checks + 32 HTTP checks, neither needing Postgres or a token.
+  `docs/WA_LEADS.md` has the rest.
+
+Still open on the funnel side and not code: the notification channel is `none`
+(no SMTP credential or webhook URL yet, so nothing pages the team), and the
+"within 2 business days" line needs a person who owns that window.
+
 ## 2026-09-15 · backlink-ops v1.1.0 — the desk reviews itself
 
 Prompted by the first week live: every link waited for Jai (the opposite of

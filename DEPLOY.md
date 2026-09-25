@@ -1,5 +1,8 @@
 # Deployment Guide - AgenticAI Dashboard
 
+> **Ports and domains in this file may be stale.** The authoritative registry is
+> [`docs/VPS_SERVICES.md`](docs/VPS_SERVICES.md) — check it before assigning a port.
+
 ## Prerequisites on VPS
 
 You'll need access to the VPS where agenticai and leadwa are already running.

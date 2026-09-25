@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react';
 
 const PRIMARY = [
   { href: '/dashboard', label: 'Dashboard' },
+  { href: '/dashboard/leads', label: 'Leads' },
   { href: '/dashboard/seo', label: 'SEO Operations' },
   { href: '/keywords', label: 'Keywords' },
   { href: '/articles', label: 'Articles' },

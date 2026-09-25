@@ -1,5 +1,8 @@
 # Deployment for Your VPS - Step by Step
 
+> **Ports and domains in this file may be stale.** The authoritative registry is
+> [`docs/VPS_SERVICES.md`](docs/VPS_SERVICES.md) — check it before assigning a port.
+
 **VPS IP:** 187.127.173.209  
 **SSH User:** root  
 **OS:** Ubuntu
