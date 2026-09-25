@@ -1,8 +1,12 @@
 """HTTP surface for the leads desk, under /api/wa-leads.
 
-Reading is open to any signed-in dashboard user. Writing is restricted, and
-every write records who made it: a status is a statement about a real person
-waiting for a reply, so "who marked this rejected" has to be answerable.
+The whole desk is role-gated, not just the writes. It holds every enquirer's
+phone number, email and what they said about their own business, so a signed-in
+dashboard account is not on its own a reason to see it — WA_LEADS_READ_ROLES
+decides, and it is `owner` by default.
+
+Writing is gated again on top of that, and every write records who made it:
+"who marked this rejected" has to be answerable.
 """
 import logging
 import sqlite3
@@ -25,11 +29,24 @@ def _actor(user: User) -> str:
     return getattr(user, "email", None) or f"user:{getattr(user, 'id', '?')}"
 
 
+def _can_read(user: User) -> bool:
+    return getattr(user, "role", None) in config.READ_ROLES
+
+
 def _can_write(user: User) -> bool:
     return getattr(user, "role", None) in config.WRITE_ROLES
 
 
-def require_write(current_user: User = Depends(get_current_user)) -> User:
+def require_read(current_user: User = Depends(get_current_user)) -> User:
+    """Every route depends on this. 404 rather than 403 on purpose: to an
+    account that may not see the desk, it should not be discoverable that a
+    lead with a given id exists at all."""
+    if not _can_read(current_user):
+        raise HTTPException(status_code=404, detail="Not found.")
+    return current_user
+
+
+def require_write(current_user: User = Depends(require_read)) -> User:
     if not _can_write(current_user):
         raise HTTPException(
             status_code=403,
@@ -53,7 +70,7 @@ def require_db() -> None:
 
 
 @router.get("/meta", response_model=Meta)
-def meta(current_user: User = Depends(get_current_user)):
+def meta(current_user: User = Depends(require_read)):
     """Everything the UI needs to draw its filters, in one call, and whether
     this user may change anything — so the page can hide controls it would
     only get a 403 from."""
@@ -68,7 +85,7 @@ def meta(current_user: User = Depends(get_current_user)):
 
 
 @router.get("/stats", response_model=Stats)
-def get_stats(current_user: User = Depends(get_current_user), _=Depends(require_db)):
+def get_stats(current_user: User = Depends(require_read), _=Depends(require_db)):
     return store.stats()
 
 
@@ -83,7 +100,7 @@ def list_leads(
     direction: str = Query("desc"),
     page: int = Query(1, ge=1),
     page_size: int = Query(config.PAGE_SIZE_DEFAULT, ge=1, le=config.PAGE_SIZE_MAX),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_read),
     _=Depends(require_db),
 ):
     if status and status != "open" and status not in store.STATUSES:
@@ -95,7 +112,7 @@ def list_leads(
 
 
 @router.get("/{lead_id}", response_model=LeadDetail)
-def get_lead(lead_id: int, current_user: User = Depends(get_current_user), _=Depends(require_db)):
+def get_lead(lead_id: int, current_user: User = Depends(require_read), _=Depends(require_db)):
     lead = store.get_lead(lead_id)
     if not lead:
         raise HTTPException(status_code=404, detail="No lead with that id.")

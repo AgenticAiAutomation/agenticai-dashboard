@@ -90,7 +90,7 @@ def as_user(role, email="jai@example.co"):
 
 
 # ---------------------------------------------------------------- reading
-c = as_user("admin")
+c = as_user("owner")
 
 r = c.get("/api/wa-leads")
 check("list returns 200", r.status_code == 200, str(r.status_code))
@@ -113,7 +113,7 @@ r = c.get("/api/wa-leads/meta")
 check("meta returns 200", r.status_code == 200)
 check("meta lists the statuses", r.json()["statuses"][0] == "new")
 check("meta reports the database is readable", r.json()["db_ok"] is True)
-check("an admin may write", r.json()["can_write"] is True)
+check("the owner may write", r.json()["can_write"] is True)
 
 r = c.get("/api/wa-leads/1")
 check("detail returns 200", r.status_code == 200)
@@ -125,7 +125,7 @@ check("an unknown status filter is a 422",
 
 # ---------------------------------------------------------------- writing
 r = c.patch("/api/wa-leads/1/status", json={"status": "contacted", "note": "Said hello"})
-check("an admin can move a lead", r.status_code == 200, str(r.status_code))
+check("the owner can move a lead", r.status_code == 200, str(r.status_code))
 check("the new status comes back", r.json()["status"] == "contacted")
 check("the actor is attributed", r.json()["status_by"] == "jai@example.co")
 check("the move is recorded in history", len(r.json()["history"]) == 1)
@@ -137,27 +137,56 @@ check("moving an unknown lead is a 404",
       c.patch("/api/wa-leads/9999/status", json={"status": "converted"}).status_code == 404)
 
 # ---------------------------------------------------------------- permissions
-viewer = as_user("viewer", "reader@example.co")
-check("a viewer can read", viewer.get("/api/wa-leads").status_code == 200)
-check("a viewer is told they cannot write",
-      viewer.get("/api/wa-leads/meta").json()["can_write"] is False)
-r = viewer.patch("/api/wa-leads/1/status", json={"status": "converted"})
-check("a viewer cannot write", r.status_code == 403, str(r.status_code))
-check("the refusal explains itself", "not" in r.json()["detail"].lower())
+# The desk is owner-only. Every other role, including admin, is refused — and
+# refused with a 404, so an account that may not see the desk cannot learn
+# from the status code that a lead with a given id exists.
+for role in ("admin", "seo_lead", "seo", "viewer"):
+    other = as_user(role, f"{role}@example.co")
+    check(f"{role} cannot list the desk",
+          other.get("/api/wa-leads").status_code == 404,
+          str(other.get("/api/wa-leads").status_code))
+    check(f"{role} cannot read one lead",
+          other.get("/api/wa-leads/1").status_code == 404)
+    check(f"{role} cannot see the stats",
+          other.get("/api/wa-leads/stats").status_code == 404)
+    check(f"{role} cannot write",
+          other.patch("/api/wa-leads/1/status",
+                      json={"status": "converted"}).status_code == 404)
 
-# The viewer's blocked attempt must not have changed anything.
-check("the blocked write changed nothing",
-      as_user("admin").get("/api/wa-leads/1").json()["status"] == "contacted")
+check("the refusal does not confirm the lead exists",
+      as_user("admin").get("/api/wa-leads/1").json()["detail"] == "Not found.")
 
-# ---------------------------------------------------------------- funnel absent
+# A blocked attempt must not have changed anything.
+check("the blocked writes changed nothing",
+      as_user("owner").get("/api/wa-leads/1").json()["status"] == "contacted")
+
+# Widening the gate is a config change, not a code change.
 import importlib  # noqa: E402
 
+from app.wa_leads import config as cfg_mod  # noqa: E402
+
+os.environ["WA_LEADS_READ_ROLES"] = "owner,admin"
+importlib.reload(cfg_mod)
+import app.wa_leads.routes as routes_mod  # noqa: E402
+routes_mod.config = cfg_mod
+check("adding a role to WA_LEADS_READ_ROLES lets it read",
+      as_user("admin").get("/api/wa-leads").status_code == 200)
+check("but reading is still not writing",
+      as_user("admin").patch("/api/wa-leads/1/status",
+                             json={"status": "rejected"}).status_code == 403)
+os.environ["WA_LEADS_READ_ROLES"] = "owner"
+importlib.reload(cfg_mod)
+routes_mod.config = cfg_mod
+check("and taking it away closes the desk again",
+      as_user("admin").get("/api/wa-leads").status_code == 404)
+
+# ---------------------------------------------------------------- funnel absent
 from app.wa_leads import config as wl_config, store as wl_store  # noqa: E402
 
 os.environ["WA_LEADS_DB"] = str(TMP.parent / "gone.db")
 importlib.reload(wl_config)
 importlib.reload(wl_store)
-c = as_user("admin")
+c = as_user("owner")
 r = c.get("/api/wa-leads")
 check("a missing funnel database is a 503, not a 500", r.status_code == 503, str(r.status_code))
 check("the 503 says what is wrong and where",

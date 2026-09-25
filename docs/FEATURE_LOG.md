@@ -79,19 +79,26 @@ different service.
   (both run as `www-data`; the funnel sets WAL). Listing connections are
   read-only via a `file:…?mode=ro` URI — a test asserts a read path cannot
   write. The dashboard never creates, edits or deletes a lead.
-- **Reading is open to any signed-in user; writing is not.**
-  `WA_LEADS_WRITE_ROLES` gates it, `/meta` returns `can_write` so the page
-  hides controls it would only be refused on, and every change is attributed.
+- **Owner-only, the whole desk** — not just the writes. It holds every
+  enquirer's number, email and what they said about their business, which is
+  commercially sensitive in a way the SEO screens are not. Two config gates,
+  `WA_LEADS_READ_ROLES` and `WA_LEADS_WRITE_ROLES`, both `owner` by default;
+  the read gate runs first. A refused read is a **404, not a 403**, so the
+  status code cannot confirm a lead exists. The nav link is hidden to match.
+  `/meta` returns `can_write` so the page hides controls it would be refused
+  on, and every change is attributed to the actor's email.
 - **Conversion rate counts decided leads only.** Counting open leads as
   "not yet converted" makes the rate fall whenever marketing works.
 - The **fit score** is shown here — hidden from the visitor, and the whole
   point internally, so it sorts and filters. A lead with **no consent** is
-  flagged red and gets no one-click `wa.me` link. The **`ip_hash` is stripped
-  server-side** and never reaches the browser.
+  labelled *Cold — no opt-in on record* and keeps a working `wa.me` link:
+  Jai's call, these are cold leads rather than unreachable ones. Rare by
+  construction, since the funnel requires the tick to submit. The **`ip_hash`
+  is stripped server-side** and never reaches the browser.
 - Filter by status, industry, fit and age; search name, email or number; sort
   any column; paginated. `sort` is allowlisted before it reaches the ORDER BY
   — a test posts a `DROP TABLE` as the sort key.
-- 44 store checks + 32 HTTP checks, neither needing Postgres or a token.
+- 44 store checks + 48 HTTP checks, neither needing Postgres or a token.
   `docs/WA_LEADS.md` has the rest.
 
 Still open on the funnel side and not code: the notification channel is `none`

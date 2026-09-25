@@ -193,9 +193,16 @@ export default function LeadsPage() {
       setStats(statsRes.data);
       setMeta(metaRes.data);
     } catch (e: any) {
-      // 503 is the expected answer while the funnel is not deployed yet, and
-      // it carries a sentence written for a person. Show that, not "error".
-      setError(e?.response?.data?.detail ?? 'Could not load the leads desk.');
+      // 404 is the read gate: the desk is owner-only and deliberately does not
+      // confirm it exists. Say so in words rather than showing "Not found",
+      // which reads like a broken link.
+      if (e?.response?.status === 404) {
+        setError('This desk is limited to the account owner.');
+      } else {
+        // 503 is the expected answer while the funnel is not deployed yet, and
+        // it carries a sentence written for a person. Show that, not "error".
+        setError(e?.response?.data?.detail ?? 'Could not load the leads desk.');
+      }
     } finally {
       setLoading(false);
     }
@@ -505,8 +512,8 @@ export default function LeadsPage() {
                   Fit {selected.fit_score}/100 · {selected.qualified ? 'above' : 'below'} threshold
                 </span>
                 {!selected.consent_at && (
-                  <span className="badge border-danger/40 bg-danger/10 text-danger">
-                    No consent — do not message
+                  <span className="badge border-warning/40 bg-warning/10 text-warning">
+                    Cold — no opt-in on record
                   </span>
                 )}
               </div>
@@ -519,14 +526,18 @@ export default function LeadsPage() {
                 <h3 className="card-title mb-2">Reaching them</h3>
                 <dl className="space-y-1.5 text-sm">
                   <Row label="WhatsApp">
-                    {selected.consent_at ? (
-                      <a className="text-primary hover:underline"
-                         href={`https://wa.me/${selected.whatsapp.replace(/[^0-9]/g, '')}`}
-                         target="_blank" rel="noopener noreferrer">
-                        {selected.whatsapp}
-                      </a>
-                    ) : (
-                      <span className="text-danger">{selected.whatsapp} — no opt-in on record</span>
+                    {/* The link is offered either way. The form requires the
+                        consent tick, so a lead without one can only come from
+                        an older row or an import — treated as a cold lead
+                        rather than an unreachable one, per Jai. The badge in
+                        the header still says which it is. */}
+                    <a className="text-primary hover:underline"
+                       href={`https://wa.me/${selected.whatsapp.replace(/[^0-9]/g, '')}`}
+                       target="_blank" rel="noopener noreferrer">
+                      {selected.whatsapp}
+                    </a>
+                    {!selected.consent_at && (
+                      <span className="ml-2 text-xs text-warning">cold</span>
                     )}
                   </Row>
                   <Row label="Email">
@@ -535,7 +546,11 @@ export default function LeadsPage() {
                     </a>
                   </Row>
                   <Row label="Reply in">{selected.language}</Row>
-                  <Row label="Consented">{fullWhen(selected.consent_at)}</Row>
+                  <Row label="Consented">
+                    {selected.consent_at
+                      ? fullWhen(selected.consent_at)
+                      : <span className="text-warning">No opt-in recorded — cold lead</span>}
+                  </Row>
                   <Row label="Arrived">{fullWhen(selected.created_at)}</Row>
                 </dl>
               </section>

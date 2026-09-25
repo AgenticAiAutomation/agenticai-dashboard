@@ -39,7 +39,8 @@ Off unless the flag is set. Add to `/etc/systemd/system/dashboard-api.service`:
 ```
 Environment="WA_LEADS_ENABLED=1"
 Environment="WA_LEADS_DB=/var/www/wa-funnel/instance/leads.db"
-Environment="WA_LEADS_WRITE_ROLES=admin,owner,seo_lead,seo"
+Environment="WA_LEADS_READ_ROLES=owner"
+Environment="WA_LEADS_WRITE_ROLES=owner"
 ```
 
 then `systemctl daemon-reload` and `systemctl restart dashboard-api`.
@@ -55,9 +56,34 @@ pushed into `os.environ`, so like backlink_ops this module reads plain
 
 ## Permissions
 
-Reading is open to any signed-in dashboard user. **Writing is not** — a status
-is a statement about a real person waiting for a reply, so `WA_LEADS_WRITE_ROLES`
-gates it and every change records the actor's email.
+**The whole desk is owner-only.** Not just the writes — a signed-in dashboard
+account is not on its own a reason to see it. This table holds every enquirer's
+phone number, email and what they said about their own business, which is
+commercially sensitive in a way the SEO screens are not, and the associates who
+use the rest of the dashboard have no reason to read it.
+
+Two gates, both config:
+
+```
+Environment="WA_LEADS_READ_ROLES=owner"     # who may open the desk at all
+Environment="WA_LEADS_WRITE_ROLES=owner"    # who may move a lead
+```
+
+The read gate runs first, so a role that cannot read cannot write either. To
+let a wider group in — say the SEO lead should see the pipeline but not change
+it — set `WA_LEADS_READ_ROLES=owner,seo_lead` and leave the write roles alone.
+A test does exactly that and asserts the widened role can read but still gets
+403 on a write.
+
+**A refused read is a 404, not a 403.** To an account that may not see the
+desk, it should not be discoverable from the status code that a lead with a
+given id exists. The page turns that 404 into "This desk is limited to the
+account owner" rather than showing a bare "Not found".
+
+The nav link is hidden for non-owners to match — `components/Nav.tsx` checks
+`role === 'owner'`. **Keep that in step with `WA_LEADS_READ_ROLES`**: widening
+the API without widening the nav check means the new role can reach the page
+only by typing the URL.
 
 `GET /meta` returns `can_write` so the page hides controls it would only get a
 403 from, rather than letting someone write a note and then lose it.
@@ -100,9 +126,17 @@ The **fit score** is on the table and in the panel. It is hidden from the
 visitor and always will be — that is a rule of the funnel — but internally it
 is the entire point, so it sorts and filters here.
 
-A lead with **no `consent_at`** is flagged in red and its number is not made
-into a `wa.me` link. Without an opt-in on record, messaging that person is not
-something we may do, so the UI does not offer it as one click.
+A lead with **no `consent_at`** is labelled **Cold — no opt-in on record** and
+its number is still a working `wa.me` link. Jai's call: these are cold leads,
+not unreachable ones, and the desk should not make that decision for the person
+using it.
+
+In practice the case is rare by construction — the funnel requires the consent
+tick to submit, so every lead it writes has a timestamp. A row without one can
+only come from an import or a pre-CRM record. The label is there so whoever
+opens the chat knows which kind of lead they are looking at; WhatsApp
+Business's own opt-in rule still applies as a business matter, and the funnel
+still refuses to submit without the tick.
 
 The **`ip_hash` is stripped server-side** and never reaches the browser. It
 exists for the funnel's rate limiting; a CRM screen has no use for it.

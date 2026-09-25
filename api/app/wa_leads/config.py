@@ -21,14 +21,22 @@ DB_PATH = os.environ.get("WA_LEADS_DB", "/var/www/wa-funnel/instance/leads.db")
 
 API_PREFIX = os.environ.get("WA_LEADS_API_PREFIX", "/api/wa-leads")
 
-# Who may move a lead through the pipeline. Reading is open to any signed-in
-# dashboard user; writing is not, because a status is a commitment about a
-# real person waiting for a reply.
-WRITE_ROLES = tuple(
-    r.strip()
-    for r in os.environ.get("WA_LEADS_WRITE_ROLES", "admin,owner,seo_lead,seo").split(",")
-    if r.strip()
-)
+def _roles(name: str, default: str) -> tuple[str, ...]:
+    return tuple(r.strip() for r in os.environ.get(name, default).split(",") if r.strip())
+
+
+# Who may open the desk at all. Owner only, by decision: this table holds every
+# enquirer's phone number, email and what they said about their own business,
+# which is commercially sensitive in a way the SEO screens are not. The SEO
+# associates who use the rest of the dashboard have no reason to read it.
+#
+# To let a wider group in, add roles here rather than editing code:
+#   Environment="WA_LEADS_READ_ROLES=owner,admin"
+READ_ROLES = _roles("WA_LEADS_READ_ROLES", "owner")
+
+# Who may move a lead through the pipeline. A subset of READ_ROLES in practice;
+# a role that cannot read cannot write either, because the read gate runs first.
+WRITE_ROLES = _roles("WA_LEADS_WRITE_ROLES", "owner")
 
 PAGE_SIZE_DEFAULT = 50
 PAGE_SIZE_MAX = 200

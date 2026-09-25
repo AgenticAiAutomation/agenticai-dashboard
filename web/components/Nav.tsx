@@ -6,7 +6,6 @@ import { useEffect, useState } from 'react';
 
 const PRIMARY = [
   { href: '/dashboard', label: 'Dashboard' },
-  { href: '/dashboard/leads', label: 'Leads' },
   { href: '/dashboard/seo', label: 'SEO Operations' },
   { href: '/keywords', label: 'Keywords' },
   { href: '/articles', label: 'Articles' },
@@ -40,8 +39,16 @@ export default function Nav() {
   };
 
   const isAdmin = role === 'admin' || role === 'owner';
+  // The leads desk is owner-only: its API answers 404 to anyone else, so
+  // showing the link would only offer a dead end. Keep this in step with
+  // WA_LEADS_READ_ROLES on the API.
+  const isOwner = role === 'owner';
   const inSeo = pathname?.startsWith('/dashboard/seo');
-  const items = isAdmin ? [...PRIMARY, { href: '/settings/users', label: 'Users' }] : PRIMARY;
+  const items = [
+    ...PRIMARY,
+    ...(isOwner ? [{ href: '/dashboard/leads', label: 'Leads' }] : []),
+    ...(isAdmin ? [{ href: '/settings/users', label: 'Users' }] : []),
+  ];
 
   const isActive = (href: string) =>
     href === '/dashboard' ? pathname === '/dashboard' : pathname?.startsWith(href);
