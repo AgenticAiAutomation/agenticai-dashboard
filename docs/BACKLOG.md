@@ -9,35 +9,23 @@ it**, so the next person does not re-derive the decision.
 
 ---
 
-## wa-funnel: the mailbox password is not set
+## Email alerts are off; the dashboard bell is the channel
 
-**Status:** wired 2026-09-26, one manual step left.
+**Status:** decided 2026-09-26. Not a gap — a choice.
 
-`WA_FUNNEL_NOTIFY=email` now ships in the unit, sending through Hostinger:
-the domain's MX is `mx1`/`mx2.hostinger.com` and its SPF record includes
-`_spf.mail.hostinger.com`, so `contact@agenticaiautomation.co` is a real
-mailbox and mail sent as it passes SPF. Outbound 587 is open from the VPS.
+`WA_FUNNEL_NOTIFY=none`. A lead is delivered by the notification bell in the
+dashboard nav, which polls `/api/wa-leads/notifications` every 30 seconds,
+badges a count and plays a two-note chime. Sound is per browser and can be
+muted from the dropdown.
 
-**What is left:** the mailbox password, which cannot live in git. On the
-server:
+Why this over email: the lead is already in the database the bell reads, so
+there is no second delivery that can fail independently of the first. No SMTP
+credential to hold, rotate or leak, and no deliverability to lose.
 
-```bash
-systemctl edit --full wa-funnel     # replace CHANGE-ME-mailbox-password
-systemctl daemon-reload
-systemctl restart wa-funnel
-sudo -u www-data /var/www/wa-funnel/ops/test-notify.sh
-```
-
-`ops/install.sh` prints a warning listing any placeholder still unset, and
-carries the password across future re-runs rather than overwriting it.
-
-Until it is set, `notify.send` logs the failure and the lead is still stored
-and still journal-logged — recoverable with
-`journalctl -u wa-funnel | grep LEAD` — but nobody is paged.
-
-**To route through the WhatsApp bot platform instead:** set
-`WA_FUNNEL_NOTIFY=webhook` and `WA_FUNNEL_WEBHOOK_URL`. That code path is
-written and tested; only the endpoint is unknown.
+What it costs: it only reaches someone with the dashboard open. If a lead ever
+needs to reach a phone at 11pm, turn email back on — it is configured in the
+unit and needs `WA_FUNNEL_NOTIFY=email` plus the mailbox password, then
+`daemon-reload` and `restart`. `ops/test-notify.sh` proves delivery.
 
 ## Who owns the "within 2 business days" promise
 

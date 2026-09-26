@@ -85,3 +85,20 @@ class Meta(BaseModel):
     industries: List[str]
     can_write: bool
     db_ok: bool
+
+
+class NotificationLead(BaseModel):
+    id: int
+    created_at: str
+    name: str
+    industry: str
+    subtype: str
+    fit_score: int
+    qualified: bool
+    status: str
+
+
+class Notifications(BaseModel):
+    latest_id: int
+    unseen: int
+    leads: List[NotificationLead]

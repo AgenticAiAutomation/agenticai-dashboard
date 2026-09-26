@@ -18,7 +18,9 @@ from app.auth import get_current_user
 from app.models import User
 
 from . import config, store
-from .schemas import Lead, LeadDetail, LeadPage, Meta, Stats, StatusUpdate
+from .schemas import (
+    Lead, LeadDetail, LeadPage, Meta, Notifications, Stats, StatusUpdate,
+)
 
 log = logging.getLogger("wa-leads")
 
@@ -87,6 +89,18 @@ def meta(current_user: User = Depends(require_read)):
 @router.get("/stats", response_model=Stats)
 def get_stats(current_user: User = Depends(require_read), _=Depends(require_db)):
     return store.stats()
+
+
+@router.get("/notifications", response_model=Notifications)
+def notifications(
+    since_id: int = Query(0, ge=0, description="Highest lead id this client has seen"),
+    limit: int = Query(10, ge=1, le=50),
+    current_user: User = Depends(require_read),
+    _=Depends(require_db),
+):
+    """Polled by the dashboard's notification bell. Cheap on purpose: two
+    counts and at most a handful of rows, so a 30-second poll costs nothing."""
+    return store.notifications(since_id=since_id, limit=limit)
 
 
 @router.get("", response_model=LeadPage)

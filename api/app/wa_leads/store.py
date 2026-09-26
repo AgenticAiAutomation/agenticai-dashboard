@@ -249,3 +249,31 @@ def industries() -> list[str]:
                 "SELECT DISTINCT industry FROM leads WHERE industry != '' ORDER BY industry"
             )
         ]
+
+
+def notifications(since_id: int = 0, limit: int = 10) -> dict:
+    """Leads that arrived after `since_id`, newest first.
+
+    Deliberately small: the dashboard polls this, so it carries the few fields
+    a notification needs and nothing else. `latest_id` is the whole table's
+    high-water mark, so a client that has seen it can stop asking for detail.
+    """
+    with connect() as conn:
+        row = conn.execute("SELECT COALESCE(MAX(id), 0) AS m FROM leads").fetchone()
+        latest = row["m"]
+        (unseen,) = conn.execute(
+            "SELECT COUNT(*) FROM leads WHERE id > ?", (since_id,)
+        ).fetchone()
+        rows = conn.execute(
+            "SELECT id, created_at, name, industry, subtype, fit_score, qualified, status "
+            "FROM leads WHERE id > ? ORDER BY id DESC LIMIT ?",
+            (since_id, max(1, min(int(limit), 50))),
+        ).fetchall()
+
+    return {
+        "latest_id": latest,
+        "unseen": unseen,
+        "leads": [
+            {**dict(r), "qualified": bool(r["qualified"])} for r in rows
+        ],
+    }

@@ -11,7 +11,7 @@
  * always will be; internally it is the whole point of the funnel.
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import api from '@/lib/api';
 import Nav from '@/components/Nav';
@@ -215,6 +215,30 @@ export default function LeadsPage() {
     }
     load();
   }, [router, load]);
+
+  /* Opening a lead from the notification bell, from either direction.
+     ?lead=12 covers arriving from another page, where this component mounts
+     fresh. The event covers clicking the bell while already here, where
+     router.push does not remount and an on-mount effect would never run. */
+  const deepLinked = useRef(false);
+  useEffect(() => {
+    if (!deepLinked.current) {
+      deepLinked.current = true;
+      const id = Number(new URLSearchParams(window.location.search).get('lead'));
+      if (id) {
+        openLead(id);
+        // Drop the parameter so a refresh does not reopen the panel.
+        window.history.replaceState({}, '', '/dashboard/leads');
+      }
+    }
+    const onOpen = (e: Event) => {
+      const id = (e as CustomEvent<number>).detail;
+      if (id) openLead(id);
+    };
+    window.addEventListener('wa-leads:open', onOpen);
+    return () => window.removeEventListener('wa-leads:open', onOpen);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const openLead = async (id: number) => {
     setSaveError(null);

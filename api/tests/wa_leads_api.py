@@ -196,6 +196,29 @@ check("meta still answers so the page can render the reason",
 check("meta reports the database is not readable",
       c.get("/api/wa-leads/meta").json()["db_ok"] is False)
 
+
+
+# ---------------------------------------------------------------- bell
+os.environ["WA_LEADS_DB"] = str(TMP)
+importlib.reload(wl_config)
+importlib.reload(wl_store)
+c = as_user("owner")
+
+r = c.get("/api/wa-leads/notifications?since_id=0")
+check("notifications returns 200", r.status_code == 200, str(r.status_code))
+n = r.json()
+check("reports the high-water mark", n["latest_id"] == 1, str(n["latest_id"]))
+check("counts what the client has not seen", n["unseen"] == 1, str(n["unseen"]))
+check("carries the lead", n["leads"][0]["name"] == "Priya Menon")
+check("carries the fit score for the badge", n["leads"][0]["fit_score"] == 73)
+
+seen = c.get("/api/wa-leads/notifications?since_id=1").json()
+check("nothing unseen once the client has caught up", seen["unseen"] == 0)
+check("and no rows to render", seen["leads"] == [])
+
+check("a non-owner gets nothing to poll",
+      as_user("seo").get("/api/wa-leads/notifications").status_code == 404)
+
 app.dependency_overrides.clear()
 
 print()
