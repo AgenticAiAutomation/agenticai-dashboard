@@ -169,3 +169,8 @@ as usable, so a partial deploy shows a 503 rather than a column error.
 Delete the two lines in `api/app/main.py` and restart. Nothing else references
 the module, and no data of the dashboard's own is lost — the leads and their
 history live in the funnel's file.
+
+## Known gaps
+
+Deferred and blocked items for this module and the funnel are in
+`docs/BACKLOG.md`, with why each one is not done and what unblocks it.
