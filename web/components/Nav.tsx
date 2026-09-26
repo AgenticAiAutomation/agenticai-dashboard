@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
+import LeadBell from '@/components/LeadBell';
 
 const PRIMARY = [
   { href: '/dashboard', label: 'Dashboard' },
@@ -39,8 +40,16 @@ export default function Nav() {
   };
 
   const isAdmin = role === 'admin' || role === 'owner';
+  // The leads desk is owner-only: its API answers 404 to anyone else, so
+  // showing the link would only offer a dead end. Keep this in step with
+  // WA_LEADS_READ_ROLES on the API.
+  const isOwner = role === 'owner';
   const inSeo = pathname?.startsWith('/dashboard/seo');
-  const items = isAdmin ? [...PRIMARY, { href: '/settings/users', label: 'Users' }] : PRIMARY;
+  const items = [
+    ...PRIMARY,
+    ...(isOwner ? [{ href: '/dashboard/leads', label: 'Leads' }] : []),
+    ...(isAdmin ? [{ href: '/settings/users', label: 'Users' }] : []),
+  ];
 
   const isActive = (href: string) =>
     href === '/dashboard' ? pathname === '/dashboard' : pathname?.startsWith(href);
@@ -68,9 +77,15 @@ export default function Nav() {
             ))}
           </div>
         </div>
-        <button onClick={logout} className="shrink-0 text-sm text-muted hover:text-white">
-          Log out
-        </button>
+        <div className="flex shrink-0 items-center gap-2">
+          {/* Only the owner can read the leads API, so only the owner gets the
+              bell. It hides itself on a 404 as well, but not rendering it is
+              cheaper than a poll that is always refused. */}
+          {isOwner && <LeadBell />}
+          <button onClick={logout} className="text-sm text-muted hover:text-white">
+            Log out
+          </button>
+        </div>
       </div>
 
       {inSeo && (

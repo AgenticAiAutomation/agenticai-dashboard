@@ -51,6 +51,13 @@ app.include_router(seo_cron.router)
 from app.backlink_ops import register as register_backlink_ops
 register_backlink_ops(app)
 
+# --- WhatsApp leads desk (CRM over wa-funnel's leads). Additive, flagged.
+#     Off unless WA_LEADS_ENABLED=1. Returns False and logs if the funnel's
+#     database is unreachable; never raises. Remove these two lines to
+#     uninstall. See docs/WA_LEADS.md.
+from app.wa_leads import register as register_wa_leads  # noqa: E402
+register_wa_leads(app)
+
 
 @app.get("/")
 def root():
