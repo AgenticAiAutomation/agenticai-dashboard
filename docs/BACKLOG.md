@@ -9,37 +9,35 @@ it**, so the next person does not re-derive the decision.
 
 ---
 
-## wa-funnel: nobody is paged when a lead arrives
+## wa-funnel: the mailbox password is not set
 
-**Status:** deferred 2026-09-25, agreed with Jai.
+**Status:** wired 2026-09-26, one manual step left.
 
-`WA_FUNNEL_NOTIFY=none` in `wa-funnel.service`. Leads are stored in the leads
-table and the one-line summary is written to the journal on every submission,
-so nothing is lost and a lead is recoverable with:
+`WA_FUNNEL_NOTIFY=email` now ships in the unit, sending through Hostinger:
+the domain's MX is `mx1`/`mx2.hostinger.com` and its SPF record includes
+`_spf.mail.hostinger.com`, so `contact@agenticaiautomation.co` is a real
+mailbox and mail sent as it passes SPF. Outbound 587 is open from the VPS.
+
+**What is left:** the mailbox password, which cannot live in git. On the
+server:
 
 ```bash
-journalctl -u wa-funnel | grep LEAD
+systemctl edit --full wa-funnel     # replace CHANGE-ME-mailbox-password
+systemctl daemon-reload
+systemctl restart wa-funnel
+sudo -u www-data /var/www/wa-funnel/ops/test-notify.sh
 ```
 
-But no email is sent and no webhook fires, so a lead can sit unseen until
-someone opens the desk.
+`ops/install.sh` prints a warning listing any placeholder still unset, and
+carries the password across future re-runs rather than overwriting it.
 
-**What unblocks it:** either
-- SMTP credentials → set `WA_FUNNEL_NOTIFY=email` plus `WA_FUNNEL_SMTP_HOST`,
-  `WA_FUNNEL_SMTP_USER`, `WA_FUNNEL_SMTP_PASS`, `WA_FUNNEL_MAIL_FROM`,
-  `WA_FUNNEL_MAIL_TO`; or
-- the existing WhatsApp bot platform's endpoint → set
-  `WA_FUNNEL_NOTIFY=webhook` and `WA_FUNNEL_WEBHOOK_URL` (plus
-  `WA_FUNNEL_WEBHOOK_TOKEN` if it wants a bearer).
+Until it is set, `notify.send` logs the failure and the lead is still stored
+and still journal-logged — recoverable with
+`journalctl -u wa-funnel | grep LEAD` — but nobody is paged.
 
-Both are env-only: edit the unit, `daemon-reload`, `restart`. No code change,
-no redeploy. The code for both paths is written and in `notify.py`.
-
-**Why it matters more than it looks:** the funnel promises every
-non-qualifying lead a reply "within 2 business days". Until something pages
-the team, that promise depends on someone remembering to open the desk.
-
----
+**To route through the WhatsApp bot platform instead:** set
+`WA_FUNNEL_NOTIFY=webhook` and `WA_FUNNEL_WEBHOOK_URL`. That code path is
+written and tested; only the endpoint is unknown.
 
 ## Who owns the "within 2 business days" promise
 
