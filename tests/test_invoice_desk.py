@@ -113,6 +113,12 @@ def main():
     check("draft PDF renders", c.get(A + "/inv/" + iid + "/pdf", headers=J).content[:4] == b"%PDF")
 
     print("--- issue, lock, void, duplicate")
+    check("no issue while bank + address are blank (the AI-102 sample gap)",
+          c.post(A + "/inv/" + iid + "/issue", headers=J, json={}).status_code == 400)
+    c.put(A + "/settings", headers=J, json={"seller": {"address": "Gurugram, Haryana"}})
+    check("address alone is not enough — still needs bank or UPI",
+          c.post(A + "/inv/" + iid + "/issue", headers=J, json={}).status_code == 400)
+    c.put(A + "/settings", headers=J, json={"bank": {"account_no": "1234567890", "ifsc": "HDFC0000001"}})
     iss = c.post(A + "/inv/" + iid + "/issue", headers=J, json={})
     num = iss.json()["invoice"]["number"]
     check("issued as AI-102 (continues after AI-101)", iss.status_code == 200 and num == "AI-102")
@@ -126,7 +132,7 @@ def main():
     # settings change must not rewrite an issued invoice
     c.put(A + "/settings", headers=J, json={"bank": {"account_no": "CHANGED"}})
     snap = c.get(A + "/inv/" + iid, headers=J).json()["invoice"]["snapshot"]
-    check("issued invoice keeps the bank details it was issued with", snap["bank"]["account_no"] == "")
+    check("issued invoice keeps the bank details it was issued with", snap["bank"]["account_no"] == "1234567890")
     check("void needs a reason", c.post(A + "/inv/" + iid + "/void", headers=J, json={}).status_code == 400)
     v = c.post(A + "/inv/" + iid + "/void", headers=J, json={"reason": "wrong GSTIN"})
     check("void works", v.json()["invoice"]["status"] == "void")

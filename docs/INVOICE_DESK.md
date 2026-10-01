@@ -24,6 +24,8 @@ Client fills a link → submission lands in a review queue → Jai sets prices �
 | Number given only at issue, one transaction, unique index | Sequential, no gaps, no duplicates (GST). |
 | Issued = locked; no edit, no delete | Fix by Void + Duplicate. |
 | Seller + bank details frozen into each issued invoice | Changing Settings never rewrites old invoices. |
+| No issue without seller address + bank (or UPI) | Locked forever — a blank bank block can never be fixed. |
+| Voided PDF carries a VOID watermark | A voided copy can't pass as a live invoice. |
 | Totals always recomputed on the server | Browser numbers are never stored. |
 | Client-link prices ignored (unless link allows prices) | Client can't set their own price. |
 | GST auto: same state as seller (06 Haryana) → CGST 9 + SGST 9, else IGST 18 | Sample showed "IGST / CGST & SGST" on one line — now split correctly. Override per invoice. |
@@ -33,7 +35,9 @@ Client fills a link → submission lands in a review queue → Jai sets prices �
 
 ## First-time setup (Settings tab)
 
-- **Bank details** — blank on the sample, blank here until you fill them.
+- **Business address + bank details** — blank on the sample. **Approve & issue is refused until
+  both are set** (address: GST Rule 46; bank: account no + IFSC, or a UPI ID). Drafts and
+  previews work without them.
 - **Price list** — set your standard price per item once; every invoice picks it up.
 - **Next number** — set to **102** (AI-101 already issued). Change if you issued more by hand.
 - **SAC codes** — pre-filled only for website dev / hosting (998314 / 998315). Confirm the rest with your CA.
@@ -63,8 +67,8 @@ Client fills a link → submission lands in a review queue → Jai sets prices �
 
 ## Tests
 
-`PYTHONPATH=api python tests/test_invoice_desk.py` — 52 checks (sample maths 17,766, price list, business field, stamp,
-roles, single-use links, lock, numbering, void, snapshot, flag-off).
+`PYTHONPATH=api python tests/test_invoice_desk.py` — 54 checks (sample maths 17,766, price list, business field, stamp,
+roles, single-use links, issue needs address + bank, lock, numbering, void, snapshot, flag-off).
 
 ## Scaling later
 

@@ -100,10 +100,11 @@ def render(inv, settings_snapshot, draft=False):
         c.drawCentredString(W / 2, 36, foot)
         c.setFillColorRGB(0.69, 0.13, 0.13); c.setFont("Times-Bold", 8.5)
         c.drawCentredString(W / 2, 24, "This is a system generated invoice")
-        if draft:
+        mark = "DRAFT" if draft else "VOID" if inv.get("status") == "void" else None
+        if mark:
             c.setFillColorRGB(0.85, 0.2, 0.2); c.setFillAlpha(0.12)
             c.setFont("Helvetica-Bold", 110); c.translate(W / 2, H / 2); c.rotate(35)
-            c.drawCentredString(0, 0, "DRAFT")
+            c.drawCentredString(0, 0, mark)
         c.restoreState()
 
     story = [Spacer(1, 138), Paragraph("TAX INVOICE", title), Spacer(1, 12)]

@@ -228,6 +228,13 @@ def issue(user, inv_id, body=None):
     if c.get("gstin") and not money.gstin_ok(c["gstin"]):
         return _bad("The client GSTIN should be 15 letters/numbers — fix it or leave it blank.")
     cfg = store.get_settings()
+    # Issued is locked forever, so the details it freezes must be complete.
+    # GST Rule 46 needs the supplier's address; without bank or UPI the
+    # client has nothing to pay into.
+    if not cfg["seller"].get("address"):
+        return _bad("Add your business address in Settings before issuing — a GST invoice must show it.")
+    if not (cfg["bank"].get("account_no") and cfg["bank"].get("ifsc")) and not cfg["bank"].get("upi"):
+        return _bad("Add bank details (account no + IFSC) or a UPI ID in Settings before issuing.")
     try:
         store.backup("pre-issue")          # issued invoices are legal records
     except Exception:
