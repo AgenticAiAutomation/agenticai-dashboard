@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Invoice Desk + Backlink Ops v1.2 — one-shot deploy, run as root on the VPS.
 #
-#   bash /root/deploy-invoice-desk.sh
+#   bash /root/deploy-invoice-desk.sh          (asks before changing anything)
+#   bash /root/deploy-invoice-desk.sh --yes    (you've already seen the commit list)
 #
 # Checks before it changes anything, shows what will go live and asks first.
 # If the dashboard or the desk is not healthy after the restart, it puts back
@@ -65,8 +66,18 @@ echo "    new Python packages: ${NEW_REQS:-none}"
 echo "    nginx: $([ "$NGINX_DONE" = 1 ] && echo 'already has /invoices — left alone' || echo "add /invoices + /api/invoices to $SITE")"
 echo "    systemd: INVOICE_DESK_* settings in $DROPIN"
 echo
-read -r -p "Deploy? Type yes to continue: " OK
-[ "$OK" = yes ] || stop "Cancelled."
+if [ "${1:-}" = --yes ]; then
+  echo "Deploy? yes (given as --yes)"
+else
+  # Some consoles (browser / Windows) send Enter as CR+LF, which arrives here
+  # as an empty answer before anyone types — so blank lines are skipped.
+  OK=""
+  while [ -z "$OK" ]; do
+    read -r -p "Deploy? Type yes to continue: " OK || stop "No answer."
+    OK=${OK//$'\r'/}
+  done
+  [ "$OK" = yes ] || stop "Cancelled."
+fi
 
 # ------------------------------------------------------------- rollback
 ROLLED=0
