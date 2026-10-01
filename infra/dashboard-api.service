@@ -26,6 +26,13 @@ Environment="BACKLINK_OPS_LOGIN_URL=/login/"
 Environment="BACKLINK_OPS_AUTOREVIEW=1"
 Environment="BACKLINK_OPS_CRON_SECRET=CHANGE-ME-on-the-server"
 Environment="BACKLINK_OPS_AI_PROVIDER=none"
+# --- Invoice Desk (fill links → review queue → PDF). See docs/INVOICE_DESK.md
+Environment="INVOICE_DESK_ENABLED=1"
+Environment="INVOICE_DESK_DB=/var/www/agenticai-dashboard/api/instance/invoice_desk.db"
+Environment="INVOICE_DESK_BACKUP_DIR=/var/www/agenticai-dashboard/api/backups/invoice_desk"
+Environment="INVOICE_DESK_SUPERUSERS=contact@agenticaiautomation.co,jai.prajapati91@gmail.com"
+Environment="INVOICE_DESK_USER_HOOK=app.backlink_ops_hook:get_user_or_none"
+Environment="INVOICE_DESK_PUBLIC_BASE=https://dashboard.agenticaiautomation.co"
 # -----------------------------------------------------------------------
 ExecStart=/var/www/agenticai-dashboard/api/venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 5004 --workers 2
 Restart=always

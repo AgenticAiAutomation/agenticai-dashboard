@@ -16,6 +16,32 @@ before it lands.
 
 ---
 
+## 2026-10-01 · invoice-desk v1.0.0 — client fill links, review queue, PDF
+
+New, separate module `api/app/invoice_desk/` (own SQLite, own prefix, flag
+`INVOICE_DESK_ENABLED`). Nothing existing changed except two lines in
+`api/app/main.py` and one dependency (`reportlab`). Full guide:
+`docs/INVOICE_DESK.md`.
+
+- `/invoices/` desk (Jai only): Review queue, Issued, Fill links, Settings.
+- `/invoices/f/<token>` public form: client details + services; no prices by default.
+- Approve & issue → next number (starts **AI-102**), locked, PDF in the AI-101
+  layout; GST split CGST+SGST / IGST by place of supply; round-off; amount in words.
+- Void + Duplicate for corrections. Backup before every issue. Audit trail.
+- Tests: `tests/test_invoice_desk.py` (46 checks).
+
+## 2026-10-01 · backlink-ops v1.2.0 — LettStartDesign + all-projects tracking
+
+- **LettStartDesign.com** added as a live project (`lettstart`, purple) with
+  20 seed keywords. Page paths ship as `/` — fill the real ones on the desk.
+- **All projects tab** (`GET /api/seo/backlink-ops/progress`): today per
+  website (links, approved, pending, sent back, points, queries, who), a
+  14-day heat grid per website, and 14-day totals per person across every
+  site. Fixes the gap where the Scoreboard only showed each associate's
+  rostered project — work on any other site was invisible.
+- Read-only addition. No schema change (v1), no scoring change, existing
+  tabs untouched. Smoke test grows 51 → 61 checks.
+
 ## 2026-09-15 · backlink-ops v1.1.0 — the desk reviews itself
 
 Prompted by the first week live: every link waited for Jai (the opposite of

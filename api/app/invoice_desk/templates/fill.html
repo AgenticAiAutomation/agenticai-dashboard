@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Invoice details</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,700&family=Instrument+Sans:wght@400;500;600;700&display=swap">
+<style>
+:root{--bg:#F4F6F4;--surface:#fff;--surface-2:#EDF0EE;--line:#DCE2DF;--line-strong:#C3CCC8;--ink:#141E1C;--muted:#66746F;
+  --accent:#1B3A8A;--accent-soft:#E6EBF7;--good:#2F7D4F;--good-bg:#E6F1EA;--bad:#AF3D2C;--bad-bg:#F8E7E3;
+  --font-display:"Bricolage Grotesque",Georgia,serif;--font-ui:"Instrument Sans",system-ui,-apple-system,"Segoe UI",sans-serif}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#111716;--surface:#18201E;--surface-2:#202927;--line:#2C3835;
+  --line-strong:#3D4B47;--ink:#E9EEEC;--muted:#8A9793;--accent:#8FA8F0;--accent-soft:#1B2440;--good:#5FBB85;--good-bg:#16291F;--bad:#E07767;--bad-bg:#2C1B18}}
+:root[data-theme="dark"]{--bg:#111716;--surface:#18201E;--surface-2:#202927;--line:#2C3835;--line-strong:#3D4B47;--ink:#E9EEEC;--muted:#8A9793;
+  --accent:#8FA8F0;--accent-soft:#1B2440;--good:#5FBB85;--good-bg:#16291F;--bad:#E07767;--bad-bg:#2C1B18}
+*{box-sizing:border-box}[hidden]{display:none!important}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font-ui);font-size:15px;line-height:1.5;-webkit-font-smoothing:antialiased}
+.wrap{max-width:640px;margin:0 auto;padding:28px 16px 64px}
+h1{font-family:var(--font-display);font-size:26px;letter-spacing:-.02em;margin:0 0 4px}
+h2{font-family:var(--font-display);font-size:17px;margin:0 0 12px}
+.lede{color:var(--muted);margin:0 0 22px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:18px;margin-bottom:14px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.full{grid-column:1/-1}
+label{display:block;font-size:12px;font-weight:600;color:var(--muted);margin-bottom:5px}
+input,select,textarea{font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--line-strong);border-radius:9px;padding:10px 11px;width:100%}
+input:focus-visible,select:focus-visible,textarea:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.req{color:var(--bad)}
+.svc{display:grid;grid-template-columns:auto 1fr 76px;gap:10px;align-items:center;padding:9px 0;border-bottom:1px solid var(--line)}
+.svc.priced{grid-template-columns:auto 1fr 64px 108px}
+.svc:last-child{border-bottom:0}
+.svc input[type=checkbox]{width:20px;height:20px;accent-color:var(--accent)}
+.svc .nm{font-weight:500}
+.svc input[type=number]{padding:7px 8px}
+.btn{border:0;background:var(--accent);color:#fff;border-radius:10px;padding:13px 18px;font-weight:700;font-size:15px;width:100%;cursor:pointer}
+.btn[disabled]{opacity:.55;cursor:wait}
+.ghost{background:transparent;color:var(--accent);border:1px dashed var(--line-strong);padding:9px;font-weight:600;border-radius:9px;width:100%;margin-top:10px;cursor:pointer;font:inherit}
+.err{background:var(--bad-bg);color:var(--bad);border-radius:9px;padding:10px 12px;margin-bottom:14px;font-weight:600}
+.done{text-align:center;padding:40px 18px}
+.done .tick{width:56px;height:56px;border-radius:50%;background:var(--good-bg);color:var(--good);display:grid;place-items:center;font-size:28px;margin:0 auto 14px}
+.hp{position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden}
+.foot{color:var(--muted);font-size:12.5px;text-align:center;margin-top:18px}
+@media (max-width:520px){.grid{grid-template-columns:1fr}.svc.priced{grid-template-columns:auto 1fr 56px;}.svc.priced .rate{grid-column:2/-1}}
+</style>
+</head>
+<body>
+<div class="wrap" id="app"><p class="lede">Loading…</p></div>
+<script>
+"use strict";
+const API = __INV_API__;
+const TOKEN = location.pathname.split("/f/")[1].replace(/\/.*$/,"");
+const $ = s => document.querySelector(s);
+const esc = s => String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+let M = null, extra = 0;
+
+async function boot(){
+  let r, b = {};
+  try { r = await fetch(API+"/public/"+encodeURIComponent(TOKEN)); b = await r.json(); }
+  catch(_){ return closed("We couldn't reach the server. Check your connection and reload."); }
+  if(!r.ok) return closed(b.message || "This link isn't working.");
+  M = b; render();
+}
+function closed(msg){
+  $("#app").innerHTML = '<div class="card done"><h1>Link not available</h1><p class="lede" style="margin:0">'+esc(msg)+'</p></div>';
+}
+function svcRow(name, i, custom){
+  return '<div class="svc'+(M.show_prices?' priced':'')+'" data-i="'+i+'">'+
+    '<input type="checkbox" '+(custom?'checked':'')+' aria-label="Include '+esc(name||"service")+'">'+
+    (custom ? '<input class="nm" placeholder="Describe the service" maxlength="200">' : '<span class="nm">'+esc(name)+'</span>')+
+    '<input type="number" class="qty" min="1" step="1" value="1" aria-label="Quantity" title="Quantity">'+
+    (M.show_prices ? '<input type="number" class="rate" min="0" step="0.01" placeholder="Price (INR)" aria-label="Price">' : '')+
+  '</div>';
+}
+function render(){
+  const states = M.states.map(([c,n]) => '<option value="'+c+'">'+esc(n)+'</option>').join("");
+  $("#app").innerHTML =
+    '<h1>'+esc(M.label || "Invoice details")+'</h1>'+
+    '<p class="lede">'+(M.client_hint ? 'For '+esc(M.client_hint)+'. ' : '')+
+      'Fill this in and '+esc(M.seller)+' will send your tax invoice. Takes about two minutes.</p>'+
+    '<div id="err"></div>'+
+    '<form id="f" novalidate>'+
+    '<div class="card"><h2>Billing details</h2><div class="grid">'+
+      '<div class="full"><label for="name">Name <span class="req">*</span></label><input id="name" autocomplete="name" maxlength="120" value="'+esc(M.client_hint)+'"></div>'+
+      '<div class="full"><label for="company">Business name (as on GST)</label><input id="company" autocomplete="organization" maxlength="160"></div>'+
+      '<div><label for="email">Email</label><input id="email" type="email" autocomplete="email" maxlength="160"></div>'+
+      '<div><label for="phone">Phone / WhatsApp</label><input id="phone" type="tel" autocomplete="tel" maxlength="30"></div>'+
+      '<div class="full"><label for="gstin">GSTIN (leave blank if you don\'t have one)</label><input id="gstin" maxlength="15" style="text-transform:uppercase" placeholder="e.g. 24ABCDE1234F1Z5"></div>'+
+      '<div class="full"><label for="address">Billing address</label><textarea id="address" rows="2" maxlength="400" autocomplete="street-address"></textarea></div>'+
+      '<div><label for="city">City</label><input id="city" maxlength="80" autocomplete="address-level2"></div>'+
+      '<div><label for="pincode">PIN code</label><input id="pincode" maxlength="12" inputmode="numeric" autocomplete="postal-code"></div>'+
+      '<div class="full"><label for="state">State</label><select id="state"><option value="">Select your state</option>'+states+'</select></div>'+
+    '</div></div>'+
+    '<div class="card"><h2>Services <span class="req">*</span></h2>'+
+      '<p class="lede" style="margin:-6px 0 6px;font-size:13px">Tick what this invoice is for'+(M.show_prices?', with quantity and agreed price.':' and the quantity. Pricing is added by our team.')+'</p>'+
+      '<div id="svcs">'+M.catalog.map((n,i)=>svcRow(n,i,false)).join("")+'</div>'+
+      '<button type="button" class="ghost" id="addsvc">+ Add another service</button></div>'+
+    '<div class="card"><label for="note">Anything we should know? (PO number, billing instructions)</label><textarea id="note" rows="3" maxlength="1500"></textarea></div>'+
+    '<div class="hp" aria-hidden="true"><label>Website<input id="website" tabindex="-1" autocomplete="off"></label></div>'+
+    '<button class="btn" id="go" type="submit">Send details</button>'+
+    '</form><p class="foot">Your details go only to '+esc(M.seller)+' for this invoice.</p>';
+  $("#gstin").addEventListener("input", e => {
+    const g = e.target.value.trim(); if(/^\d{2}/.test(g)){ const s=$("#state"); if([...s.options].some(o=>o.value===g.slice(0,2))) s.value=g.slice(0,2); }
+  });
+  $("#addsvc").addEventListener("click", () => {
+    $("#svcs").insertAdjacentHTML("beforeend", svcRow("", "x"+(extra++), true));
+    $("#svcs").lastElementChild.querySelector(".nm").focus();
+  });
+  $("#f").addEventListener("submit", submit);
+}
+async function submit(ev){
+  ev.preventDefault();
+  const v = id => ($("#"+id).value||"").trim();
+  const items = [...document.querySelectorAll(".svc")].filter(r => r.querySelector("input[type=checkbox]").checked).map(r => {
+    const nm = r.querySelector(".nm"); const rate = r.querySelector(".rate");
+    return {desc: (nm.value!==undefined ? nm.value : nm.textContent).trim(), qty: r.querySelector(".qty").value || 1,
+            rate: rate ? (rate.value || 0) : 0};
+  }).filter(i => i.desc);
+  const body = {client:{name:v("name"),company:v("company"),email:v("email"),phone:v("phone"),gstin:v("gstin"),
+                address:v("address"),city:v("city"),pincode:v("pincode"),state_code:v("state")},
+                items, note:v("note"), website:v("website")};
+  const say = m => { $("#err").innerHTML = '<div class="err" role="alert">'+esc(m)+'</div>'; scrollTo({top:0,behavior:"smooth"}); };
+  if(!body.client.name) return say("Please enter your name.");
+  if(!body.client.email && !body.client.phone) return say("Please give an email or a phone number.");
+  if(!items.length) return say("Tick at least one service.");
+  const btn = $("#go"); btn.disabled = true; btn.textContent = "Sending…";
+  try {
+    const r = await fetch(API+"/public/"+encodeURIComponent(TOKEN), {method:"POST",
+      headers:{"Content-Type":"application/json"}, body: JSON.stringify(body)});
+    const b = await r.json().catch(()=>({}));
+    if(!r.ok){ btn.disabled=false; btn.textContent="Send details"; return say(b.message || "That didn't go through. Try again."); }
+    $("#app").innerHTML = '<div class="card done"><div class="tick">✓</div><h1>Thank you</h1><p class="lede" style="margin:0">'+
+      esc(b.message)+'</p></div>';
+  } catch(_){ btn.disabled=false; btn.textContent="Send details"; say("Couldn't reach the server. Check your connection and try again."); }
+}
+boot();
+</script>
+</body>
+</html>

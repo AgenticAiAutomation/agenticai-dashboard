@@ -269,6 +269,33 @@ def board(user, days=14):
                  "days": days_back, "today": store.today_ist()}
 
 
+# --------------------------------------------------------------- all projects (v1.2)
+def progress(user, days=14):
+    """Daily progress across EVERY project — not just the one each associate
+    is rostered on. The scoreboard answers "is this person on target"; this
+    answers "what happened on each website today, and who did it"."""
+    if not user:
+        return ERR_AUTH
+    try:
+        days_back = min(max(int(days), 1), 90)
+    except (TypeError, ValueError):
+        days_back = 14
+    cfg = store.get_config()
+    L = level_for(cfg.get("level", 1), cfg)
+    rows = []
+    for (p, d, a), c in store.progress(days_back).items():
+        c = dict(c)
+        c.update({"project": p, "date": d, "author": a,
+                  "done": (c["points"] >= L["target"]
+                           and (c["links"] - c["rejected"]) >= L.get("min_links", 0)
+                           and c["queries"] >= L["queries"])})
+        rows.append(c)
+    rows.sort(key=lambda r: (r["date"], r["project"], r["author"]))
+    return 200, {"rows": rows, "level": L, "days": days_back,
+                 "today": store.today_ist(), "projects": projects_of(cfg),
+                 "roster": cfg.get("roster", DEFAULT_CONFIG["roster"])}
+
+
 # --------------------------------------------------------------- config
 def get_config(user):
     if not user:

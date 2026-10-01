@@ -29,3 +29,7 @@ pyotp==2.9.0
 google-auth==2.28.1
 google-api-python-client==2.120.0
 google-analytics-data==0.18.5
+
+# --- Invoice Desk (PDF). Pure-Python + wheels for every CPython in use.
+# If it is ever missing, the desk still works; only the PDF button reports it.
+reportlab==4.2.5

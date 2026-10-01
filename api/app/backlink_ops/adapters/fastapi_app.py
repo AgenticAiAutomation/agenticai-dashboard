@@ -97,6 +97,10 @@ def build_routers():
     async def board(request: Request, days: int = 14):
         return _json(service.board(current_user(request), days))
 
+    @api.get("/progress")
+    async def progress(request: Request, days: int = 14):
+        return _json(service.progress(current_user(request), days))
+
     @api.get("/config")
     async def get_config(request: Request):
         return _json(service.get_config(current_user(request)))

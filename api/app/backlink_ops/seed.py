@@ -52,6 +52,22 @@ PROJECTS = {
                   "salons, coaching institutes, e-commerce and CA firms."),
         "pages": ["/"],
     },
+    # v1.2 — website-template marketplace. Live from day one. Page paths ship
+    # as "/" only: fill the real category paths on the desk (Difficulty & team
+    # → Websites) so associates never point a link at a guessed URL.
+    "lettstart": {
+        "id": "lettstart",
+        "name": "LettStartDesign.com",
+        "short": "LettStart",
+        "domain": "lettstartdesign.com",
+        "active": True,
+        "hue": "#6B4FBB",
+        "initial": "L",
+        "niche": ("Website template marketplace — HTML, Bootstrap, React/Next.js and Angular "
+                  "templates, admin dashboards, landing pages and portfolio themes for "
+                  "startups, freelancers and agencies; plus custom web development."),
+        "pages": ["/"],
+    },
 }
 
 
@@ -110,6 +126,18 @@ SEED_KEYWORDS = {
         "anniversary gift ideas india", "wall hanging decor online",
         "stationery combo set online", "diy furniture ideas india", "rakhi gift ideas online",
         "cheap household items online india",
+    ],
+    "lettstart": [
+        "free html website templates", "bootstrap admin dashboard template",
+        "react admin dashboard template", "nextjs website template",
+        "angular admin template", "landing page template html",
+        "saas landing page template", "portfolio website template",
+        "resume website template html", "business website template",
+        "responsive website templates", "bootstrap 5 templates",
+        "html css templates for startups", "premium website templates cheap",
+        "admin panel template free download", "agency website template",
+        "one page website template", "ecommerce html template",
+        "website templates for freelancers", "domain for sale landing page template",
     ],
 }
 

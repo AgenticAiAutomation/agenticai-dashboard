@@ -92,8 +92,11 @@ Dropping a level is fine and costs nothing — better than a target nobody meets
 name, the page paths links may point to, one line on what the business is (the
 AI reads it), seed keywords for the Keyword Lab, and the *Live* tick. A site
 that is not ticked is hidden from associates — prepare it, then flip it on the
-day it launches. Seed sites (AgenticAI, DIYMart, WhatsAppAutomation) can be
+day it launches. Seed sites (AgenticAI, DIYMart, WhatsAppAutomation, LettStart) can be
 edited but not removed. Nothing here needs a deploy; it lives in `bo_config`.
+
+`lettstartdesign.com` ships **live** (v1.2) with `/` as its only page — add its real
+category paths here before associates start pointing links at it.
 
 `whatsappautomation.co.in` ships in the list, **not live**, with `/` as its
 only page: the domain was still parked in Sept 2026. When the site is up, fill
@@ -253,3 +256,10 @@ untouched and still live. Two trackers is deliberate for now:
 here. If you later want one place, that is a separate piece of work: a one-time
 importer into `bo_entries`, then retire the old page. Do not hand-merge the
 tables.
+
+## All projects tab (v1.2)
+
+One screen for every website: today's links / approved / pending / sent back /
+points / queries per site and who did them, a 14-day heat grid, and per-person
+totals across all sites. Use it for the daily check instead of switching
+projects. Read-only — nothing to configure.

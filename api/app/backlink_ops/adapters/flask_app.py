@@ -110,6 +110,10 @@ def build_blueprints():
     def board():
         return _json(service.board(current_user(), request.args.get("days", 14)))
 
+    @api.get("/progress")
+    def progress():
+        return _json(service.progress(current_user(), request.args.get("days", 14)))
+
     @api.get("/config")
     def get_config():
         return _json(service.get_config(current_user()))

@@ -173,6 +173,31 @@ def main():
                 ).status_code == 400)
     c.put(API + "/config", headers=jai, json={"level": 1})
 
+    print("\n  all-projects progress (v1.2)")
+    boot = c.get(API + "/bootstrap", headers=jai).json()
+    check("LettStartDesign is a live project",
+          boot["projects"].get("lettstart", {}).get("active") is True
+          and boot["projects"]["lettstart"]["domain"] == "lettstartdesign.com")
+    check("LettStartDesign has seed keywords", len(boot["seedKeywords"]["lettstart"]) >= 10)
+    r = c.post(API + "/entries", headers=lead, json={
+        "project": "lettstart", "url": "https://webdesignhub.example/templates-roundup",
+        "type": "resource_page", "da": 30, "spam": 1, "follow": "dofollow",
+        "target": "/", "anchor": "lettstartdesign", "relevant": True})
+    check("associate logs a link on LettStart (201)",
+          r.status_code == 201 and r.json()["rows"][0]["project"] == "lettstart")
+    check("progress needs a session", c.get(API + "/progress").status_code == 401)
+    pg = c.get(API + "/progress?days=14", headers=lead)
+    check("progress answers (200)", pg.status_code == 200)
+    rows = pg.json()["rows"]
+    check("progress covers both websites the associate touched",
+          {r["project"] for r in rows} >= {"agenticai", "lettstart"})
+    ag = [r for r in rows if r["project"] == "agenticai"][0]
+    check("progress counts the approved link", ag["approved"] == 1 and ag["links"] == 1)
+    check("progress counts the keyword query", ag["queries"] == 1)
+    ls = [r for r in rows if r["project"] == "lettstart"][0]
+    check("progress shows the new link as pending", ls["pending"] == 1 and ls["points"] > 0)
+    check("page has the All projects tab", "renderAllProjects" in c.get(PAGE + "/").text)
+
     print("\n  an explicit user hook (the recommended wiring)")
     os.environ["BACKLINK_OPS_USER_HOOK"] = "tests.hostsim_hook:get_user"
     pkg = reload_module()

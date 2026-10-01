@@ -105,3 +105,9 @@ submitting links and running Ubersuggest queries, note them anywhere, and log
 them when it is back — the day's date is set server-side from IST on entry, so
 ask them to log same-day before midnight IST, or add the entries yourself with
 the correct date via a short SQL insert.
+
+## Related: Invoice Desk
+
+Separate module, separate DB, separate flag (`INVOICE_DESK_ENABLED`). Its
+continuity and rollback plan is in `docs/INVOICE_DESK.md`. Turning either
+feature off never affects the other.

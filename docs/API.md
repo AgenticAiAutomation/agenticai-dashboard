@@ -110,3 +110,28 @@ Online SQLite backup, prunes to the newest 30. Returns the path written.
 2. `audit.stamp_request(...)` on any write. No exceptions.
 3. Validate input and return a `message` a person can act on.
 4. Document it here and add a line to `docs/FEATURE_LOG.md`.
+
+## v1.2 — all projects
+
+`GET /api/seo/backlink-ops/progress?days=14` (any signed-in desk user)
+→ `{rows:[{project,date,author,links,approved,pending,needs_fix,rejected,points,queries,done}], level, days, today, projects, roster}`
+
+## Invoice Desk — `/api/invoices` (superuser only unless marked public)
+
+| Method | Path | Does |
+|---|---|---|
+| GET | `/health` | public health |
+| GET | `/bootstrap` | settings, counts, states, catalog |
+| GET | `/list?view=queue\|issued\|void\|all` | invoice summaries |
+| POST | `/new` | blank draft |
+| POST | `/totals` | live totals for the editor |
+| GET/PUT/DELETE | `/inv/{id}` | read / save draft / delete draft |
+| POST | `/inv/{id}/issue` | number + lock (body = latest edits) |
+| POST | `/inv/{id}/void` | `{reason}` |
+| POST | `/inv/{id}/duplicate` | new draft from any invoice |
+| GET | `/inv/{id}/pdf` | PDF (DRAFT watermark until issued) |
+| GET/PUT | `/settings` | seller, bank, numbering, defaults |
+| GET/POST | `/links` · DELETE `/links/{token}` | fill links |
+| GET | `/audit` | audit trail |
+| GET/POST | `/public/{token}` | **public** — form meta / submit |
+

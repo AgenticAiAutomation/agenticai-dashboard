@@ -51,6 +51,12 @@ app.include_router(seo_cron.router)
 from app.backlink_ops import register as register_backlink_ops
 register_backlink_ops(app)
 
+# --- Invoice Desk (client fill links → review queue → PDF). Additive,
+#     feature-flagged (INVOICE_DESK_ENABLED), own SQLite file, never raises.
+#     Remove these two lines to uninstall. See docs/INVOICE_DESK.md.
+from app.invoice_desk import register as register_invoice_desk
+register_invoice_desk(app)
+
 
 @app.get("/")
 def root():

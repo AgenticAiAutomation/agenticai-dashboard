@@ -153,6 +153,20 @@ tr:last-child td{border-bottom:0}
 .b-none{background:var(--surface-2);color:var(--muted)}
 .chart-note{font-size:11.5px;color:var(--muted);margin-top:6px}
 
+/* ---------- all projects (v1.2) ---------- */
+.heat{border-collapse:separate;border-spacing:3px;min-width:0;width:auto}
+.heat th{background:transparent;border:0;padding:2px 4px;font-size:10px;position:static;text-align:center}
+.heat th.rowh{text-align:left;white-space:nowrap;padding-right:10px;font-size:12px;letter-spacing:0;text-transform:none;color:var(--ink);font-weight:650}
+.heat td{border:0;padding:0;width:34px;height:30px;border-radius:6px;text-align:center;vertical-align:middle;font-size:11px;font-weight:700;background:var(--surface-2);color:var(--muted)}
+.heat td.h1{background:var(--warn-bg);color:var(--warn)}
+.heat td.h2{background:var(--accent-soft);color:var(--ink)}
+.heat td.h3{background:var(--good);color:#fff}
+.legend{display:flex;gap:12px;flex-wrap:wrap;font-size:11.5px;color:var(--muted);margin-top:8px}
+.legend i{display:inline-block;width:12px;height:12px;border-radius:3px;vertical-align:-2px;margin-right:4px}
+.who-chips{display:flex;flex-wrap:wrap;gap:4px}
+.who-chips span{font-size:11.5px;background:var(--surface-2);border-radius:999px;padding:1px 8px;white-space:nowrap}
+.who-chips span.ok{background:var(--good-bg);color:var(--good);font-weight:650}
+
 /* ---------- misc ---------- */
 .toast{position:fixed;left:50%;bottom:22px;opacity:0;visibility:hidden;transform:translateX(-50%) translateY(140%);background:var(--ink);color:var(--bg);padding:10px 18px;border-radius:999px;font-weight:600;font-size:13px;z-index:90;transition:transform .3s,opacity .3s,visibility .3s;max-width:calc(100% - 36px);text-align:center}
 .toast.show{opacity:1;visibility:visible;transform:translateX(-50%) translateY(0)}
@@ -298,6 +312,13 @@ tr:last-child td{border-bottom:0}
       </div>
     </section>
 
+    <!-- ALL PROJECTS (v1.2) -->
+    <section class="panel" id="p-all" role="tabpanel" hidden>
+      <h2 class="section-title">All projects</h2>
+      <p class="lede">Every website, every day, everyone who worked on it — whatever project they are rostered on.</p>
+      <div id="allproj"></div>
+    </section>
+
     <!-- SCOREBOARD -->
     <section class="panel" id="p-board" role="tabpanel" hidden>
       <h2 class="section-title">Scoreboard</h2>
@@ -336,7 +357,7 @@ window.BO = { api: __BO_API__, version: __BO_VERSION__, tokenKey: __BO_TOKEN_KEY
 
 const API = (window.BO && window.BO.api) || "/api/seo/backlink-ops";
 const S = { me:null, cfg:null, meta:null, project:"agenticai", tab:"today",
-            day:null, bank:[], board:null, celebrated:{}, booted:false };
+            day:null, bank:[], board:null, prog:null, celebrated:{}, booted:false };
 const $ = s => document.querySelector(s);
 const esc = s => String(s==null?"":s).replace(/[&<>"']/g, c =>
   ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -387,7 +408,7 @@ async function boot(){
     return;
   }
   renderShell();
-  await Promise.all([loadDay(), loadBank(), loadBoard()]);
+  await Promise.all([loadDay(), loadBank(), loadBoard(), loadProgress()]);
   S.booted = true;
   renderAll();
 }
@@ -416,6 +437,11 @@ async function loadBoard(){
   try { S.board = await api("/board?days=14"); }
   catch(_){ S.board = null; }
 }
+async function loadProgress(){
+  // Older API without /progress (mid-rollback): the tab says so, nothing else breaks.
+  try { S.prog = await api("/progress?days=14"); }
+  catch(_){ S.prog = {error:true}; }
+}
 
 /* ------------------------------------------------------------------ shell */
 function renderShell(){
@@ -429,7 +455,7 @@ function renderShell(){
     renderAll(); await Promise.all([loadDay(), loadBank()]); renderAll();
   });
 
-  const TABS = [["today","Today"],["lab","Keyword Lab"],["board","Scoreboard"],
+  const TABS = [["today","Today"],["lab","Keyword Lab"],["all","All projects"],["board","Scoreboard"],
                 ["review","Review queue"],["settings","Difficulty & team"]];
   $("#tabs").innerHTML = TABS.map(([k,l]) =>
     '<button type="button" role="tab" data-t="'+k+'" aria-selected="false" id="tab-'+k+'">'+l+'</button>').join("");
@@ -437,6 +463,7 @@ function renderShell(){
     const b = ev.target.closest("button[data-t]"); if(!b) return;
     S.tab = b.dataset.t; renderAll();
     if(S.tab==="board") loadBoard().then(renderAll);
+    if(S.tab==="all") loadProgress().then(renderAll);
   });
 
   $("#f-type").innerHTML = S.meta.linkTypes.map(t =>
@@ -471,9 +498,9 @@ function renderAll(){
     b.setAttribute("aria-selected", String(b.dataset.t === S.tab));
   });
   if(S.tab==="settings" && !isOwner()) S.tab = "today";
-  ["today","lab","board","review","settings"].forEach(k => { $("#p-"+k).hidden = (k !== S.tab); });
+  ["today","lab","all","board","review","settings"].forEach(k => { $("#p-"+k).hidden = (k !== S.tab); });
 
-  renderToday(); renderLab(); renderBoard(); renderReview(); renderSettings();
+  renderToday(); renderLab(); renderAllProjects(); renderBoard(); renderReview(); renderSettings();
 }
 function accentSoft(hex){
   const r=parseInt(hex.slice(1,3),16), g=parseInt(hex.slice(3,5),16), b=parseInt(hex.slice(5,7),16);
@@ -513,7 +540,7 @@ async function onLog(ev){
     S.day = await api("/entries", {method:"POST", body:JSON.stringify(e)});
     $("#f-url").value=""; $("#f-anchor").value=""; $("#f-indexed").checked=false;
     $("#f-url").focus();
-    renderAll(); loadBoard().then(()=>{ if(S.tab==="board") renderAll(); });
+    renderAll(); loadBoard().then(()=>{ if(S.tab==="board") renderAll(); }); loadProgress().then(()=>{ if(S.tab==="all") renderAll(); });
   } catch(err){ toast(err.message); }
   finally { btn.disabled = false; }
 }
@@ -687,6 +714,85 @@ function renderCoach(o){
       (o.tomorrow||[]).map(w=>'<li>'+esc(w)+'</li>').join("")+'</ul></div>';
 }
 
+/* ------------------------------------------------------------ all projects (v1.2) */
+function renderAllProjects(){
+  const el = $("#allproj"); if(!el) return;
+  const G = S.prog;
+  if(!G){ el.innerHTML = '<div class="card"><p class="hint" style="margin:0">Loading every project…</p></div>'; return; }
+  if(G.error){ el.innerHTML = '<div class="card"><p class="hint" style="margin:0">All-projects view is not available on this server yet.</p></div>'; return; }
+  const Lv = G.level, projs = Object.values(G.projects||{}).filter(p => p.active!==false || isOwner());
+  const days = []; const t0 = new Date(G.today+"T00:00:00Z");
+  for(let i=13;i>=0;i--){ const d=new Date(t0); d.setUTCDate(d.getUTCDate()-i); days.push(d.toISOString().slice(0,10)); }
+  const by = {};   // project|date -> {links, approved, pending, fix, rejected, points, queries, people:[]}
+  (G.rows||[]).forEach(r => {
+    const k = r.project+"|"+r.date;
+    const c = by[k] || (by[k] = {links:0,approved:0,pending:0,fix:0,rejected:0,points:0,queries:0,people:[]});
+    c.links+=r.links; c.approved+=r.approved; c.pending+=r.pending; c.fix+=r.needs_fix;
+    c.rejected+=r.rejected; c.points+=r.points; c.queries+=r.queries; c.people.push(r);
+  });
+  const sum = f => projs.reduce((a,p) => a + f(by[p.id+"|"+G.today]||{}), 0);
+
+  // 1) Today, one row per website
+  const todayRows = projs.map(p => {
+    const c = by[p.id+"|"+G.today];
+    const ppl = c ? c.people.map(r => '<span class="'+(r.done?'ok':'')+'" title="'+r.links+' links · '+
+        Math.round(r.points)+' pts · '+r.queries+' queries">'+(r.done?'✓ ':'')+esc(r.author)+' · '+r.links+'</span>').join("") :
+        '<span class="hint">Nobody yet</span>';
+    return '<tr><td><span class="dot" style="display:inline-block;margin-right:7px;background:'+p.hue+'"></span><b>'+esc(p.short||p.name)+'</b>'+
+      (p.active===false?' <span class="pill pending">not live</span>':'')+'<div class="hint">'+esc(p.domain||"")+'</div></td>'+
+      '<td class="num">'+(c?c.links:0)+'</td>'+
+      '<td class="num">'+(c?'<span class="pill approved">'+c.approved+'</span>':'—')+'</td>'+
+      '<td class="num">'+(c?'<span class="pill pending">'+c.pending+'</span>':'—')+'</td>'+
+      '<td class="num">'+(c&&(c.fix+c.rejected)?'<span class="pill rejected">'+(c.fix+c.rejected)+'</span>':'—')+'</td>'+
+      '<td class="num">'+(c?Math.round(c.points):0)+'</td>'+
+      '<td class="num">'+(c?c.queries:0)+'</td>'+
+      '<td><div class="who-chips">'+ppl+'</div></td></tr>';
+  }).join("");
+
+  // 2) 14-day heat grid: links per website per day, shaded by whether anyone hit target
+  const heat = '<table class="heat"><thead><tr><th></th>'+days.map(d=>'<th>'+d.slice(8)+'</th>').join("")+'</tr></thead><tbody>'+
+    projs.map(p => '<tr><th class="rowh"><span class="dot" style="display:inline-block;margin-right:6px;background:'+p.hue+'"></span>'+esc(p.short||p.name)+'</th>'+
+      days.map(d => { const c = by[p.id+"|"+d];
+        if(!c || (!c.links && !c.queries)) return '<td title="'+d+' · no work logged">·</td>';
+        const hit = c.people.some(r=>r.done);
+        const cls = hit ? "h3" : (c.points >= Lv.target*0.5 ? "h2" : "h1");
+        return '<td class="'+cls+'" title="'+d+' · '+c.links+' links · '+Math.round(c.points)+' pts · '+c.queries+' queries'+
+          (hit?' · target hit':'')+'">'+c.links+'</td>'; }).join("")+'</tr>').join("")+
+    '</tbody></table>';
+
+  // 3) Per person across all websites, last 14 days
+  const ppl = {};
+  (G.rows||[]).forEach(r => {
+    const m = ppl[r.author] || (ppl[r.author] = {links:0,points:0,queries:0,days:new Set(),hits:0,projects:new Set()});
+    m.links+=r.links; m.points+=r.points; m.queries+=r.queries; m.days.add(r.date); m.projects.add(r.project); if(r.done) m.hits++;
+  });
+  const pname = id => ((G.projects||{})[id]||{}).short || id;
+  const people = Object.entries(ppl).sort((a,b)=>b[1].points-a[1].points).map(([n,m]) =>
+    '<tr><td><b>'+esc(n)+'</b></td><td class="num">'+m.days.size+'</td><td class="num">'+m.links+'</td>'+
+    '<td class="num">'+Math.round(m.points)+'</td><td class="num">'+m.queries+'</td><td class="num">'+m.hits+'</td>'+
+    '<td>'+[...m.projects].map(pname).map(esc).join(", ")+'</td></tr>').join("");
+
+  el.innerHTML =
+    '<div class="tiles" style="margin-bottom:14px">'+
+      '<div class="tile"><div class="n num">'+sum(c=>c.links||0)+'</div><div class="l">Links today · all sites</div></div>'+
+      '<div class="tile"><div class="n num" style="color:var(--good)">'+sum(c=>c.approved||0)+'</div><div class="l">Approved</div></div>'+
+      '<div class="tile"><div class="n num">'+sum(c=>c.pending||0)+'</div><div class="l">Waiting review</div></div>'+
+      '<div class="tile"><div class="n num">'+sum(c=>c.queries||0)+'</div><div class="l">Keyword queries</div></div>'+
+      '<div class="tile"><div class="n num">'+projs.filter(p=>(by[p.id+"|"+G.today]||{}).links).length+'/'+projs.length+'</div><div class="l">Sites worked today</div></div>'+
+    '</div>'+
+    '<div class="card" style="margin-bottom:14px"><div class="card-h"><h3>Today, by website</h3><span class="eyebrow">'+esc(G.today)+'</span></div>'+
+      '<div class="tw"><table><thead><tr><th>Website</th><th>Links</th><th>Approved</th><th>Pending</th><th>Sent back</th><th>Points</th><th>Queries</th><th>Who (links)</th></tr></thead>'+
+      '<tbody>'+todayRows+'</tbody></table></div>'+
+      '<div class="chart-note">✓ = that person cleared the Level '+Lv.n+' core target on that site ('+Lv.target+' pts, '+(Lv.min_links||0)+' links, '+Lv.queries+' queries).</div></div>'+
+    '<div class="card" style="margin-bottom:14px"><div class="card-h"><h3>Last 14 days, by website</h3><span class="eyebrow">links logged per day</span></div>'+
+      '<div style="overflow-x:auto">'+heat+'</div>'+
+      '<div class="legend"><span><i style="background:var(--good)"></i>Someone hit target</span><span><i style="background:var(--accent-soft)"></i>Half way or more</span>'+
+      '<span><i style="background:var(--warn-bg)"></i>Started</span><span><i style="background:var(--surface-2)"></i>Nothing logged</span></div></div>'+
+    '<div class="card"><div class="card-h"><h3>Last 14 days, by person</h3><span class="eyebrow">all websites combined</span></div>'+
+      (people ? '<div class="tw"><table><thead><tr><th>Person</th><th>Days active</th><th>Links</th><th>Points</th><th>Queries</th><th>Targets hit</th><th>Websites</th></tr></thead><tbody>'+people+'</tbody></table></div>'
+              : '<p class="hint" style="margin:0">No work logged in the last 14 days.</p>')+'</div>';
+}
+
 /* ------------------------------------------------------------------ board */
 function renderBoard(){
   if(!S.board){ $("#board").innerHTML = '<div class="card"><p class="hint" style="margin:0">Loading the last 14 days…</p></div>'; return; }
@@ -809,7 +915,7 @@ function renderReview(){
 async function decide(decisions){
   try { S.day = await api("/review", {method:"POST",
           body: JSON.stringify({project:S.project, decisions})});
-        renderAll(); loadBoard().then(()=>{ if(S.tab==="board") renderAll(); }); }
+        renderAll(); loadBoard().then(()=>{ if(S.tab==="board") renderAll(); }); loadProgress().then(()=>{ if(S.tab==="all") renderAll(); }); }
   catch(err){ toast(err.message); }
 }
 

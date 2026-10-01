@@ -403,6 +403,46 @@ def history(days_back=14):
     return out, queries
 
 
+def progress(days_back=14):
+    """v1.2 — every project, every day, every person, in one read.
+
+    Returns {(project, date, author): {links, approved, pending, needs_fix,
+    rejected, points, queries}}. Read-only; re-scores like history() so the
+    numbers always match the Today tab. Queries with no links still appear
+    (a keyword-research-only day is real work)."""
+    from .scoring import score_entry
+    since = "-%d day" % int(days_back + 1)
+    rows = connect().execute(
+        "SELECT * FROM bo_entries WHERE date >= date('now', ?) ORDER BY date", (since,))
+    entries = [_entry_row(r) for r in rows]
+    dec = {r["entry_id"]: r["status"] for r in connect().execute(
+        "SELECT r.entry_id, r.status FROM bo_reviews r JOIN bo_entries e ON e.id = r.entry_id "
+        "WHERE e.date >= date('now', ?)", (since,))}
+    groups = {}
+    for e in entries:
+        groups.setdefault((e["project"], e["date"]), []).append(e)
+
+    out = {}
+
+    def cell(key):
+        return out.setdefault(key, {"links": 0, "approved": 0, "pending": 0, "needs_fix": 0,
+                                    "rejected": 0, "points": 0.0, "queries": 0})
+
+    for (project, date), group in groups.items():
+        for e in group:
+            c = cell((project, date, e["author"]))
+            status = dec.get(e["id"]) or "pending"
+            c["links"] += 1
+            c[status if status in c else "pending"] += 1
+            if status != "rejected":
+                c["points"] = round(c["points"] + score_entry(e, group)["pts"], 1)
+    for r in connect().execute(
+            "SELECT author, project, date, COUNT(*) c FROM bo_queries "
+            "WHERE date >= date('now', ?) GROUP BY author, project, date", (since,)):
+        cell((r["project"], r["date"], r["author"]))["queries"] = r["c"]
+    return out
+
+
 # ----------------------------------------------------------------- ai usage
 def bump_ai(kind, failed=False):
     conn = connect()
