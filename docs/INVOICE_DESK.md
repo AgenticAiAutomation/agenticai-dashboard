@@ -44,6 +44,13 @@ Client fills a link → submission lands in a review queue → Jai sets prices �
 
 ## Deploy
 
+**Scripted (first deploy):** `ops/deploy-invoice-desk.sh`, run as root on the VPS. It checks
+the live tree is clean and fast-forwardable, shows the commits and asks first, adds the
+settings as a systemd drop-in (`dashboard-api.service.d/invoice-desk.conf`) and the nginx
+blocks as `snippets/invoice-desk.conf`, then health-gates and rolls itself back on failure.
+
+**By hand**, the same steps:
+
 1. `pip install -r api/requirements.txt` (adds `reportlab`).
 2. Add the `INVOICE_DESK_*` lines from `infra/dashboard-api.service` to the live unit → `systemctl daemon-reload`.
 3. Add `infra/nginx-invoice-desk.conf` blocks to `sites-available/dashboard-frontend` → `nginx -t && systemctl reload nginx`.
