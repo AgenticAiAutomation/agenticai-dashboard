@@ -84,6 +84,7 @@ function render(){
     '<div class="card"><h2>Billing details</h2><div class="grid">'+
       '<div class="full"><label for="name">Name <span class="req">*</span></label><input id="name" autocomplete="name" maxlength="120" value="'+esc(M.client_hint)+'"></div>'+
       '<div class="full"><label for="company">Business name (as on GST)</label><input id="company" autocomplete="organization" maxlength="160"></div>'+
+      '<div class="full"><label for="business">Nature of business</label><input id="business" maxlength="200" placeholder="e.g. Clinic, Textile trading, CA firm"></div>'+
       '<div><label for="email">Email</label><input id="email" type="email" autocomplete="email" maxlength="160"></div>'+
       '<div><label for="phone">Phone / WhatsApp</label><input id="phone" type="tel" autocomplete="tel" maxlength="30"></div>'+
       '<div class="full"><label for="gstin">GSTIN (leave blank if you don\'t have one)</label><input id="gstin" maxlength="15" style="text-transform:uppercase" placeholder="e.g. 24ABCDE1234F1Z5"></div>'+
@@ -117,7 +118,7 @@ async function submit(ev){
     return {desc: (nm.value!==undefined ? nm.value : nm.textContent).trim(), qty: r.querySelector(".qty").value || 1,
             rate: rate ? (rate.value || 0) : 0};
   }).filter(i => i.desc);
-  const body = {client:{name:v("name"),company:v("company"),email:v("email"),phone:v("phone"),gstin:v("gstin"),
+  const body = {client:{name:v("name"),company:v("company"),business:v("business"),email:v("email"),phone:v("phone"),gstin:v("gstin"),
                 address:v("address"),city:v("city"),pincode:v("pincode"),state_code:v("state")},
                 items, note:v("note"), website:v("website")};
   const say = m => { $("#err").innerHTML = '<div class="err" role="alert">'+esc(m)+'</div>'; scrollTo({top:0,behavior:"smooth"}); };

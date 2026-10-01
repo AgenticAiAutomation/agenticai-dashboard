@@ -11,8 +11,8 @@ Client fills a link → submission lands in a review queue → Jai sets prices �
 
 1. **Fill links → Create link.** Label + client name. Copy or WhatsApp it.
    Default: 1 submission, 14 days. Tick *collect prices* only for your own team.
-2. Client submits → **Review queue** shows *New from client*.
-3. Open it. Fix details, set **Rate** per line, discount, GST. Totals update live.
+2. Client fills name, business name, **nature of business**, GSTIN (optional), address, state, services → **Review queue** shows *New from client*.
+3. Open it. Fix details. Pick items — price fills from your **Price list** (Settings). Add discount (₹ or %), GST. Totals update live.
 4. **Preview PDF** (watermarked DRAFT) → **Approve & issue**. Number assigned, PDF opens.
 5. Mistake on an issued invoice? **Void** (reason prints on it) → **Duplicate** → fix → issue.
 
@@ -27,12 +27,14 @@ Client fills a link → submission lands in a review queue → Jai sets prices �
 | Totals always recomputed on the server | Browser numbers are never stored. |
 | Client-link prices ignored (unless link allows prices) | Client can't set their own price. |
 | GST auto: same state as seller (06 Haryana) → CGST 9 + SGST 9, else IGST 18 | Sample showed "IGST / CGST & SGST" on one line — now split correctly. Override per invoice. |
+| Every PDF says **THIS IS A SYSTEM GENERATED INVOICE** (boxed, under the total) + footer line | As requested. |
 | Online backup before every issue | Issued invoices are legal records. Keeps last 90. |
 | Public form: token, expiry, use-count, honeypot, 10/hour/IP | Spam + abuse brake. |
 
 ## First-time setup (Settings tab)
 
 - **Bank details** — blank on the sample, blank here until you fill them.
+- **Price list** — set your standard price per item once; every invoice picks it up.
 - **Next number** — set to **102** (AI-101 already issued). Change if you issued more by hand.
 - **SAC codes** — pre-filled only for website dev / hosting (998314 / 998315). Confirm the rest with your CA.
 
@@ -61,7 +63,7 @@ Client fills a link → submission lands in a review queue → Jai sets prices �
 
 ## Tests
 
-`PYTHONPATH=api python tests/test_invoice_desk.py` — 46 checks (sample maths 17,766,
+`PYTHONPATH=api python tests/test_invoice_desk.py` — 52 checks (sample maths 17,766, price list, business field, stamp,
 roles, single-use links, lock, numbering, void, snapshot, flag-off).
 
 ## Scaling later

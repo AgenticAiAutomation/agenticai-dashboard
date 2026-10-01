@@ -34,16 +34,16 @@ STATE_NAME = dict(STATES)
 # (998314 IT design & development, 998315 hosting); confirm the rest with the
 # CA and set them per line — the field is editable on every invoice.
 CATALOG = [
-    {"desc": "Website Design & Development", "sac": "998314"},
-    {"desc": "Shared server Hosting", "sac": "998315"},
-    {"desc": "Domain Name", "sac": ""},
-    {"desc": "GMB profile management", "sac": ""},
-    {"desc": "SEO services", "sac": ""},
-    {"desc": "WhatsApp automation", "sac": "998314"},
-    {"desc": "RPA / process automation", "sac": "998314"},
-    {"desc": "Custom AI agent", "sac": "998314"},
-    {"desc": "Lead generation", "sac": ""},
-    {"desc": "Annual maintenance (AMC)", "sac": ""},
+    {"desc": "Website Design & Development", "sac": "998314", "price": "0"},
+    {"desc": "Shared server Hosting", "sac": "998315", "price": "0"},
+    {"desc": "Domain Name", "sac": "", "price": "0"},
+    {"desc": "GMB profile management", "sac": "", "price": "0"},
+    {"desc": "SEO services", "sac": "", "price": "0"},
+    {"desc": "WhatsApp automation", "sac": "998314", "price": "0"},
+    {"desc": "RPA / process automation", "sac": "998314", "price": "0"},
+    {"desc": "Custom AI agent", "sac": "998314", "price": "0"},
+    {"desc": "Lead generation", "sac": "", "price": "0"},
+    {"desc": "Annual maintenance (AMC)", "sac": "", "price": "0"},
 ]
 
 

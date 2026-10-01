@@ -16,6 +16,15 @@ before it lands.
 
 ---
 
+## 2026-10-01 · invoice-desk v1.1.0 — business type, price list, loud stamp
+
+- Client form + desk + PDF: **Nature of business** field.
+- **Price list** (Settings): item, SAC, price. Picking an item on an invoice
+  fills SAC + price; client submissions are pre-priced from it. 0 = set per invoice.
+- PDF: boxed red **THIS IS A SYSTEM GENERATED INVOICE** under the total, plus a
+  red line in the footer of every page. Layout tightened to stay on one page.
+- No schema change (price list lives in `inv_settings`). Tests 46 → 52.
+
 ## 2026-10-01 · invoice-desk v1.0.0 — client fill links, review queue, PDF
 
 New, separate module `api/app/invoice_desk/` (own SQLite, own prefix, flag

@@ -135,6 +135,29 @@ def main():
     d2 = c.post(A + "/inv/" + dup["id"] + "/issue", headers=J, json={}).json()["invoice"]
     check("next issue is AI-103 — no gaps, no reuse", d2["number"] == "AI-103")
 
+    print("--- v1.1: nature of business, price list, loud stamp")
+    cat = c.get(A + "/settings", headers=J).json()["catalog"]
+    cat[0]["price"] = "12500"
+    check("price list saved", c.put(A + "/settings", headers=J, json={"catalog": cat}).status_code == 200)
+    check("bad price refused", c.put(A + "/settings", headers=J,
+                                     json={"catalog": [{"desc": "x", "price": "-1"}]}).status_code == 400)
+    lk3 = c.post(A + "/links", headers=J, json={"label": "biz"}).json()["link"]
+    c.post(A + "/public/" + lk3["token"], json={"client": {"name": "Biz Co", "phone": "1", "business": "Dental clinic"},
+                                                "items": [{"desc": cat[0]["desc"], "qty": 1}]})
+    bz = [i for i in c.get(A + "/list?view=queue", headers=J).json()["invoices"] if i["client"] == "Biz Co"][0]
+    bzi = c.get(A + "/inv/" + bz["id"], headers=J).json()["invoice"]
+    check("nature of business captured", bzi["data"]["client"]["business"] == "Dental clinic")
+    check("price list fills the rate on submission", bzi["data"]["items"][0]["rate"] == "12500.00")
+    raw = c.get(A + "/inv/" + bz["id"] + "/pdf", headers=J).content
+    try:                                    # test-only helper; the server doesn't need it
+        import io, pypdf
+        txt = "".join(pg.extract_text() for pg in pypdf.PdfReader(io.BytesIO(raw)).pages).encode()
+    except ImportError:
+        import subprocess
+        txt = subprocess.run(["pdftotext", "-", "-"], input=raw, capture_output=True).stdout
+    check("PDF carries the loud system-generated stamp", b"THIS IS A SYSTEM GENERATED INVOICE" in txt)
+    check("PDF prints nature of business", b"Dental clinic" in txt)
+
     print("--- links lifecycle + settings validation")
     lk2 = c.post(A + "/links", headers=J, json={"label": "team", "show_prices": True, "max_uses": 2}).json()["link"]
     c.post(A + "/public/" + lk2["token"], json={"client": {"name": "Team entry", "email": "a@b.co"},

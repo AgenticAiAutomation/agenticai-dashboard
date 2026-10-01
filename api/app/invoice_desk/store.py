@@ -37,6 +37,9 @@ DEFAULT_SETTINGS = {
     "numbering": {"prefix": "AI-", "next": 102},     # AI-101 was issued 25 Sep 2026
     "defaults": {"payment_terms": "Immediate / Net 15 Days", "tax_rate": "18",
                  "notes": ""},
+    # Price list: picking an item on the desk fills its SAC and rate.
+    # Edited under Settings → Price list. Seeded from money.CATALOG.
+    "catalog": None,
 }
 
 SCHEMA = """
@@ -132,6 +135,9 @@ def get_settings():
             out[k].update(v)
         else:
             out[k] = v
+    if not out.get("catalog"):
+        from .money import CATALOG
+        out["catalog"] = [dict(c) for c in CATALOG]
     return out
 
 

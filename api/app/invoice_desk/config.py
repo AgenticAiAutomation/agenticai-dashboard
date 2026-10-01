@@ -51,7 +51,7 @@ class Settings:
     PUBLIC_RATE = int(os.environ.get("INVOICE_DESK_PUBLIC_RATE", "10"))
 
     LOG_PREFIX  = "invoice-desk"
-    VERSION     = "1.0.0"
+    VERSION     = "1.1.0"
     SCHEMA_VERSION = 1
 
 

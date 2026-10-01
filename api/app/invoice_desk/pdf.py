@@ -46,7 +46,7 @@ def render(inv, settings_snapshot, draft=False):
     from reportlab.lib.enums import TA_CENTER
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.styles import ParagraphStyle
-    from reportlab.platypus import (Image, Paragraph, SimpleDocTemplate, Spacer, Table,
+    from reportlab.platypus import (Image, KeepTogether, Paragraph, SimpleDocTemplate, Spacer, Table,
                                     TableStyle)
 
     data, tot = inv["data"], inv["totals"]
@@ -55,7 +55,7 @@ def render(inv, settings_snapshot, draft=False):
     W, H = A4
     blue = colors.Color(*BLUE)
 
-    base = ParagraphStyle("b", fontName="Times-Roman", fontSize=10.5, leading=14)
+    base = ParagraphStyle("b", fontName="Times-Roman", fontSize=10.5, leading=13)
     bold = ParagraphStyle("bb", parent=base, fontName="Times-Bold")
     small = ParagraphStyle("s", parent=base, fontSize=9, leading=12)
     cell = ParagraphStyle("c", parent=base, fontSize=10, leading=12.5)
@@ -98,13 +98,15 @@ def render(inv, settings_snapshot, draft=False):
         foot = " | ".join(p for p in (seller.get("name"), seller.get("gstin") and f"GSTIN: {seller['gstin']}",
                                       seller.get("email")) if p)
         c.drawCentredString(W / 2, 36, foot)
+        c.setFillColorRGB(0.69, 0.13, 0.13); c.setFont("Times-Bold", 8.5)
+        c.drawCentredString(W / 2, 24, "This is a system generated invoice")
         if draft:
             c.setFillColorRGB(0.85, 0.2, 0.2); c.setFillAlpha(0.12)
             c.setFont("Helvetica-Bold", 110); c.translate(W / 2, H / 2); c.rotate(35)
             c.drawCentredString(0, 0, "DRAFT")
         c.restoreState()
 
-    story = [Spacer(1, 150), Paragraph("TAX INVOICE", title), Spacer(1, 16)]
+    story = [Spacer(1, 138), Paragraph("TAX INVOICE", title), Spacer(1, 12)]
     number = inv.get("number") or "DRAFT"
     story += [Paragraph(f"Invoice No: {esc(number)}", base),
               Paragraph(f"Date: {esc(_date(data.get('invoice_date', '')))}", base)]
@@ -116,6 +118,8 @@ def render(inv, settings_snapshot, draft=False):
     for k in ("name", "company"):
         if client.get(k):
             bill.append(esc(client[k]))
+    if client.get("business"):
+        bill.append(f"Nature of Business: {esc(client['business'])}")
     addr = ", ".join(p for p in (client.get("address"), client.get("city"),
                                  client.get("pincode")) if p)
     if addr:
@@ -157,7 +161,7 @@ def render(inv, settings_snapshot, draft=False):
         ("LEFTPADDING", (0, 0), (-1, -1), 5), ("RIGHTPADDING", (0, 0), (-1, -1), 5),
         ("TOPPADDING", (0, 0), (-1, -1), 2), ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
     ]))
-    story += [t, Spacer(1, 16)]
+    story += [t, Spacer(1, 12)]
 
     # ---- totals, in the sample's flowing style
     story.append(Paragraph(f"Subtotal: {inr(tot['taxable'])}", base))
@@ -169,8 +173,20 @@ def render(inv, settings_snapshot, draft=False):
         story.append(Paragraph("GST: Not charged" + (f" — {esc(data.get('tax_note'))}" if data.get("tax_note") else ""), base))
     if float(tot.get("round_off") or 0):
         story.append(Paragraph(f"Round off: {inr(tot['round_off'])}", base))
+    # The stamp — loud by request: boxed, bold, red, on the page body.
+    stamp_style = ParagraphStyle("stamp", parent=bold, fontSize=13, leading=17,
+                                 alignment=TA_CENTER, textColor=colors.Color(0.69, 0.13, 0.13))
+    stamp = Table([[Paragraph("THIS IS A SYSTEM GENERATED INVOICE", stamp_style)],
+                   [Paragraph("No signature is required.", ParagraphStyle(
+                       "stamp2", parent=small, alignment=TA_CENTER))]],
+                  colWidths=[W - 144])
+    stamp.setStyle(TableStyle([
+        ("BOX", (0, 0), (-1, -1), 1.6, colors.Color(0.69, 0.13, 0.13)),
+        ("BACKGROUND", (0, 0), (-1, -1), colors.Color(1, 0.95, 0.95)),
+        ("TOPPADDING", (0, 0), (-1, -1), 4), ("BOTTOMPADDING", (0, 0), (-1, -1), 4)]))
     story += [Spacer(1, 8), Paragraph(f"Total Amount: INR {inr(tot['total'])}", bold),
-              Paragraph(f"<i>{esc(tot.get('total_words'))}</i>", small), Spacer(1, 18)]
+              Paragraph(f"<i>{esc(tot.get('total_words'))}</i>", small), Spacer(1, 10),
+              KeepTogether([stamp]), Spacer(1, 14)]
 
     if data.get("payment_terms"):
         story.append(Paragraph(f"Payment Terms: {esc(data['payment_terms'])}", base))
@@ -186,11 +202,10 @@ def render(inv, settings_snapshot, draft=False):
                   Paragraph(esc(data["notes"]).replace("\n", "<br/>"), base)]
     if inv.get("status") == "void":
         story += [Spacer(1, 12), Paragraph(f"VOID — {esc(inv.get('void_reason'))}", bold)]
-    story += [Spacer(1, 18), Paragraph("This is a computer-generated invoice.", small)]
 
     buf = io.BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=72, rightMargin=72, topMargin=40,
-                            bottomMargin=60, title=f"Invoice {number}",
+                            bottomMargin=48, title=f"Invoice {number}",
                             author=seller.get("name", ""))
     doc.build(story, onFirstPage=header_footer, onLaterPages=header_footer)
     return buf.getvalue()

@@ -184,13 +184,13 @@ function renderEditor(){
     (d.client_note?'<div class="note"><b>Client note:</b> '+esc(d.client_note)+'</div>':'')+
     '<div class="ed"><div>'+
     '<div class="card"><div class="card-h"><h3>Bill to</h3></div><div class="grid2">'+
-      f("c-name","Name",c.name)+f("c-company","Business name",c.company)+
+      f("c-name","Name",c.name)+f("c-company","Business name",c.company)+f("c-business","Nature of business",c.business,{full:true})+
       f("c-gstin","GSTIN",c.gstin,{extra:' maxlength="15" style="text-transform:uppercase"'})+
       '<div><label for="c-state">State (place of supply)</label><select id="c-state"'+ro+'>'+states+'</select></div>'+
       f("c-address","Address",c.address,{full:true})+f("c-city","City",c.city)+f("c-pincode","PIN",c.pincode)+
       f("c-email","Email",c.email)+f("c-phone","Phone",c.phone)+
     '</div></div>'+
-    '<div class="card"><div class="card-h"><h3>Services</h3><span class="hint">Amount = Qty × Rate</span></div>'+catalog+
+    '<div class="card"><div class="card-h"><h3>Services</h3><span class="hint">Pick an item to fill its price from your price list · Amount = Qty × Rate</span></div>'+catalog+
       '<div class="tw"><table class="items"><thead><tr><th class="c-desc">Description</th><th class="c-sac">SAC</th><th class="c-qty">Qty</th><th class="c-rate">Rate (₹)</th><th class="c-amt">Amount</th><th class="c-x"></th></tr></thead><tbody id="lines"></tbody></table></div>'+
       (locked?'':'<button class="btn ghost sm" id="addline" style="margin-top:10px">+ Add line</button>')+'</div>'+
     '<div class="card"><div class="card-h"><h3>Discount, tax &amp; terms</h3></div><div class="grid3">'+
@@ -223,13 +223,17 @@ function addLine(it, locked){
     '<td class="c-rate"><input class="l-rate" type="number" min="0" step="0.01" value="'+esc(Number(it.rate||0)||"")+'" placeholder="0.00"'+ro+' aria-label="Rate"></td>'+
     '<td class="c-amt num l-amt">—</td><td class="c-x">'+(locked?'':'<button class="x" type="button" aria-label="Remove line">×</button>')+'</td>';
   const desc = tr.querySelector(".l-desc");
-  desc.addEventListener("change", () => { const m=S.boot.catalog.find(x=>x.desc===desc.value); const sac=tr.querySelector(".l-sac"); if(m&&m.sac&&!sac.value) sac.value=m.sac; });
+  desc.addEventListener("change", () => { const m=S.boot.catalog.find(x=>x.desc===desc.value); if(!m) return;
+    const sac=tr.querySelector(".l-sac"), rate=tr.querySelector(".l-rate");
+    if(m.sac&&!sac.value) sac.value=m.sac;
+    if(Number(m.price)>0&&!Number(rate.value)) rate.value=m.price;
+    markDirty(); });
   const x=tr.querySelector(".x"); if(x) x.onclick = () => { tr.remove(); markDirty(); };
   $("#lines").appendChild(tr);
 }
 function collect(){
   const v = id => { const e=document.getElementById(id); return e ? e.value : ""; };
-  return {client:{name:v("c-name"),company:v("c-company"),gstin:v("c-gstin"),state_code:v("c-state"),address:v("c-address"),
+  return {client:{name:v("c-name"),company:v("c-company"),business:v("c-business"),gstin:v("c-gstin"),state_code:v("c-state"),address:v("c-address"),
                   city:v("c-city"),pincode:v("c-pincode"),email:v("c-email"),phone:v("c-phone")},
           items:[...document.querySelectorAll("#lines tr")].map(tr=>({desc:tr.querySelector(".l-desc").value,sac:tr.querySelector(".l-sac").value,
                   qty:tr.querySelector(".l-qty").value||1,rate:tr.querySelector(".l-rate").value||0})).filter(i=>i.desc.trim()),
@@ -340,13 +344,25 @@ function renderSettings(){
     '<div class="card"><div class="card-h"><h3>Numbering &amp; defaults</h3><span class="hint">Next number is used at the moment you issue.</span></div><div class="grid3">'+
       inp("n-prefix","Prefix",nm.prefix)+inp("n-next","Next number",nm.next)+inp("d-rate","Default GST %",df.tax_rate)+
       inp("d-terms","Default payment terms",df.payment_terms,true)+'<div class="full"><label for="d-notes">Default notes</label><textarea id="d-notes" rows="2">'+esc(df.notes)+'</textarea></div></div>'+
-      '<div class="row" style="margin-top:12px"><button class="btn" id="saveset">Save settings</button></div></div>';
+      '</div>'+
+    '<div class="card"><div class="card-h"><h3>Price list</h3><span class="hint">Shown on the client form. Picking an item on an invoice fills its SAC and price. 0 = set per invoice.</span></div>'+
+      '<div class="tw"><table class="items"><thead><tr><th class="c-desc">Item</th><th class="c-sac">SAC</th><th class="c-rate">Price (₹)</th><th class="c-x"></th></tr></thead><tbody id="cat-rows"></tbody></table></div>'+
+      '<div class="row" style="margin-top:10px"><button class="btn ghost sm" id="addcat">+ Add item</button></div></div>'+
+    '<div class="row"><button class="btn" id="saveset">Save settings</button></div>';
+  const catRow = c => { const tr=document.createElement("tr");
+    tr.innerHTML='<td><input class="k-desc" value="'+esc(c.desc)+'" aria-label="Item"></td><td><input class="k-sac" value="'+esc(c.sac||"")+'" maxlength="8" aria-label="SAC"></td>'+
+      '<td><input class="k-price" type="number" min="0" step="0.01" value="'+esc(Number(c.price||0)||"")+'" placeholder="0.00" aria-label="Price"></td><td><button class="x" type="button" aria-label="Remove">×</button></td>';
+    tr.querySelector(".x").onclick=()=>tr.remove(); $("#cat-rows").appendChild(tr); };
+  (s.catalog||[]).forEach(catRow);
+  $("#addcat").onclick = () => catRow({desc:"",sac:"",price:0});
   $("#saveset").onclick = async () => {
     const v=id=>document.getElementById(id).value;
     try { S.boot.settings = await api("/settings", J("PUT",{
       seller:{name:v("s-name"),gstin:v("s-gstin"),state_code:v("s-state"),email:v("s-email"),phone:v("s-phone"),tagline:v("s-tag"),address:v("s-addr")},
       bank:{account_name:v("b-name"),account_no:v("b-no"),ifsc:v("b-ifsc"),bank_name:v("b-bank"),upi:v("b-upi")},
-      numbering:{prefix:v("n-prefix"),next:v("n-next")}, defaults:{tax_rate:v("d-rate"),payment_terms:v("d-terms"),notes:v("d-notes")}}));
+      numbering:{prefix:v("n-prefix"),next:v("n-next")}, defaults:{tax_rate:v("d-rate"),payment_terms:v("d-terms"),notes:v("d-notes")},
+      catalog:[...document.querySelectorAll("#cat-rows tr")].map(tr=>({desc:tr.querySelector(".k-desc").value,sac:tr.querySelector(".k-sac").value,price:tr.querySelector(".k-price").value||0})).filter(c=>c.desc.trim())}));
+      S.boot.catalog = S.boot.settings.catalog;
       toast("Settings saved."); } catch(e){ toast(e.message); }
   };
 }

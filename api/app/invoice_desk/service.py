@@ -26,7 +26,7 @@ ERR_FROZEN = (503, {"error": "read_only",
                     "message": "The invoice desk is read-only during maintenance. Try again shortly."})
 NOT_FOUND = (404, {"error": "not_found", "message": "That invoice no longer exists."})
 
-LIMITS = {"name": 120, "company": 160, "address": 400, "city": 80, "pincode": 12, "gstin": 15,
+LIMITS = {"name": 120, "company": 160, "business": 200, "address": 400, "city": 80, "pincode": 12, "gstin": 15,
           "email": 160, "phone": 30, "state_code": 2}
 
 
@@ -143,7 +143,7 @@ def bootstrap(user):
         return g
     from . import pdf
     return 200, {"me": user, "settings": store.get_settings(), "counts": store.counts(),
-                 "states": money.STATES, "catalog": money.CATALOG, "today": store.today_ist(),
+                 "states": money.STATES, "catalog": store.get_settings()["catalog"], "today": store.today_ist(),
                  "readOnly": settings.READ_ONLY, "pdf": pdf.available(),
                  "version": settings.VERSION, "publicBase": settings.PUBLIC_BASE + settings.URL_PREFIX}
 
@@ -328,6 +328,20 @@ def put_settings(user, body):
     cfg["seller"]["gstin"] = cfg["seller"].get("gstin", "").upper()
     if cfg["seller"].get("gstin") and not cfg["seller"].get("state_code"):
         cfg["seller"]["state_code"] = cfg["seller"]["gstin"][:2]
+    cat = body.get("catalog")
+    if isinstance(cat, list):
+        clean = []
+        for c in cat[:60]:
+            if not isinstance(c, dict) or not str(c.get("desc") or "").strip():
+                continue
+            price = money.D(c.get("price"))
+            if price < 0:
+                return _bad("Prices can't be negative.")
+            clean.append({"desc": str(c["desc"]).strip()[:200], "sac": str(c.get("sac") or "").strip()[:8],
+                          "price": str(money.q2(price))})
+        if not clean:
+            return _bad("Keep at least one item in the price list.")
+        cfg["catalog"] = clean
     num = body.get("numbering")
     if isinstance(num, dict):
         prefix = str(num.get("prefix", cfg["numbering"]["prefix"])).strip()[:12]
@@ -418,7 +432,7 @@ def public_meta(token):
     seller = store.get_settings()["seller"]
     return 200, {"seller": seller.get("name"), "label": link["label"],
                  "client_hint": link["client_hint"], "show_prices": bool(link["show_prices"]),
-                 "states": money.STATES, "catalog": [c["desc"] for c in money.CATALOG]}
+                 "states": money.STATES, "catalog": [c["desc"] for c in store.get_settings()["catalog"]]}
 
 
 def public_submit(token, body, ip=""):
@@ -443,9 +457,12 @@ def public_submit(token, body, ip=""):
     if client["gstin"] and not money.gstin_ok(client["gstin"]):
         return _bad("GSTIN should be 15 letters/numbers — or leave it blank.")
     items = _clean_items(body.get("items"), allow_price=bool(link["show_prices"]))
-    sac = {c["desc"]: c["sac"] for c in money.CATALOG}
-    for it in items:                       # client never types SAC; fill the known ones
-        it["sac"] = it["sac"] or sac.get(it["desc"], "")
+    cat = {c["desc"]: c for c in store.get_settings()["catalog"]}
+    for it in items:                       # client never types SAC/price; fill from the price list
+        known = cat.get(it["desc"]) or {}
+        it["sac"] = it["sac"] or known.get("sac", "")
+        if money.D(it["rate"]) == 0 and money.D(known.get("price")) > 0:
+            it["rate"] = str(money.q2(money.D(known["price"])))
     if not items:
         return _bad("Pick at least one service.")
     defaults = store.get_settings()["defaults"]
