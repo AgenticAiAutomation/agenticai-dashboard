@@ -85,15 +85,17 @@ rollback() {
   [ "$ROLLED" = 1 ] && return; ROLLED=1
   printf '\n!!! %s — rolling back\n' "$1" >&2
   journalctl -u "$SERVICE" -n 30 --no-pager >&2 || true
-  if [ -n "$PREV_BRANCH" ]; then git checkout -q "$PREV_BRANCH"; else git checkout -q "$PREV_SHA"; fi
-  rm -f "$DROPIN"; systemctl daemon-reload
+  if [ -n "$PREV_BRANCH" ]; then git checkout -q -B "$PREV_BRANCH" "$PREV_SHA"; else git checkout -q "$PREV_SHA"; fi
+  # 2. put back the settings file that was there before, rather than deleting it
+  if [ -f "$DROPIN.bak-$STAMP" ]; then cp "$DROPIN.bak-$STAMP" "$DROPIN"; else rm -f "$DROPIN"; fi
+  systemctl daemon-reload
   if [ -f "$SITE.bak-$STAMP" ]; then
     cp "$SITE.bak-$STAMP" "$SITE"; rm -f "$SNIPPET"
     nginx -t 2>/dev/null && systemctl reload nginx
   fi
   systemctl restart "$SERVICE"; sleep 6
   if curl -fsS -o /dev/null http://127.0.0.1:5004/health; then
-    echo "    Rolled back to ${PREV_BRANCH:-$PREV_SHA}; dashboard healthy." >&2
+    echo "    Rolled back to ${PREV_BRANCH:-detached} @ $(git rev-parse --short HEAD); dashboard healthy." >&2
   else
     echo "    Rolled back but the dashboard is still unhealthy — see docs/BCP_AND_ROLLBACK.md." >&2
   fi
@@ -122,6 +124,7 @@ chown www-data:www-data api/instance api/backups api/backups/invoice_desk
 
 say "systemd settings → $DROPIN"
 mkdir -p "$DROPIN_DIR"
+[ -f "$DROPIN" ] && cp "$DROPIN" "$DROPIN.bak-$STAMP"
 { echo "# Invoice Desk — added by ops/deploy-invoice-desk.sh $STAMP. Delete this file to remove."
   echo "[Service]"
   grep -E '^Environment="INVOICE_DESK_' infra/dashboard-api.service; } > "$DROPIN"
@@ -131,6 +134,9 @@ say "Restarting $SERVICE"
 systemctl restart "$SERVICE"
 wait_healthy http://127.0.0.1:5004/health || rollback "dashboard not healthy after 60s"
 wait_healthy http://127.0.0.1:5004/api/invoices/health || rollback "invoice desk did not come up"
+for _ in $(seq 1 8); do
+  healthy http://127.0.0.1:5004/api/invoices/health || rollback "invoice desk missing on one of the workers"
+done
 echo "    dashboard + invoice desk healthy"
 
 if [ "$NGINX_DONE" = 0 ]; then
@@ -143,10 +149,20 @@ if [ "$NGINX_DONE" = 0 ]; then
 fi
 
 say "Checking from outside"
-sleep 2
-CODE=$(curl -s -o /dev/null -w '%{http_code}' "$PUBLIC/api/invoices/health" || true)
-PAGE=$(curl -s -o /dev/null -w '%{http_code}' "$PUBLIC/invoices/" || true)
-[ "$CODE" = 200 ] && [ "$PAGE" = 200 ] || rollback "public URLs answered $CODE / $PAGE (wanted 200 / 200)"
+for _ in $(seq 1 6); do
+  sleep 5
+  CODE=$(curl -s -m 10 -o /dev/null -w '%{http_code}' "$PUBLIC/api/invoices/health" || true)
+  PAGE=$(curl -s -m 10 -o /dev/null -w '%{http_code}' "$PUBLIC/invoices/" || true)
+  [ "$CODE" = 200 ] && [ "$PAGE" = 200 ] && break
+done
+if [ "$CODE" != 200 ] || [ "$PAGE" != 200 ]; then
+  # The desk already answered on the server itself, so the code is fine; a
+  # failure here is nginx or DNS. Undo nginx only if this run changed it.
+  [ "$NGINX_DONE" = 0 ] && rollback "public URLs answered $CODE / $PAGE after the nginx change"
+  printf '\n!!! The desk runs on the server, but from outside it answered %s / %s (wanted 200 / 200).\n' "$CODE" "$PAGE" >&2
+  echo "    Nothing was rolled back. Send this output to Claude." >&2
+  exit 2
+fi
 
 say "Done — live at $PUBLIC/invoices/"
 echo "    Before the first invoice: Settings → business address + bank details (issuing is refused until both are set)."
