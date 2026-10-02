@@ -300,22 +300,20 @@ async function openPdf(){
 function renderLinks(){
   const rows = S.links.map(l => '<tr><td><b>'+esc(l.label||"—")+'</b>'+(l.client_hint?'<div class="hint">'+esc(l.client_hint)+'</div>':'')+'</td>'+
     '<td><span class="pill '+(l.live?"p-issued":"p-draft")+'">'+esc(l.state)+'</span></td>'+
-    '<td class="num">'+l.uses+' / '+l.max_uses+'</td><td>'+fmtDate(l.expires_at)+'</td><td>'+(l.show_prices?"Yes":"No")+'</td>'+
+    '<td class="num">'+l.uses+' / '+l.max_uses+'</td><td>'+fmtDate(l.expires_at)+'</td>'+
     '<td><div class="row">'+(l.live?'<button class="btn ghost sm" data-copy="'+esc(l.url)+'">Copy</button><button class="btn ghost sm" data-wa="'+esc(l.url)+'">WhatsApp</button><button class="btn ghost sm" data-revoke="'+l.token+'">Switch off</button>':'')+'</div></td></tr>').join("");
   $("#view").innerHTML =
-    '<div class="card"><div class="card-h"><h3>Create a fill link</h3><span class="hint">Send it to the client or your team. Submissions land in the Review queue.</span></div>'+
+    '<div class="card"><div class="card-h"><h3>Create a fill link</h3><span class="hint">The client fills in their billing details. Add the services and prices when you review it.</span></div>'+
     '<div class="grid3">'+
       '<div><label for="l-label">Label (shown as the form title)</label><input id="l-label" placeholder="Website project — Sep"></div>'+
       '<div><label for="l-client">Client name (pre-fills the form)</label><input id="l-client" placeholder="Shailesh Patel"></div>'+
       '<div><label for="l-days">Valid for (days)</label><input id="l-days" type="number" min="1" max="90" value="14"></div>'+
       '<div><label for="l-uses">Submissions allowed</label><input id="l-uses" type="number" min="1" max="50" value="1"></div>'+
-      '<div class="full"><label style="display:flex;gap:8px;align-items:center;text-transform:none;letter-spacing:0;font-size:13px;color:var(--ink)">'+
-        '<input type="checkbox" id="l-prices" style="width:auto"> Let the form collect prices (for your own team — never for clients)</label></div>'+
     '</div><div class="row" style="margin-top:12px"><button class="btn" id="mk">Create link</button></div><div id="newlink" style="margin-top:12px"></div></div>'+
-    (rows?'<div class="tw"><table><thead><tr><th>Link</th><th>State</th><th>Used</th><th>Expires</th><th>Prices</th><th></th></tr></thead><tbody>'+rows+'</tbody></table></div>':'<div class="card empty">No links yet.</div>');
+    (rows?'<div class="tw"><table><thead><tr><th>Link</th><th>State</th><th>Used</th><th>Expires</th><th></th></tr></thead><tbody>'+rows+'</tbody></table></div>':'<div class="card empty">No links yet.</div>');
   $("#mk").onclick = async () => {
     try { const r = await api("/links", J("POST",{label:$("#l-label").value, client_hint:$("#l-client").value, days:$("#l-days").value,
-                                                     max_uses:$("#l-uses").value, show_prices:$("#l-prices").checked}));
+                                                     max_uses:$("#l-uses").value}));
       S.links.unshift(r.link); renderLinks();
       $("#newlink").innerHTML='<div class="linkbox"><code>'+esc(r.link.url)+'</code><button class="btn sm" data-copy="'+esc(r.link.url)+'">Copy</button><button class="btn ghost sm" data-wa="'+esc(r.link.url)+'">WhatsApp</button></div>';
       wire();

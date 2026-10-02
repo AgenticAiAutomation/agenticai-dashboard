@@ -393,11 +393,11 @@ def create_link(user, body):
     exp = (datetime.now(timezone.utc) + timedelta(days=days)).isoformat(timespec="seconds")
     rec = {"token": store.new_token(), "label": str(body.get("label") or "").strip()[:80],
            "client_hint": str(body.get("client_hint") or "").strip()[:120],
-           "show_prices": 1 if body.get("show_prices") else 0, "max_uses": uses,
+           "show_prices": 0, "max_uses": uses,
            "expires_at": exp, "created_by": _actor(user), "created_at": store.now_iso()}
     store.add_link(rec)
     store.audit(_actor(user), "link.create", rec["token"][:8],
-                {"label": rec["label"], "uses": uses, "days": days, "prices": bool(rec["show_prices"])})
+                {"label": rec["label"], "uses": uses, "days": days})
     return 201, {"link": _link_out(store.get_link(rec["token"]))}
 
 
@@ -438,8 +438,7 @@ def public_meta(token):
         return 410, {"error": "link_closed", "message": why}
     seller = store.get_settings()["seller"]
     return 200, {"seller": seller.get("name"), "label": link["label"],
-                 "client_hint": link["client_hint"], "show_prices": bool(link["show_prices"]),
-                 "states": money.STATES, "catalog": [c["desc"] for c in store.get_settings()["catalog"]]}
+                 "client_hint": link["client_hint"], "states": money.STATES}
 
 
 def public_submit(token, body, ip=""):
@@ -463,18 +462,11 @@ def public_submit(token, body, ip=""):
         return _bad("That email doesn't look right.")
     if client["gstin"] and not money.gstin_ok(client["gstin"]):
         return _bad("GSTIN should be 15 letters/numbers — or leave it blank.")
-    items = _clean_items(body.get("items"), allow_price=bool(link["show_prices"]))
-    cat = {c["desc"]: c for c in store.get_settings()["catalog"]}
-    for it in items:                       # client never types SAC/price; fill from the price list
-        known = cat.get(it["desc"]) or {}
-        it["sac"] = it["sac"] or known.get("sac", "")
-        if money.D(it["rate"]) == 0 and money.D(known.get("price")) > 0:
-            it["rate"] = str(money.q2(money.D(known["price"])))
-    if not items:
-        return _bad("Pick at least one service.")
+    # Clients give billing details only. Services, quantities and prices are
+    # added on the desk, so anything sent as "items" here is ignored.
     defaults = store.get_settings()["defaults"]
     d = _clean_data({"client": client, "client_note": body.get("note") or ""},
-                    {"items": items, "payment_terms": defaults.get("payment_terms", ""),
+                    {"items": [], "payment_terms": defaults.get("payment_terms", ""),
                      "tax_rate": defaults.get("tax_rate", "18"), "tax_mode": "auto",
                      "discount_type": "flat", "notes": defaults.get("notes", "")})
     inv = {"id": "inv_" + uuid.uuid4().hex[:12], "status": "submitted", "source": "link",
@@ -484,5 +476,5 @@ def public_submit(token, body, ip=""):
     if not saved:
         return 410, {"error": "link_closed", "message": why}
     store.audit("public:" + (ip or "?"), "invoice.submitted", inv["id"],
-                {"link": token[:8], "label": link["label"], "lines": len(items)})
+                {"link": token[:8], "label": link["label"]})
     return 201, {"ok": True, "message": "Thank you — your details are in. We'll send the invoice shortly."}

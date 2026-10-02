@@ -82,7 +82,11 @@ def main():
     meta = c.get(A + "/public/" + tok).json()
     check("public meta exposes no money/settings", "bank" not in str(meta) and meta["client_hint"] == "Shailesh Patel")
     bad = c.post(A + "/public/" + tok, json={"client": {"name": "X"}, "items": []})
-    check("needs contact + a service", bad.status_code == 400)
+    check("needs an email or phone", bad.status_code == 400)
+    page = c.get("/invoices/f/" + tok).text
+    check("client form has no Services box", "Services" not in page and "svc" not in page)
+    check("client form is light mode only", 'content="light only"' in page and "prefers-color-scheme" not in page)
+    check("public meta lists no services or prices", "catalog" not in meta and "show_prices" not in meta)
     sub = c.post(A + "/public/" + tok, json={
         "client": {"name": "Shailesh Patel", "phone": "9999999999", "state_code": "24"},
         "items": [{"desc": "Website Design & Development", "qty": 1, "rate": 1}, {"desc": "Domain Name", "qty": 1}],
@@ -99,7 +103,7 @@ def main():
     check("submission is in the queue", len(q) == 1 and q[0]["status"] == "submitted")
     iid = q[0]["id"]
     inv = c.get(A + "/inv/" + iid, headers=J).json()["invoice"]
-    check("price typed on a client link is ignored", all(i["rate"] == "0.00" for i in inv["data"]["items"]))
+    check("services sent on a client link are ignored (desk adds them)", inv["data"]["items"] == [])
     check("client note kept", inv["data"]["client_note"] == "PO 7781")
     check("zero total cannot be issued", c.post(A + "/inv/" + iid + "/issue", headers=J).status_code == 400)
     edit = {"items": [{"desc": "Shared server Hosting", "qty": 1, "rate": "4078.08"},
@@ -153,7 +157,6 @@ def main():
     bz = [i for i in c.get(A + "/list?view=queue", headers=J).json()["invoices"] if i["client"] == "Biz Co"][0]
     bzi = c.get(A + "/inv/" + bz["id"], headers=J).json()["invoice"]
     check("nature of business captured", bzi["data"]["client"]["business"] == "Dental clinic")
-    check("price list fills the rate on submission", bzi["data"]["items"][0]["rate"] == "12500.00")
     raw = c.get(A + "/inv/" + bz["id"] + "/pdf", headers=J).content
     try:                                    # test-only helper; the server doesn't need it
         import io, pypdf
@@ -169,7 +172,7 @@ def main():
     c.post(A + "/public/" + lk2["token"], json={"client": {"name": "Team entry", "email": "a@b.co"},
                                                 "items": [{"desc": "SEO services", "qty": 1, "rate": "5000"}]})
     team = [i for i in c.get(A + "/list?view=queue", headers=J).json()["invoices"] if i["client"] == "Team entry"][0]
-    check("price-enabled link keeps the typed price", team["total"] == "5900")
+    check("even an old price-enabled request adds no services", team["total"] == "0")
     check("revoke", c.delete(A + "/links/" + lk2["token"], headers=J).status_code == 200)
     check("revoked link refused", c.get(A + "/public/" + lk2["token"]).status_code == 410)
     check("bad seller GSTIN refused", c.put(A + "/settings", headers=J,

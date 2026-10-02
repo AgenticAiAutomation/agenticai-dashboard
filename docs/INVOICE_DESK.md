@@ -1,6 +1,6 @@
 # Invoice Desk
 
-Client fills a link → submission lands in a review queue → Jai sets prices →
+Client fills a link (billing details only) → submission lands in a review queue → Jai adds services + prices →
 **Approve & issue** → numbered, locked PDF in the AI-101 layout.
 
 - Desk (Jai only): `https://dashboard.agenticaiautomation.co/invoices/`
@@ -10,8 +10,8 @@ Client fills a link → submission lands in a review queue → Jai sets prices �
 ## Daily use
 
 1. **Fill links → Create link.** Label + client name. Copy or WhatsApp it.
-   Default: 1 submission, 14 days. Tick *collect prices* only for your own team.
-2. Client fills name, business name, **nature of business**, GSTIN (optional), address, state, services → **Review queue** shows *New from client*.
+   Default: 1 submission, 14 days.
+2. Client fills name, business name, **nature of business**, GSTIN (optional), address, state, a note → **Review queue** shows *New from client*. The form has no services section and is always light mode.
 3. Open it. Fix details. Pick items — price fills from your **Price list** (Settings). Add discount (₹ or %), GST. Totals update live.
 4. **Preview PDF** (watermarked DRAFT) → **Approve & issue**. Number assigned, PDF opens.
 5. Mistake on an issued invoice? **Void** (reason prints on it) → **Duplicate** → fix → issue.
@@ -27,7 +27,7 @@ Client fills a link → submission lands in a review queue → Jai sets prices �
 | No issue without seller address + bank (or UPI) | Locked forever — a blank bank block can never be fixed. |
 | Voided PDF carries a VOID watermark | A voided copy can't pass as a live invoice. |
 | Totals always recomputed on the server | Browser numbers are never stored. |
-| Client-link prices ignored (unless link allows prices) | Client can't set their own price. |
+| Client links carry billing details only; any services/prices sent are dropped | Client never picks services or sets a price — you add them on the desk. |
 | GST auto: same state as seller (06 Haryana) → CGST 9 + SGST 9, else IGST 18 | Sample showed "IGST / CGST & SGST" on one line — now split correctly. Override per invoice. |
 | Every PDF says **THIS IS A SYSTEM GENERATED INVOICE** (boxed, under the total) + footer line | As requested. |
 | Online backup before every issue | Issued invoices are legal records. Keeps last 90. |
@@ -74,7 +74,7 @@ blocks as `snippets/invoice-desk.conf`, then health-gates and rolls itself back 
 
 ## Tests
 
-`PYTHONPATH=api python tests/test_invoice_desk.py` — 54 checks (sample maths 17,766, price list, business field, stamp,
+`PYTHONPATH=api python tests/test_invoice_desk.py` — 56 checks (sample maths 17,766, price list, business field, stamp,
 roles, single-use links, issue needs address + bank, lock, numbering, void, snapshot, flag-off).
 
 ## Scaling later
