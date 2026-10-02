@@ -44,7 +44,9 @@ git merge-base --is-ancestor HEAD "$NEW_SHA" || \
 [ -x api/venv/bin/pip ] || stop "No venv at $REPO/api/venv."
 command -v nginx >/dev/null || stop "nginx not found."
 [ -f "$SITE" ] || stop "$SITE not found."
-if grep -q 'invoices' "$SITE"; then
+# Already set up if the site includes our snippet (what this script adds) or
+# has /invoices blocks pasted in by hand. Adding them twice fails nginx -t.
+if grep -qE 'invoice-desk\.conf|location[^{]*/invoices' "$SITE"; then
   NGINX_DONE=1
 else
   NGINX_DONE=0
