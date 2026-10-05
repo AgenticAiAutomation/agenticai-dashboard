@@ -16,6 +16,26 @@ before it lands.
 
 ---
 
+## 2026-10-05 · Blog Playbook writer (flagged) — built, not deployed
+
+Answer-first block writer on the article page, behind `BLOG_PLAYBOOK_ENABLED`
+(default off) and `BLOG_PLAYBOOK_USERS`. Branch `feat/blog-playbook` in this
+repo and in AgenticWeb. Full guide: `docs/BLOG_PLAYBOOK.md`.
+
+- Writer page: **Playbook | Raw Markdown** switch. The builder composes the same
+  `body_md`, and the raw editor is always there.
+- Advisory **Skim score** dial: `GET /api/seo/articles/{id}/skim`. It never blocks publish.
+- New nullable column `seo_articles.playbook_blocks` (migration
+  `003_playbook_blocks`). It is not mapped on the model, so it is unused while the flag is off.
+- AI draft: `DRAFT_SYSTEM_PLAYBOOK` beside the unchanged `DRAFT_SYSTEM`, used
+  only with the flag on.
+- Publish: Playbook posts (flag on + TL;DR) use a converter that keeps tables
+  and separate blockquotes. All other posts use the old converter, unchanged.
+- **No scoring change.** `scoring.py`, `rankmath.py`, `golive.py`,
+  `publisher.py` are untouched; the publish gate is still 80.
+- Nav: "Playbook guide" → Scoring guide § Blog Playbook.
+- 2026-10-05T07:30:00Z · blog-playbook · build (flag off, not deployed) · feat/blog-playbook · by claude-code
+
 ## 2026-10-01 · invoice-desk v1.1.0 — business type, price list, loud stamp
 
 - Client form + desk + PDF: **Nature of business** field.

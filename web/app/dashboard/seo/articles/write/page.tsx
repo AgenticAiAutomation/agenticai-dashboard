@@ -16,6 +16,14 @@ import MarkdownEditor, {
 } from '@/components/MarkdownEditor';
 import { Card, ErrorBanner, Skeleton } from '@/components/ui';
 import { ScorePassing, ScorePath } from '@/components/ScorePath';
+import PlaybookBuilder from '@/components/PlaybookBuilder';
+import {
+  PlaybookBlocks,
+  blocksForBody,
+  compose,
+  emptyBlocks,
+  normaliseBlocks,
+} from '@/lib/playbook';
 import {
   APPROVED_MATRIX,
   COUNTRY_LABELS,
@@ -24,6 +32,7 @@ import {
   RankMathReport,
   SITE_LINK_TARGETS,
   ScoreReport,
+  SkimReport,
   VERTICAL_LABELS,
   Vertical,
   apiError,
@@ -155,6 +164,19 @@ function WriteArticlePage() {
   const [linkTargets, setLinkTargets] = useState<LinkTarget[]>(SITE_LINK_TARGETS);
   const editorRef = useRef<MarkdownEditorHandle>(null);
 
+  /* Blog Playbook. All of it stays dormant unless the server says the flag is
+     on for this login: no mode switch, no builder, no skim dial, and the save
+     payload is exactly what it was before the feature. */
+  const [playbookEnabled, setPlaybookEnabled] = useState(false);
+  const [mode, setMode] = useState<'playbook' | 'raw'>('raw');
+  const [blocks, setBlocks] = useState<PlaybookBlocks | null>(null);
+  const [savedBlocks, setSavedBlocks] = useState<unknown>(null);
+  const [modeNote, setModeNote] = useState<string | null>(null);
+  const [loaded, setLoaded] = useState<{ body: string; h1: string } | null>(null);
+  const [skim, setSkim] = useState<SkimReport | null>(null);
+  // The H1 the composer writes: the title, or the keyword until there is one.
+  const h1 = title || keyword;
+
   /* Lines carrying a suggestion, for the gutter highlight. The scorer reports
      line 1 for document-level findings (word count, keyword placement), which
      would light up the first line misleadingly — so those are excluded here
@@ -191,6 +213,91 @@ function WriteArticlePage() {
       });
   }, []);
 
+  /* Any failure (route absent, flag off) leaves the page exactly as it was. */
+  useEffect(() => {
+    seoApi
+      .playbookStatus()
+      .then(({ data }) => setPlaybookEnabled(data.enabled === true))
+      .catch(() => setPlaybookEnabled(false));
+  }, []);
+
+  // Flag on + a new article: start in the Playbook, unless typing has begun.
+  useEffect(() => {
+    if (!playbookEnabled || existingId || body.trim()) return;
+    setBlocks(emptyBlocks());
+    setMode('playbook');
+    // Only when the flag resolves; later edits must not re-trigger this.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [playbookEnabled, existingId]);
+
+  /* An existing article opens in the Playbook only when its saved blocks (or
+     a parse of its body) compose to the body exactly. Otherwise it stays in
+     Raw Markdown, so opening an article can never rewrite it. */
+  useEffect(() => {
+    if (!playbookEnabled || !existingId || !loaded) return;
+    let cancelled = false;
+    seoApi
+      .getPlaybook(existingId)
+      .then(({ data }) => data.playbook_blocks as unknown)
+      .catch(() => null)
+      .then((saved) => {
+        if (cancelled) return;
+        setSavedBlocks(saved);
+        const opened = blocksForBody(loaded.body, loaded.h1, saved);
+        if (opened) {
+          setBlocks(opened);
+          setMode('playbook');
+          setModeNote(null);
+        } else {
+          setMode('raw');
+          setModeNote(
+            saved
+              ? 'Opened in Raw Markdown: the body has changed since the Playbook ' +
+                  'blocks were saved (or they came from the AI draft).'
+              : null,
+          );
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [playbookEnabled, existingId, loaded]);
+
+  // In Playbook mode the body is always the composition of the blocks.
+  useEffect(() => {
+    if (mode !== 'playbook' || !blocks) return;
+    setBody(compose(blocks, h1));
+  }, [mode, blocks, h1]);
+
+  const switchToPlaybook = () => {
+    if (!body.trim()) {
+      setBlocks(blocks ?? emptyBlocks());
+      setMode('playbook');
+      setModeNote(null);
+      return;
+    }
+    const opened = blocksForBody(body, h1, blocks ?? savedBlocks);
+    if (opened) {
+      setBlocks(opened);
+      setMode('playbook');
+      setModeNote(null);
+    } else {
+      setModeNote(
+        'This body does not follow the Playbook layout exactly, so it stays in ' +
+          'Raw Markdown — switching would rewrite it.',
+      );
+    }
+  };
+
+  /* Explicit, never automatic: replaces the body with the stored blocks. */
+  const replaceWithSavedBlocks = () => {
+    const normalised = normaliseBlocks(savedBlocks);
+    if (!normalised) return;
+    setBlocks(normalised);
+    setMode('playbook');
+    setModeNote(null);
+  };
+
   /* Object URLs must be revoked or the blob stays in memory for the life of
      the tab, so every replacement frees the previous one. */
   const loadImagePreview = useCallback(
@@ -224,7 +331,12 @@ function WriteArticlePage() {
         setSlug(data.slug ?? '');
         setMetaTitle(data.meta_title ?? '');
         setMetaDescription(data.meta_description ?? '');
-        setBody(data.team_edit_md ?? data.author_draft_md ?? '');
+        const loadedBody = data.team_edit_md ?? data.author_draft_md ?? '';
+        setBody(loadedBody);
+        setLoaded({
+          body: loadedBody,
+          h1: (data.title ?? '') || (data.primary_keyword ?? ''),
+        });
         setFromAuthor(data.from_author_story ?? '');
         setImageAlt(data.featured_image_alt ?? '');
         if (data.featured_image_path) loadImagePreview(existingId);
@@ -291,6 +403,8 @@ function WriteArticlePage() {
         from_author_story: fromAuthor || null,
         featured_image_alt: imageAlt || null,
         faqs: cleanFaqs(),
+        // Omitted entirely unless the Playbook is in use: undefined is not sent.
+        playbook_blocks: playbookEnabled && mode === 'playbook' ? blocks : undefined,
       };
 
       if (articleId) {
@@ -325,9 +439,17 @@ function WriteArticlePage() {
         from_author_story: fromAuthor || null,
         featured_image_alt: imageAlt || null,
         faqs: cleanFaqs(),
+        playbook_blocks: playbookEnabled && mode === 'playbook' ? blocks : undefined,
       });
       const { data } = await seoApi.score(articleId);
       setReport(data);
+      if (playbookEnabled) {
+        // Advisory. If it fails the dial simply does not show.
+        seoApi
+          .skim(articleId)
+          .then(({ data: skimReport }) => setSkim(skimReport))
+          .catch(() => setSkim(null));
+      }
     });
 
   const rankMath = report?.rank_math ?? null;
@@ -462,7 +584,78 @@ function WriteArticlePage() {
             </div>
           </Card>
 
+          {playbookEnabled && (
+            <div className="space-y-2">
+              <div
+                role="group"
+                aria-label="Writer mode"
+                className="inline-flex rounded-lg border border-line bg-raised p-1"
+              >
+                <button
+                  className={`rounded px-3 py-1.5 text-sm ${
+                    mode === 'playbook' ? 'bg-primary text-white' : 'text-muted'
+                  }`}
+                  aria-pressed={mode === 'playbook'}
+                  onClick={switchToPlaybook}
+                >
+                  Playbook
+                </button>
+                <button
+                  className={`rounded px-3 py-1.5 text-sm ${
+                    mode === 'raw' ? 'bg-primary text-white' : 'text-muted'
+                  }`}
+                  aria-pressed={mode === 'raw'}
+                  onClick={() => {
+                    setMode('raw');
+                    setModeNote(null);
+                  }}
+                >
+                  Raw Markdown
+                </button>
+              </div>
+              {modeNote && (
+                <p className="text-xs text-warning" role="status">
+                  {modeNote}{' '}
+                  {savedBlocks != null && mode === 'raw' && (
+                    <button className="underline" onClick={replaceWithSavedBlocks}>
+                      Open the saved Playbook blocks instead (replaces the body)
+                    </button>
+                  )}
+                </p>
+              )}
+            </div>
+          )}
+
+          {playbookEnabled && mode === 'playbook' && blocks && (
+            <>
+              <PlaybookBuilder value={blocks} onChange={setBlocks} />
+              <Card
+                title="Body (composed)"
+                action={
+                  <span className="text-xs text-muted tabular-nums">
+                    {wordCount} words · aim for 1,200–2,500
+                  </span>
+                }
+              >
+                <p className="text-xs text-muted">
+                  The blocks above are saved as this Markdown — the same body the raw
+                  editor writes, scored and published exactly as before. Switch to
+                  Raw Markdown to edit it by hand.
+                </p>
+                <details className="mt-3">
+                  <summary className="cursor-pointer text-xs text-slate-300">
+                    Show the Markdown
+                  </summary>
+                  <pre className="mt-2 max-h-96 overflow-auto whitespace-pre-wrap rounded border border-line bg-raised p-3 font-mono text-xs text-slate-300">
+                    {body}
+                  </pre>
+                </details>
+              </Card>
+            </>
+          )}
+
           <Card
+            className={playbookEnabled && mode === 'playbook' && blocks ? 'hidden' : ''}
             title="Body"
             action={
               <span className="text-xs text-muted tabular-nums">
@@ -734,6 +927,29 @@ function WriteArticlePage() {
                 grade={rankMath?.grade}
               />
             </div>
+            {playbookEnabled && skim && (
+              <div className="mt-4 pt-4 border-t border-line">
+                <ScoreDial label="Skim" score={skim.total_score} />
+                <p className="text-xs text-muted mt-1">
+                  Advisory — does not block publish
+                </p>
+                {skim.checks.some((c) => !c.passed) && (
+                  <ul className="mt-3 space-y-1.5 text-xs">
+                    {skim.checks
+                      .filter((c) => !c.passed)
+                      .map((c) => (
+                        <li key={c.key} className="text-slate-300">
+                          <span className="tabular-nums text-success">
+                            +{Math.round((c.points_available - c.points_earned) * 10) / 10}
+                          </span>{' '}
+                          {c.label}
+                          <span className="block text-muted">{c.detail}</span>
+                        </li>
+                      ))}
+                  </ul>
+                )}
+              </div>
+            )}
             {!report && (
               <p className="text-xs text-muted mt-4">
                 Save the draft, then press <strong>Save &amp; score</strong>. The two

@@ -66,3 +66,19 @@ team or the number of sites grows.
 
 The working day is IST (`Asia/Kolkata`). `store.today_ist()` is the only place
 that decides what "today" means; nothing else calls `date.today()`.
+
+## Blog Playbook — `seo_articles.playbook_blocks` (PostgreSQL)
+
+| Column | Type | Null | Added by |
+|---|---|---|---|
+| `playbook_blocks` | `JSONB` | yes | Alembic `003_playbook_blocks` (down = drop column) |
+
+This is the Playbook writer's structured form of the article (TL;DR, sections,
+example, cost rows, CTA). `body_md` (`author_draft_md` / `team_edit_md`) is
+still the article. The blocks only let the builder reopen it. The shape is
+`PlaybookBlocks` in `web/lib/playbook.ts` (`version: 1`).
+
+The column is deliberately **not mapped** on `SeoArticle`. `app/seo/playbook.py`
+reads and writes it with plain SQL, and only when the flag is on. The API
+therefore runs the same whether or not the migration has been applied, or after
+it has been rolled back.

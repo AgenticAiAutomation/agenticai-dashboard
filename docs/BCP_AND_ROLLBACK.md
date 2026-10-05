@@ -111,3 +111,19 @@ the correct date via a short SQL insert.
 Separate module, separate DB, separate flag (`INVOICE_DESK_ENABLED`). Its
 continuity and rollback plan is in `docs/INVOICE_DESK.md`. Turning either
 feature off never affects the other.
+
+## Blog Playbook writer
+
+Flag `BLOG_PLAYBOOK_ENABLED` (+ `BLOG_PLAYBOOK_USERS`). Publishing never depends
+on anything new. The worst case is turning the flag off, after which the team
+works exactly as on 2026-10-04.
+
+| Problem | Fallback | Rollback |
+|---|---|---|
+| Builder bug | Switch to **Raw Markdown** (always available) | Flag `false` and empty `BLOG_PLAYBOOK_USERS`, restart API |
+| Skim route errors | Dial hides; publish unaffected | Remove the two `seo_playbook` lines in `api/app/main.py` |
+| Website styling breaks | Remove `\| playbook_html` from `templates/blog-post.html` | Revert the site's `blog.py` + `components.css` commit |
+| Migration issue | Column is nullable and unread while the flag is off | `alembic downgrade 002` (drops the column) |
+| Playbook converter fails at publish | Falls back to the legacy converter automatically | Flag off |
+
+Detail and deploy order: `docs/BLOG_PLAYBOOK.md`.

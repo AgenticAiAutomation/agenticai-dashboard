@@ -87,6 +87,16 @@ class Settings(BaseSettings):
     GA4_SERVICE_ACCOUNT_JSON: Optional[str] = None
     GA4_PROPERTY_ID: Optional[str] = None
 
+    # --- Blog Playbook writer ---
+    # The block-based "answer-first" writer. Off by default: with this False and
+    # BLOG_PLAYBOOK_USERS empty, the writer page, the save route, draft
+    # generation and publishing behave exactly as they did before the feature.
+    # BLOG_PLAYBOOK_USERS turns it on for named logins only (comma-separated
+    # emails) so it can be tried on one account before the whole team.
+    # Nothing here touches the publish gate — see app.seo.playbook.
+    BLOG_PLAYBOOK_ENABLED: bool = False
+    BLOG_PLAYBOOK_USERS: str = ""
+
     SERPAPI_KEY: Optional[str] = None
     # Shared secret required by /api/seo/cron/* so only the box can trigger them.
     CRON_SECRET: Optional[str] = None

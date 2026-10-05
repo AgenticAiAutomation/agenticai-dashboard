@@ -135,3 +135,22 @@ Online SQLite backup, prunes to the newest 30. Returns the path written.
 | GET | `/audit` | audit trail |
 | GET/POST | `/public/{token}` | **public** — form meta / submit |
 
+## Blog Playbook — `/api/seo` (SEO login; flagged)
+
+Off unless `BLOG_PLAYBOOK_ENABLED=true` or the caller's email is in
+`BLOG_PLAYBOOK_USERS`. All three are read-only and live in
+`app/seo/routes/playbook.py`. Guide: `docs/BLOG_PLAYBOOK.md`.
+
+| Method | Path | Does |
+|---|---|---|
+| GET | `/api/seo/playbook` | `{enabled}` for the calling login |
+| GET | `/api/seo/articles/{id}/playbook` | `{article_id, playbook_blocks}`; 404 when off |
+| GET | `/api/seo/articles/{id}/skim` | Advisory skim score: `{total_score, max_score: 100, advisory: true, note, checks[]}`; 404 when off. Same auth as `/score`. Never read by publish. |
+
+Changed, additively:
+
+- `POST /api/seo/articles` and `PUT /api/seo/articles/{id}/write` accept an
+  optional `playbook_blocks` object (≤ 200 KB, else 422). It is stored as-is when
+  on and ignored when off.
+- `POST /api/seo/articles/generate` uses the Playbook prompt when on and stores
+  the model's `playbook_blocks`.

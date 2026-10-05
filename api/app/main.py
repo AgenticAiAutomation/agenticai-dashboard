@@ -45,6 +45,12 @@ app.include_router(seo_dashboard.router)
 app.include_router(seo_recommendations.router)
 app.include_router(seo_cron.router)
 
+# --- Blog Playbook (flag status, saved builder blocks, advisory skim score).
+#     Read-only and flagged (BLOG_PLAYBOOK_ENABLED / BLOG_PLAYBOOK_USERS).
+#     Remove these two lines to remove the routes. See docs/BCP_AND_ROLLBACK.md.
+from app.seo.routes import playbook as seo_playbook  # noqa: E402
+app.include_router(seo_playbook.router)
+
 # --- Backlink Ops (off-page SEO desk). Additive, feature-flagged.
 #     Returns False and logs if disabled or unhealthy; never raises.
 #     Remove these two lines to uninstall. See docs/BCP_AND_ROLLBACK.md.

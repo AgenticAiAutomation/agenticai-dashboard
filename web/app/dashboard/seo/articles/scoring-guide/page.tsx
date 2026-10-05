@@ -203,6 +203,85 @@ export default function ScoringGuidePage() {
           </Note>
         </Card>
 
+        {/* ---------------- Blog Playbook format ---------------- */}
+        {/* Linked from the SEO nav ("Playbook guide"). The format, the Markdown
+            it is saved as, and the advisory Skim score. Mirrors
+            web/lib/playbook.ts and api/app/seo/services/skim.py. */}
+        <div id="blog-playbook" className="scroll-mt-24">
+          <Card title="Blog Playbook — the answer-first format">
+            <p className="mb-4 text-sm leading-relaxed text-slate-300">
+              Every post answers the reader&apos;s question first and is easy to skim. The
+              Playbook writer (the <Screen>Playbook</Screen> switch above the editor, when
+              it is turned on for your login) builds this layout for you. You can also type
+              the same layout in <Screen>Raw Markdown</Screen>. The house score, Rank Math
+              and the publish rule (80) do not change.
+            </p>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[520px] text-sm">
+                <thead>
+                  <tr className="text-left text-xs text-muted">
+                    <th className="py-1.5 pr-3 font-normal">#</th>
+                    <th className="py-1.5 pr-3 font-normal">Block</th>
+                    <th className="py-1.5 font-normal">Rule</th>
+                  </tr>
+                </thead>
+                <tbody className="text-slate-300">
+                  {[
+                    ['Title / H1', 'Keyword plus a number or an outcome'],
+                    ['TL;DR', '3 bullets, keyword in bullet 1'],
+                    ['Who it’s for', 'One line'],
+                    ['Question H2 sections (3+)', 'Each 250 words or fewer, one visual each: steps, table, flow, callout or image'],
+                    ['Real example', 'Real client type, before/after, 2–3 real numbers — never invented'],
+                    ['Cost & time table', 'Item · One-time · Monthly · Time'],
+                    ['Callouts', 'Tip / Watch out / Pro tip'],
+                    ['FAQ', '5–8 questions, 30–80 word answers, a source URL each'],
+                    ['From the author', '120+ words, a real story'],
+                    ['CTA', 'Calendly, WhatsApp, or the WhatsApp plan funnel'],
+                  ].map(([block, rule], i) => (
+                    <tr key={block} className="border-t border-line align-top">
+                      <td className="py-1.5 pr-3 font-mono text-xs text-muted">{i + 1}</td>
+                      <td className="py-1.5 pr-3 font-semibold text-slate-100">{block}</td>
+                      <td className="py-1.5">{rule}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <p className="mt-3 text-xs text-muted">
+              The whole post still needs 1,200–2,500 words, readability 60–75, keyword
+              density 0.8–2%, and 2+ internal and 2+ external links.
+            </p>
+
+            <Note title="Writing it in Raw Markdown">
+              <p>Use blockquotes with a bold lead-in. No HTML — the scorer would count the tags as words.</p>
+              <pre className="overflow-x-auto rounded border border-line bg-raised p-3 font-mono text-[12px] leading-relaxed text-slate-200">
+{`> **TL;DR**
+>
+> - First bullet, with the keyword
+> - Second bullet
+> - Third bullet
+
+> **Who this is for:** clinic owners with 30+ appointments a day.
+
+> **Tip:** …    > **Watch out:** …    > **Pro tip:** …
+> **Flow:** Booking → Reminder → Visit
+> **Real example:** a 3-doctor dental clinic …
+> **Next step:** [Book a free 30-minute call](https://calendly.com/agenticaiautomation)`}
+              </pre>
+            </Note>
+
+            <Note tone="warn" title="The Skim score is advisory">
+              <p>
+                After <Screen>Save &amp; score</Screen>, a third dial shows how skimmable the post
+                is (out of 100): TL;DR 20, short sections 20, something visual every 300 words 20,
+                real example with numbers 15, table 10, CTA 10, first paragraph of 60 words or
+                fewer 5. It <strong className="text-slate-100">never blocks publishing</strong> —
+                only the house score and the blockers do.
+              </p>
+            </Note>
+          </Card>
+        </div>
+
         {/* ---------------- the two suggestion panels ---------------- */}
         <Card title="“Whole article · 16” — what is this?">
           <p className="mb-4 text-sm leading-relaxed text-slate-300">

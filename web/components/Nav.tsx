@@ -20,6 +20,7 @@ const SEO_TABS = [
   { href: '/dashboard/seo/backlinks', label: 'Backlinks' },
   { href: '/dashboard/seo/recommendations', label: 'Recommendations' },
   { href: '/dashboard/seo/technical-audit', label: 'Technical audit' },
+  { href: '/dashboard/seo/articles/scoring-guide#blog-playbook', label: 'Playbook guide' },
 ];
 
 export default function Nav() {

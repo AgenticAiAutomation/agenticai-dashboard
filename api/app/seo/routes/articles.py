@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from app.audit import log_event
 from app.database import get_db
 from app.models import User
-from app.seo import enums
+from app.seo import enums, playbook
 from app.seo.deps import (
     admin_user, get_article, seo_user, service_error, slugify, unique_slug,
 )
@@ -30,7 +30,7 @@ from app.seo.schemas import (
 )
 from app.config import settings
 from app.seo.services import (ServiceUnavailable, ai_detection, claude, indexnow,
-                              publisher, rankmath, scoring, storage)
+                              playbook_render, publisher, rankmath, scoring, storage)
 
 router = APIRouter(prefix="/api/seo/articles", tags=["seo-articles"])
 
@@ -64,6 +64,21 @@ def _replace_faqs(db: Session, article: SeoArticle, faqs: List[ManualFaq]) -> No
             source_platform=faq.source_platform.value if faq.source_platform else None,
             position_in_article=position,
         ))
+
+
+def _store_playbook_blocks(db: Session, article: SeoArticle, blocks, user: User) -> None:
+    """Keep the Playbook writer's structured form beside the body.
+
+    Flag off for this user: ignored, exactly as before the feature existed.
+    body_md is still the article — these blocks are only how the builder
+    reopens it, and nothing that scores or publishes reads them.
+    """
+    if blocks is None or not playbook.enabled_for(user):
+        return
+    try:
+        playbook.save_blocks(db, article.id, blocks)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
 
 
 @router.post("", response_model=ArticleDetailResponse, status_code=201)
@@ -104,6 +119,7 @@ def create_article_manually(
 
     if payload.faqs:
         _replace_faqs(db, article, payload.faqs)
+    _store_playbook_blocks(db, article, payload.playbook_blocks, current_user)
 
     log_event(db, "seo.article.created_manually", current_user, request,
               target_type="seo_article", target_id=article.id,
@@ -161,6 +177,7 @@ def save_manual_draft(
 
     if payload.faqs is not None:
         _replace_faqs(db, article, payload.faqs)
+    _store_playbook_blocks(db, article, payload.playbook_blocks, current_user)
 
     log_event(db, "seo.article.saved", current_user, request,
               target_type="seo_article", target_id=article.id, commit=False)
@@ -204,8 +221,11 @@ def generate_article(
         published_titles=published_titles,
     )
 
+    # The Playbook prompt asks for the answer-first structure and returns the
+    # builder blocks too. Flag off: the original prompt, unchanged.
+    use_playbook = playbook.enabled_for(current_user)
     try:
-        draft, usage = claude.generate_draft(prompt)
+        draft, usage = claude.generate_draft(prompt, playbook=use_playbook)
     except ServiceUnavailable as exc:
         raise service_error(exc)
 
@@ -263,6 +283,12 @@ def generate_article(
                             else None,
             position_in_article=position,
         ))
+
+    if use_playbook and isinstance(draft.get("playbook_blocks"), dict):
+        try:
+            playbook.save_blocks(db, article.id, draft["playbook_blocks"])
+        except ValueError:
+            pass   # an oversized block document is dropped; body_md is the article
 
     if payload.pull_request_id:
         pull_request = db.query(SeoPullRequest).filter(
@@ -784,6 +810,22 @@ def _markdown_to_html(md: str) -> str:
         return "\n".join(f"<p>{line}</p>" for line in md.split("\n\n") if line.strip())
 
 
+def _publish_html(md: str, user: User) -> str:
+    """The legacy converter, unless this is a Playbook post and the flag is on.
+
+    A Playbook post (body opens with a TL;DR block) needs its tables and
+    separate blockquotes intact for the site's styling; see
+    services/playbook_render.py. Any failure there falls back to the legacy
+    converter, so the worst case is the old rendering, never a failed publish.
+    """
+    if playbook.enabled_for(user) and playbook_render.is_playbook(md):
+        try:
+            return playbook_render.to_html(md)
+        except Exception:
+            pass
+    return _markdown_to_html(md)
+
+
 def _faq_html(db: Session, article: SeoArticle) -> str:
     faqs = (db.query(SeoArticleFaq).filter(SeoArticleFaq.article_id == article.id)
             .order_by(SeoArticleFaq.position_in_article).all())
@@ -1033,7 +1075,7 @@ def publish_article(
             # FAQs are passed separately rather than appended to the body, so
             # the site renders the accordion and the FAQPage schema from one
             # source and the two cannot drift apart.
-            html=_markdown_to_html(body_md),
+            html=_publish_html(body_md, current_user),
             meta_title=article.meta_title,
             meta_description=article.meta_description,
             primary_keyword=article.primary_keyword,

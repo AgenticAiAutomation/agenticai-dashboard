@@ -69,6 +69,9 @@ class ArticleManualCreate(BaseModel):
     buyer_intent: Optional[enums.BuyerIntent] = None
     assigned_to: Optional[int] = None
     faqs: List[ManualFaq] = Field(default_factory=list)
+    # The Playbook writer's structured form of body_md. Stored as-is when the
+    # flag is on for the caller, ignored otherwise. body_md stays the article.
+    playbook_blocks: Optional[Dict[str, Any]] = None
 
 
 class ArticleManualUpdate(BaseModel):
@@ -92,6 +95,8 @@ class ArticleManualUpdate(BaseModel):
     # model that has not seen it.
     featured_image_alt: Optional[str] = None
     faqs: Optional[List[ManualFaq]] = None
+    # See ArticleManualCreate.playbook_blocks.
+    playbook_blocks: Optional[Dict[str, Any]] = None
 
 
 class ArticleTeamEdit(BaseModel):

@@ -180,6 +180,26 @@ export interface ScoreReport {
   passing?: PassingCheck[];
 }
 
+/* Blog Playbook — advisory only. The server never consults this when
+   deciding whether an article may be published. */
+export interface SkimCheck {
+  key: string;
+  label: string;
+  points_available: number;
+  points_earned: number;
+  passed: boolean;
+  detail: string;
+}
+
+export interface SkimReport {
+  article_id: string;
+  total_score: number;
+  max_score: number;
+  advisory: true;
+  note: string;
+  checks: SkimCheck[];
+}
+
 export interface ArticleDeleted {
   article_id: string;
   slug: string | null;
@@ -368,6 +388,14 @@ export const seoApi = {
   teamEdit: (id: string, body: Record<string, unknown>) =>
     api.put<ArticleDetail>(`/api/seo/articles/${id}/team-edit`, body),
   score: (id: string) => api.post<ScoreReport>(`/api/seo/articles/${id}/score`),
+  /* Blog Playbook. Both article routes answer 404 while the flag is off for
+     this login; callers treat any failure as "feature not available". */
+  playbookStatus: () => api.get<{ enabled: boolean }>('/api/seo/playbook'),
+  getPlaybook: (id: string) =>
+    api.get<{ article_id: string; playbook_blocks: Record<string, unknown> | null }>(
+      `/api/seo/articles/${id}/playbook`,
+    ),
+  skim: (id: string) => api.get<SkimReport>(`/api/seo/articles/${id}/skim`),
   /* Takes a live article off the website. The record survives and returns to
      team review; the removal is submitted to IndexNow by the server. */
   unpublish: (id: string) => api.post<Article>(`/api/seo/articles/${id}/unpublish`),
