@@ -39,7 +39,13 @@ curl -fsS -o /dev/null "$LOCAL/" || stop "The site is not answering on $LOCAL be
 # One existing post, to prove the filter leaves it alone.
 POST=$(curl -fsS "$LOCAL/sitemap-blog.xml" 2>/dev/null | grep -o '<loc>[^<]*</loc>' | head -1 \
        | sed -E 's#<loc>https?://[^/]+##; s#</loc>##' || true)
-body_of() { curl -fsS "$LOCAL$1" | awk '/<article class="postbody">/{on=1} on{print} /<\/article>/{if(on){exit}}'; }
+# awk reads to the end rather than exiting early: an early exit closes the pipe
+# under curl, which then fails with "write error" and pipefail fails the call.
+body_of() {
+  curl -fsS "$LOCAL$1" | awk '!done && /<article class="postbody">/{on=1}
+                               on{print}
+                               on && /<\/article>/{on=0; done=1}'
+}
 
 say "These commits will go live"
 git log --oneline "HEAD..$NEW_SHA"
