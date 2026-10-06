@@ -31,6 +31,14 @@ a TL;DR. Anything else gets the old converter, byte for byte.
 | `BLOG_PLAYBOOK_ENABLED` | `false` | `true` = on for every SEO login |
 | `BLOG_PLAYBOOK_USERS` | empty | Comma-separated emails that get it while the flag is false |
 
+**Day to day, admins grant it in the dashboard:** Users → *Blog Playbook
+access*. Tick logins (or "Everyone who can write articles") and Save. The list
+is stored in `api/instance/blog_playbook_access.json` (setting
+`BLOG_PLAYBOOK_ACCESS_FILE`), and every change is audit-logged. The file only
+adds people on top of the two server settings. `ops/blog-playbook-flag.sh off`
+removes the drop-in and moves the file aside, so one command still turns it off
+for everyone.
+
 Flag off: no mode switch, no builder, no Skim dial. The save payload is the same
 as before. `playbook_blocks` sent to the API is ignored. Draft generation uses the
 old prompt, and publishing uses the old converter.

@@ -3,7 +3,10 @@
 #
 #   bash /root/blog-playbook-flag.sh me      on for Jai's login only
 #   bash /root/blog-playbook-flag.sh team    on for every SEO login
-#   bash /root/blog-playbook-flag.sh off     off for everyone (the rollback)
+#   bash /root/blog-playbook-flag.sh off     off for everyone (the rollback),
+#                                            including access ticked on the Users page
+#
+# Day to day, admins grant access on Users → "Blog Playbook access" instead.
 #
 # The setting lives in its own systemd drop-in, so "off" simply deletes that
 # file. Publishing never depends on the flag; off = the team works as before.
@@ -39,6 +42,10 @@ case "$MODE" in
     ;;
   off)
     rm -f "$DROPIN"
+    # Access ticked on the Users page lives here; moved aside, not deleted, so
+    # the list can be put back by renaming it.
+    ACCESS=$REPO/api/instance/blog_playbook_access.json
+    if [ -f "$ACCESS" ]; then mv "$ACCESS" "$ACCESS.off-$(date +%Y%m%d-%H%M%S)"; fi
     ;;
   *)
     stop "Say which: me, team or off.  Example: bash /root/blog-playbook-flag.sh me"

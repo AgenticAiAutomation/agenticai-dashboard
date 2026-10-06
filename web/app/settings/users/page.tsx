@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import api from '@/lib/api';
 import Shell from '@/components/Shell';
+import PlaybookAccessCard from '@/components/PlaybookAccessCard';
 import { Card, EmptyState, ErrorBanner, ScoreBadge, Skeleton } from '@/components/ui';
 import { apiError, COUNTRY_LABELS, VERTICAL_LABELS } from '@/lib/seo';
 
@@ -307,6 +308,8 @@ export default function UsersPage() {
           </div>
         )}
       </Card>
+
+      <PlaybookAccessCard />
     </Shell>
   );
 }

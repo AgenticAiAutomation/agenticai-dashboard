@@ -96,6 +96,9 @@ class Settings(BaseSettings):
     # Nothing here touches the publish gate — see app.seo.playbook.
     BLOG_PLAYBOOK_ENABLED: bool = False
     BLOG_PLAYBOOK_USERS: str = ""
+    # Who admins have granted it to from the Users page. Relative to the API's
+    # working directory (api/), next to the other desks' data in instance/.
+    BLOG_PLAYBOOK_ACCESS_FILE: str = "instance/blog_playbook_access.json"
 
     SERPAPI_KEY: Optional[str] = None
     # Shared secret required by /api/seo/cron/* so only the box can trigger them.

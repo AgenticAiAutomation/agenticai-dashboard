@@ -120,7 +120,7 @@ works exactly as on 2026-10-04.
 
 | Problem | Fallback | Rollback |
 |---|---|---|
-| Builder bug | Switch to **Raw Markdown** (always available) | Flag `false` and empty `BLOG_PLAYBOOK_USERS`, restart API |
+| Builder bug | Switch to **Raw Markdown** (always available), or untick people on Users → Blog Playbook access | `bash /root/blog-playbook-flag.sh off` (drop-in removed, dashboard access file moved aside, API restarted) |
 | Skim route errors | Dial hides; publish unaffected | Remove the two `seo_playbook` lines in `api/app/main.py` |
 | Website styling breaks | Remove `\| playbook_html` from `templates/blog-post.html` | Revert the site's `blog.py` + `components.css` commit |
 | Migration issue | Column is nullable and unread while the flag is off | `alembic downgrade 002` (drops the column) |

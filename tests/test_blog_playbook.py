@@ -63,8 +63,16 @@ Start with confirmations and reminders.
 
 
 @pytest.fixture
-def flag(monkeypatch):
-    """flag(True) switches the Playbook on for everyone; default is off."""
+def flag(monkeypatch, tmp_path):
+    """flag(True) switches the Playbook on for everyone; default is off.
+
+    The dashboard-granted access file points at an empty temp dir, so a real
+    file on this machine can never leak into a test.
+    """
+    monkeypatch.setattr(settings, "BLOG_PLAYBOOK_ACCESS_FILE",
+                        str(tmp_path / "instance" / "blog_playbook_access.json"))
+    playbook._access_cache.update(mtime=None, value=None)
+
     def set_flag(on: bool, users: str = ""):
         monkeypatch.setattr(settings, "BLOG_PLAYBOOK_ENABLED", on)
         monkeypatch.setattr(settings, "BLOG_PLAYBOOK_USERS", users)
@@ -352,3 +360,100 @@ def test_existing_article_routes_still_registered(client):
                          ("/api/seo/articles", "post"),
                          ("/api/seo/articles/{article_id}/skim", "get")]:
         assert method in paths.get(path, {}), path
+
+
+# ------------------------------------------------------------ access from the dashboard
+def _u(email, role="seo_lead", uid=1):
+    return SimpleNamespace(id=uid, email=email, full_name=email.split("@")[0], role=role,
+                           is_active=True)
+
+
+def test_access_file_grants_named_logins(flag):
+    flag(False)
+    playbook.save_access(False, ["Contact@AgenticAIAutomation.co"])
+    assert playbook.enabled_for(_u("contact@agenticaiautomation.co"))
+    assert not playbook.enabled_for(_u("someone@else.co"))
+    playbook.save_access(True, [])
+    assert playbook.enabled_for(_u("someone@else.co"))
+    playbook.save_access(False, [])
+    assert not playbook.enabled_for(_u("contact@agenticaiautomation.co"))
+
+
+def test_unreadable_access_file_means_nobody(flag):
+    flag(False)
+    path = Path(settings.BLOG_PLAYBOOK_ACCESS_FILE)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("{not json", encoding="utf-8")
+    assert playbook.load_access() == {"everyone": False, "emails": []}
+    assert not playbook.enabled_for(_u("contact@agenticaiautomation.co"))
+
+
+class FakeQuery:
+    def __init__(self, rows):
+        self.rows = rows
+
+    def filter(self, *a):
+        return self
+
+    def order_by(self, *a):
+        return self
+
+    def all(self):
+        return self.rows
+
+
+@pytest.fixture
+def admin_client(flag):
+    from fastapi.testclient import TestClient
+    from app.database import get_db
+    from app.seo.deps import admin_user
+    client_fixture_app = _app_with_stub()
+    users = [_u("contact@agenticaiautomation.co", "owner", 1),
+             _u("updeshcredible@gmail.com", "admin", 2),
+             _u("writer@agenticaiautomation.co", "seo_lead", 3)]
+    db = SimpleNamespace(query=lambda model: FakeQuery(users), add=lambda e: None,
+                         commit=lambda: None, rollback=lambda: None)
+    client_fixture_app.dependency_overrides[admin_user] = lambda: users[0]
+    client_fixture_app.dependency_overrides[get_db] = lambda: db
+    yield TestClient(client_fixture_app)
+    client_fixture_app.dependency_overrides.clear()
+
+
+def _app_with_stub():
+    try:
+        import app.wa_leads as wa_leads
+        wa_leads.register
+    except (ImportError, AttributeError):
+        import types
+        stub = types.ModuleType("app.wa_leads")
+        stub.register = lambda app: False
+        sys.modules["app.wa_leads"] = stub
+    from app.main import app
+    return app
+
+
+def test_admin_grants_two_logins(admin_client):
+    body = {"everyone": False,
+            "emails": ["contact@agenticaiautomation.co", "UpdeshCredible@gmail.com"]}
+    data = admin_client.put("/api/seo/playbook/access", json=body).json()
+    assert data["emails"] == ["contact@agenticaiautomation.co", "updeshcredible@gmail.com"]
+    enabled = {u["email"]: u["enabled"] for u in data["users"]}
+    assert enabled == {"contact@agenticaiautomation.co": True,
+                       "updeshcredible@gmail.com": True,
+                       "writer@agenticaiautomation.co": False}
+    assert admin_client.get("/api/seo/playbook/access").json()["emails"] == data["emails"]
+
+
+def test_admin_cannot_grant_unknown_login(admin_client):
+    r = admin_client.put("/api/seo/playbook/access",
+                         json={"everyone": False, "emails": ["stranger@x.co"]})
+    assert r.status_code == 422
+    assert not Path(settings.BLOG_PLAYBOOK_ACCESS_FILE).exists()
+
+
+def test_access_routes_need_an_admin(flag):
+    from fastapi.testclient import TestClient
+    client = TestClient(_app_with_stub())
+    assert client.get("/api/seo/playbook/access").status_code in (401, 403)
+    assert client.put("/api/seo/playbook/access",
+                      json={"everyone": True, "emails": []}).status_code in (401, 403)

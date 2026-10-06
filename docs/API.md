@@ -145,6 +145,8 @@ Off unless `BLOG_PLAYBOOK_ENABLED=true` or the caller's email is in
 |---|---|---|
 | GET | `/api/seo/playbook` | `{enabled}` for the calling login |
 | GET | `/api/seo/articles/{id}/playbook` | `{article_id, playbook_blocks}`; 404 when off |
+| GET | `/api/seo/playbook/access` | **Admin.** `{everyone, emails, server_enabled, server_emails, users[{id,email,full_name,role,granted,via_server,enabled}]}` |
+| PUT | `/api/seo/playbook/access` | **Admin.** Body `{everyone, emails[]}`. Emails must be active logins that can write articles (else 422). Audit-logged as `seo.playbook.access_changed`. |
 | GET | `/api/seo/articles/{id}/skim` | Advisory skim score: `{total_score, max_score: 100, advisory: true, note, checks[]}`; 404 when off. Same auth as `/score`. Never read by publish. |
 
 Changed, additively:

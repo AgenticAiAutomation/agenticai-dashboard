@@ -200,6 +200,24 @@ export interface SkimReport {
   checks: SkimCheck[];
 }
 
+export interface PlaybookAccessUser {
+  id: number;
+  email: string;
+  full_name: string;
+  role: string;
+  granted: boolean;      // ticked on the Users page
+  via_server: boolean;   // switched on in the server settings, not editable here
+  enabled: boolean;      // what the user actually gets
+}
+
+export interface PlaybookAccess {
+  everyone: boolean;
+  emails: string[];
+  server_enabled: boolean;
+  server_emails: string[];
+  users: PlaybookAccessUser[];
+}
+
 export interface ArticleDeleted {
   article_id: string;
   slug: string | null;
@@ -396,6 +414,10 @@ export const seoApi = {
       `/api/seo/articles/${id}/playbook`,
     ),
   skim: (id: string) => api.get<SkimReport>(`/api/seo/articles/${id}/skim`),
+  /* Admins only: who has the Playbook writer. */
+  playbookAccess: () => api.get<PlaybookAccess>('/api/seo/playbook/access'),
+  setPlaybookAccess: (body: { everyone: boolean; emails: string[] }) =>
+    api.put<PlaybookAccess>('/api/seo/playbook/access', body),
   /* Takes a live article off the website. The record survives and returns to
      team review; the removal is submitted to IndexNow by the server. */
   unpublish: (id: string) => api.post<Article>(`/api/seo/articles/${id}/unpublish`),
