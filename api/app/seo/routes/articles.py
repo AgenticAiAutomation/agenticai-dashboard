@@ -29,8 +29,9 @@ from app.seo.schemas import (
     ValidateCountryRequest,
 )
 from app.config import settings
-from app.seo.services import (ServiceUnavailable, ai_detection, claude, indexnow,
-                              playbook_render, publisher, rankmath, scoring, storage)
+from app.seo.services import (ServiceUnavailable, ai_detection, claude, export_html,
+                              indexnow, playbook_render, publisher, rankmath, scoring,
+                              storage)
 
 router = APIRouter(prefix="/api/seo/articles", tags=["seo-articles"])
 
@@ -737,6 +738,76 @@ def generate_alt(
               target_type="seo_article", target_id=article.id, detail=alt, commit=False)
     db.commit()
     return {"featured_image_alt": alt, "cost_inr": usage.cost_inr}
+
+
+# --------------------------------------------------------------------------
+# Export
+# --------------------------------------------------------------------------
+@router.get("/{article_id}/export.html")
+def export_article_html(
+    request: Request,
+    article: SeoArticle = Depends(get_article),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(seo_user),
+):
+    """Download the article as one self-contained HTML file.
+
+    Only once it has scored at the publish threshold — the export is meant to
+    be the finished article. It reads the same body the scorer read and runs it
+    through the same converter publishing uses. Nothing is written except an
+    audit line.
+    """
+    score = article.current_score
+    if score is None or score < PUBLISH_MIN_SCORE:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "below_threshold",
+                "message": (f"The house score is {score if score is not None else 'not set'}; "
+                            f"export opens at {PUBLISH_MIN_SCORE}. Save & score first."),
+                "current_score": score,
+                "required": PUBLISH_MIN_SCORE,
+            },
+        )
+
+    markdown = article.final_md or article.team_edit_md or article.author_draft_md or ""
+    body_html = export_html.style_playbook_blocks(
+        _publish_html(export_html.strip_author_placeholder(markdown), current_user))
+
+    faqs = [{"question": f.question, "answer": f.answer}
+            for f in db.query(SeoArticleFaq).filter(SeoArticleFaq.article_id == article.id)
+            .order_by(SeoArticleFaq.position_in_article).all()]
+
+    image = None
+    if article.featured_image_path:
+        try:
+            image = storage.get_object(article.featured_image_path)
+        except Exception:
+            image = None   # the export still works without the picture
+
+    document = export_html.render(
+        title=article.title or article.primary_keyword,
+        meta_title=article.meta_title,
+        meta_description=article.meta_description,
+        body_html=body_html,
+        faqs=faqs,
+        from_author_story=article.from_author_story,
+        score=score,
+        image=image,
+        image_alt=article.featured_image_alt,
+    )
+
+    log_event(db, "seo.article.exported_html", current_user, request,
+              target_type="seo_article", target_id=article.id,
+              detail=f"score {score}, {len(document)} bytes")
+
+    filename = f"{article.slug or 'article'}.html"
+    return Response(
+        content=document,
+        media_type="text/html; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"',
+                 "Cache-Control": "no-store"},
+    )
 
 
 # --------------------------------------------------------------------------

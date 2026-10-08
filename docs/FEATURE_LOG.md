@@ -16,6 +16,17 @@ before it lands.
 
 ---
 
+## 2026-10-08 · Article HTML export (above the threshold)
+
+- Writer page → Scores: **Export HTML** appears once the house score reaches 80.
+  It only works while the screen still matches what was scored; any edit asks
+  for Save & score again.
+- One self-contained, always-light `.html` file: title, featured image
+  (embedded), body (same converter as publish, Playbook boxes styled), From the
+  author, FAQs. `GET /api/seo/articles/{id}/export.html`; 409 below 80.
+- No scoring, gate or publisher change. `api/app/seo/services/export_html.py`, tests
+  `tests/test_export_html.py`.
+
 ## 2026-10-05 · Blog Playbook writer (flagged) — built, not deployed
 
 Answer-first block writer on the article page, behind `BLOG_PLAYBOOK_ENABLED`

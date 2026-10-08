@@ -156,3 +156,9 @@ Changed, additively:
   on and ignored when off.
 - `POST /api/seo/articles/generate` uses the Playbook prompt when on and stores
   the model's `playbook_blocks`.
+
+## Article HTML export — `/api/seo/articles` (SEO login)
+
+| Method | Path | Does |
+|---|---|---|
+| GET | `/api/seo/articles/{id}/export.html` | The article as one self-contained HTML file (`Content-Disposition: attachment; filename="<slug>.html"`). **409** `below_threshold` unless the stored house score is at least 80 (`PUBLISH_MIN_SCORE`). Reads the body the scorer reads, converts it as publishing does, embeds the featured image, adds FAQs and From the author. Light only, no scripts. Audit-logged as `seo.article.exported_html`. Not behind the Playbook flag. |

@@ -174,6 +174,7 @@ function WriteArticlePage() {
   const [modeNote, setModeNote] = useState<string | null>(null);
   const [loaded, setLoaded] = useState<{ body: string; h1: string } | null>(null);
   const [skim, setSkim] = useState<SkimReport | null>(null);
+  const [scoredSnapshot, setScoredSnapshot] = useState<string | null>(null);
   // The H1 the composer writes: the title, or the keyword until there is one.
   const h1 = title || keyword;
 
@@ -366,6 +367,11 @@ function WriteArticlePage() {
     [body],
   );
 
+  /* Everything the export reads from the saved article, as one string. */
+  const snapshot = JSON.stringify([
+    title, keyword, body, metaTitle, metaDescription, fromAuthor, imageAlt, faqs,
+  ]);
+
   const cleanFaqs = useCallback(
     () =>
       faqs
@@ -441,8 +447,10 @@ function WriteArticlePage() {
         faqs: cleanFaqs(),
         playbook_blocks: playbookEnabled && mode === 'playbook' ? blocks : undefined,
       });
+      const scoredFrom = snapshot;
       const { data } = await seoApi.score(articleId);
       setReport(data);
+      setScoredSnapshot(scoredFrom);
       if (playbookEnabled) {
         // Advisory. If it fails the dial simply does not show.
         seoApi
@@ -453,6 +461,25 @@ function WriteArticlePage() {
     });
 
   const rankMath = report?.rank_math ?? null;
+
+  const threshold = report?.path_to_threshold?.threshold ?? 80;
+  const passed = !!report && report.total_score >= threshold;
+  const exportReady = passed && scoredSnapshot === snapshot;
+
+  const exportHtml = () =>
+    run('export', async () => {
+      if (!articleId) return;
+      const { data } = await seoApi.exportHtml(articleId);
+      const url = URL.createObjectURL(data);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${slug || 'article'}.html`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+      setNotice('HTML exported — check your downloads.');
+    });
 
   const uploadImage = (file: File) =>
     run('upload', async () => {
@@ -948,6 +975,25 @@ function WriteArticlePage() {
                       ))}
                   </ul>
                 )}
+              </div>
+            )}
+            {passed && (
+              <div className="mt-4 pt-4 border-t border-line">
+                <p className="card-title text-success mb-2">
+                  Above the threshold ({report!.total_score}/{threshold})
+                </p>
+                <button
+                  className="btn-primary w-full"
+                  onClick={exportHtml}
+                  disabled={busy !== null || !exportReady}
+                >
+                  {busy === 'export' ? 'Exporting…' : 'Export HTML'}
+                </button>
+                <p className="mt-1.5 text-xs text-muted">
+                  {exportReady
+                    ? 'One self-contained file: body, image, FAQs and From the author.'
+                    : 'You changed the article since it was scored — Save & score again to export.'}
+                </p>
               </div>
             )}
             {!report && (

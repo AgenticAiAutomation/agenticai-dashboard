@@ -414,6 +414,9 @@ export const seoApi = {
       `/api/seo/articles/${id}/playbook`,
     ),
   skim: (id: string) => api.get<SkimReport>(`/api/seo/articles/${id}/skim`),
+  /* The finished article as one HTML file. 409 below the publish threshold. */
+  exportHtml: (id: string) =>
+    api.get<Blob>(`/api/seo/articles/${id}/export.html`, { responseType: 'blob' }),
   /* Admins only: who has the Playbook writer. */
   playbookAccess: () => api.get<PlaybookAccess>('/api/seo/playbook/access'),
   setPlaybookAccess: (body: { everyone: boolean; emails: string[] }) =>
