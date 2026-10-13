@@ -69,7 +69,9 @@ def test_projects_merge_runtime_overrides_and_new_sites():
     assert P["whatsappauto"]["domain"] == "whatsappautomation.co.in"      # seed field kept
     assert P["newsite"]["name"] == "New.in" and P["newsite"]["pages"] == ["/"]
     assert set(seed.PROJECTS) <= set(P)                                    # seed sites never vanish
-    assert seed.projects()["whatsappauto"]["active"] is False              # ships hidden
+    assert seed.projects()["whatsappauto"]["active"] is True               # live since Oct 2026
+    assert seed.projects({"projects": [{"id": "whatsappauto", "active": False}]}
+                         )["whatsappauto"]["active"] is False              # the desk can still hide it
 
 
 def test_level_override_is_bounded():

@@ -81,14 +81,20 @@ def exact_anchor_share(entries, project, bank_keywords=(), cfg=None):
     return exact / len(entries)
 
 
-def day_stats(entries, decisions, queries, cfg_level, project, bank_keywords=(), cfg=None):
+def day_stats(entries, decisions, queries, cfg_level, project, bank_keywords=(), cfg=None,
+              group=None):
     """Returns the full per-day picture: scored rows, totals and the
-    requirement checklist the associate has to clear."""
+    requirement checklist the associate has to clear.
+
+    `group` (v1.3): the whole site's sheet for that day, when `entries` is one
+    person's slice of it. Each link is still scored against the full sheet, so
+    a person's points add up to exactly what the site view shows for them."""
     L = level_for(cfg_level, cfg)
     rows, points, counted, high, da_sum, indexed, rejected = [], 0.0, 0, 0, 0.0, 0, 0
+    group = entries if group is None else group
 
     for e in entries:
-        sc = score_entry(e, entries)
+        sc = score_entry(e, group)
         dec = decisions.get(e["id"]) or {}
         status = dec.get("status", "pending")
         row = dict(e)

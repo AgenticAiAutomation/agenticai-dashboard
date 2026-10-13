@@ -35,16 +35,16 @@ PROJECTS = {
         "pages": ["/store", "/gifting", "/home-decor", "/tools-hardware", "/craft-kits",
                   "/party-supplies", "/organizers", "/diy-ideas", "/corporate-gifting"],
     },
-    # Sister site to AgenticAI, WhatsApp automation only. The domain is still
-    # parked (Sept 2026), so it ships inactive: present in config, hidden from
-    # the project picker until the superuser flips `active` on the desk and
-    # fills in the real page paths.
+    # Sister site to AgenticAI, WhatsApp automation only. Shipped inactive in
+    # Sept 2026 while the domain was parked; live since Oct 2026 (it answers
+    # 200), so it now ships active. An inactive site is still shown to anyone
+    # rostered on it — see assignments.visible_projects.
     "whatsappauto": {
         "id": "whatsappauto",
         "name": "WhatsAppAutomation.co.in",
         "short": "WA Auto",
         "domain": "whatsappautomation.co.in",
-        "active": False,
+        "active": True,
         "hue": "#1F8F4E",
         "initial": "W",
         "niche": ("WhatsApp Business API automation for Indian SMEs — appointment reminders, "

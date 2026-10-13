@@ -85,12 +85,18 @@ class Settings:
     # Upper bound on links sent to the AI per run (keeps one call small).
     AUTOREVIEW_BATCH = int(os.environ.get("BACKLINK_OPS_AUTOREVIEW_BATCH", "60"))
 
+    # --- per-person, per-site levels (v1.3). Off = one level for everyone,
+    #     exactly as before. On = each (user, website) pair carries its own
+    #     level, XP and streak; the global level becomes the starting level
+    #     for a pair seen for the first time. See docs/DAILY_TRACKER.md.
+    PER_PROJECT_LEVELS = _b("FEATURE_PER_PROJECT_LEVELS", "0")
+
     # --- observability --------------------------------------------------
     LOG_PREFIX     = os.environ.get("BACKLINK_OPS_LOG_PREFIX", "backlink-ops")
     FEATURE_LOG    = os.environ.get("BACKLINK_OPS_FEATURE_LOG", "docs/FEATURE_LOG.md")
 
-    VERSION        = "1.2.0"
-    SCHEMA_VERSION = 1
+    VERSION        = "1.3.0"
+    SCHEMA_VERSION = 2
 
 
 settings = Settings()

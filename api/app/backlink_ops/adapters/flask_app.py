@@ -114,6 +114,19 @@ def build_blueprints():
     def progress():
         return _json(service.progress(current_user(), request.args.get("days", 14)))
 
+    # --- v1.3: per-person, per-site levels
+    @api.get("/levels")
+    def my_levels():
+        return _json(service.my_levels(current_user()))
+
+    @api.get("/levels/all")
+    def all_levels():
+        return _json(service.all_levels(current_user()))
+
+    @api.put("/levels")
+    def set_level():
+        return _json(service.set_pair_level(current_user(), request.get_json(silent=True)))
+
     @api.get("/config")
     def get_config():
         return _json(service.get_config(current_user()))

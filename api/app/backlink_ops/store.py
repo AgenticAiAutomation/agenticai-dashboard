@@ -123,6 +123,26 @@ CREATE TABLE IF NOT EXISTS bo_audit (
 );
 CREATE INDEX IF NOT EXISTS ix_bo_audit_at ON bo_audit(at);
 
+-- v1.3 (schema 2): one level per (user, website). Additive; nothing above
+-- changes. user_id is the dashboard users.id; name/email are kept so the
+-- superuser's grid reads without a join into the host database.
+CREATE TABLE IF NOT EXISTS bo_user_levels (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id             TEXT NOT NULL,
+    project_id          TEXT NOT NULL,
+    user_name           TEXT NOT NULL DEFAULT '',
+    user_email          TEXT NOT NULL DEFAULT '',
+    level               INTEGER NOT NULL DEFAULT 1,
+    xp                  REAL NOT NULL DEFAULT 0,
+    current_difficulty  TEXT NOT NULL DEFAULT '',
+    streak_days         INTEGER NOT NULL DEFAULT 0,
+    last_completed_date TEXT,
+    seeded_from         TEXT NOT NULL DEFAULT 'global',
+    created_at          TEXT NOT NULL,
+    updated_at          TEXT NOT NULL,
+    UNIQUE (user_id, project_id)
+);
+
 CREATE TABLE IF NOT EXISTS bo_ai_usage (
     date        TEXT NOT NULL,
     kind        TEXT NOT NULL,
@@ -177,6 +197,22 @@ def init_db(logger=None):
             conn.execute(
                 "INSERT INTO bo_schema_version(version, applied_at, note) VALUES (?,?,?)",
                 (settings.SCHEMA_VERSION, now_iso(), "initial install"))
+        elif have < 2:
+            # The new table was created by SCHEMA above. Record the global level
+            # as it stood at upgrade time: every (user, site) pair seen from now
+            # on starts there, so nobody drops back to level 1.
+            cfg_row = conn.execute("SELECT value FROM bo_config WHERE key='settings'").fetchone()
+            try:
+                g = int(json.loads(cfg_row["value"]).get("level", 1)) if cfg_row else 1
+            except Exception:
+                g = 1
+            conn.execute("INSERT INTO bo_config(key, value, updated_by, updated_at) VALUES (?,?,?,?) "
+                         "ON CONFLICT(key) DO NOTHING",
+                         ("levels_v2_migration", json.dumps({"global_level": g, "at": now_iso()}),
+                          "installer", now_iso()))
+            conn.execute(
+                "INSERT INTO bo_schema_version(version, applied_at, note) VALUES (?,?,?)",
+                (2, now_iso(), "per-user, per-site levels (bo_user_levels)"))
         if conn.execute("SELECT COUNT(*) c FROM bo_config WHERE key='settings'").fetchone()["c"] == 0:
             conn.execute("INSERT INTO bo_config(key, value, updated_by, updated_at) VALUES (?,?,?,?)",
                          ("settings", json.dumps(DEFAULT_CONFIG), "installer", now_iso()))
@@ -307,6 +343,90 @@ def put_meta(key, value, actor="system"):
                      "ON CONFLICT(key) DO UPDATE SET value=excluded.value, "
                      "updated_by=excluded.updated_by, updated_at=excluded.updated_at",
                      (key, json.dumps(value), actor, now_iso()))
+
+
+def entries_by_author(project, author, since=None):
+    """Every link this person logged on this site (case-insensitive name)."""
+    sql = "SELECT * FROM bo_entries WHERE project=? AND lower(trim(author))=lower(trim(?))"
+    args = [project, author]
+    if since:
+        sql += " AND date >= ?"
+        args.append(since)
+    return [_entry_row(r) for r in connect().execute(sql + " ORDER BY date, created_at", args)]
+
+
+def entries_on(project, dates):
+    """All links on a site for the given dates, grouped by date (for scoring
+    each link against the rest of that day's sheet, as everywhere else)."""
+    out = {}
+    dates = sorted(set(dates))
+    for i in range(0, len(dates), 400):
+        chunk = dates[i:i + 400]
+        q = "SELECT * FROM bo_entries WHERE project=? AND date IN (%s)" % ",".join("?" * len(chunk))
+        for r in connect().execute(q, [project] + chunk):
+            out.setdefault(r["date"], []).append(_entry_row(r))
+    return out
+
+
+def decisions_by_ids(ids):
+    out = {}
+    ids = list(ids)
+    for i in range(0, len(ids), 400):
+        chunk = ids[i:i + 400]
+        q = "SELECT * FROM bo_reviews WHERE entry_id IN (%s)" % ",".join("?" * len(chunk))
+        for r in connect().execute(q, chunk):
+            out[r["entry_id"]] = {"status": r["status"], "note": r["note"],
+                                  "by": r["reviewer"], "at": r["reviewed_at"]}
+    return out
+
+
+def query_dates_by_author(project, author, since=None):
+    sql = ("SELECT date, COUNT(*) c FROM bo_queries WHERE project=? "
+           "AND lower(trim(author))=lower(trim(?))")
+    args = [project, author]
+    if since:
+        sql += " AND date >= ?"
+        args.append(since)
+    return {r["date"]: r["c"] for r in connect().execute(sql + " GROUP BY date", args)}
+
+
+# ----------------------------------------------------------------- per-user levels (v1.3)
+def get_level(user_id, project):
+    r = connect().execute("SELECT * FROM bo_user_levels WHERE user_id=? AND project_id=?",
+                          (str(user_id), project)).fetchone()
+    return dict(r) if r else None
+
+
+def create_level(user_id, project, name, email, level, difficulty, seeded_from="global"):
+    conn = connect()
+    now = now_iso()
+    with conn:
+        conn.execute(
+            "INSERT INTO bo_user_levels(user_id,project_id,user_name,user_email,level,xp,"
+            "current_difficulty,streak_days,last_completed_date,seeded_from,created_at,updated_at) "
+            "VALUES (?,?,?,?,?,0,?,0,NULL,?,?,?) ON CONFLICT(user_id,project_id) DO NOTHING",
+            (str(user_id), project, name or "", email or "", int(level), difficulty,
+             seeded_from, now, now))
+    return get_level(user_id, project)
+
+
+def update_level(user_id, project, **fields):
+    allowed = {"user_name", "user_email", "level", "xp", "current_difficulty",
+               "streak_days", "last_completed_date"}
+    keys = [k for k in fields if k in allowed]
+    if not keys:
+        return get_level(user_id, project)
+    conn = connect()
+    with conn:
+        conn.execute("UPDATE bo_user_levels SET %s, updated_at=? WHERE user_id=? AND project_id=?"
+                     % ", ".join(k + "=?" for k in keys),
+                     [fields[k] for k in keys] + [now_iso(), str(user_id), project])
+    return get_level(user_id, project)
+
+
+def all_levels():
+    return [dict(r) for r in connect().execute(
+        "SELECT * FROM bo_user_levels ORDER BY lower(user_name), project_id")]
 
 
 # ----------------------------------------------------------------- queries + bank

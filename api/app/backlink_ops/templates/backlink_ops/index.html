@@ -393,7 +393,12 @@ async function api(path, opts){
   return body;
 }
 const P = () => (S.meta && S.meta.projects[S.project]) || {short:"—", hue:"#00998C", initial:"?", name:""};
-const L = () => (S.day && S.day.level) || (S.meta && S.meta.level) || {n:1,name:"Warm-up",target:60,queries:3};
+const L = () => (SC() && SC().level) || (S.meta && S.meta.level) || {n:1,name:"Warm-up",target:60,queries:3};
+/* v1.3: with per-site levels on, the score card is the person's own day at
+   their own level (S.day.mine). The sheet and review queue stay site-wide.
+   The superuser, who logs nothing, keeps the site view. */
+const SC = () => (S.day && S.day.mine && !isOwner()) ? S.day.mine : S.day;
+const normName = s => String(s||"").trim().replace(/\s+/g," ").toLowerCase();
 const typeMap = () => Object.fromEntries((S.meta.linkTypes||[]).map(t=>[t.v,t]));
 
 /* ------------------------------------------------------------------ boot */
@@ -407,6 +412,9 @@ async function boot(){
       'If it keeps happening, tell Jai — the health check is at <code>'+esc(API)+'/health</code>.</p></div>';
     return;
   }
+  // v1.3: /seo/backlink-ops/#settings (etc.) opens that tab.
+  const h = (location.hash||"").slice(1);
+  if(["today","lab","all","board","review","settings"].includes(h)) S.tab = h;
   renderShell();
   await Promise.all([loadDay(), loadBank(), loadBoard(), loadProgress()]);
   S.booted = true;
@@ -416,14 +424,23 @@ function applyBootstrap(b){
   S.me = b.me; S.cfg = b.config;
   S.meta = {levels:b.levels, level:b.level, linkTypes:b.linkTypes, projects:b.projects,
             seedKeywords:b.seedKeywords, today:b.today, readOnly:b.readOnly,
-            aiEnabled:b.aiEnabled, version:b.version, autoReview:b.autoReview};
-  const mine = (b.config.roster||[]).find(r => r.name === S.me.name);
-  S.project = (mine && mine.project) || b.project || "agenticai";
-  if((S.meta.projects[S.project]||{}).active===false && !isOwner()){
-    const live = Object.values(S.meta.projects).find(p => p.active!==false); if(live) S.project = live.id; }
+            aiEnabled:b.aiEnabled, version:b.version, autoReview:b.autoReview,
+            assigned:b.assigned||null, visible:b.visible||null, perProjectLevels:!!b.perProjectLevels};
+  // v1.3: the server matches the roster to this login (email, or name ignoring
+  // case and spaces) and says which sites this person may see. Older servers
+  // send neither, so fall back to the v1.2 rule.
+  if(!S.booted){
+    if(b.assigned){ S.project = b.assigned[0] || b.project || "agenticai"; }
+    else { const mine = (b.config.roster||[]).find(r => normName(r.name) === normName(S.me.name));
+           S.project = (mine && mine.project) || b.project || "agenticai"; }
+  }
+  if(!isVisible(S.project)){
+    const live = Object.values(S.meta.projects).find(p => isVisible(p.id)); if(live) S.project = live.id; }
   if(b.readOnly) toast("The desk is in read-only mode while maintenance runs.");
 }
 const isOwner = () => S.me && S.me.role === "superuser";
+const isVisible = id => S.meta.visible ? S.meta.visible.includes(id)
+  : ((S.meta.projects[id]||{}).active !== false || isOwner());
 
 async function loadDay(){
   try { S.day = await api("/day?project="+encodeURIComponent(S.project)); }
@@ -446,7 +463,7 @@ async function loadProgress(){
 /* ------------------------------------------------------------------ shell */
 function renderShell(){
   const sw = $("#projswitch");
-  sw.innerHTML = Object.values(S.meta.projects).filter(p => p.active !== false || isOwner()).map(p =>
+  sw.innerHTML = Object.values(S.meta.projects).filter(p => isVisible(p.id)).map(p =>
     '<button type="button" data-p="'+p.id+'" aria-pressed="false"'+(p.active===false?' title="Not live yet — hidden from associates" style="opacity:.55"':'')+'><span class="dot" style="background:'+
     p.hue+'"></span>'+esc(p.short)+'</button>').join("");
   sw.addEventListener("click", async ev => {
@@ -491,6 +508,9 @@ function renderAll(){
       'font-size:10px;background:'+p.hue+'">'+esc((S.me.name||"?").slice(0,1))+'</span>'+esc(S.me.name)+'</span>'+
     '<span class="chip role">'+(isOwner()?"Superuser":"Admin")+'</span>'+
     '<span class="chip">L'+L().n+' · '+esc(L().name)+'</span>'+
+    (SC() && SC().pair && !isOwner() ? '<span class="chip" title="Your level, XP and streak on this site only">'+
+      esc(P().short)+' · '+Math.round(SC().pair.xp)+' XP · '+SC().pair.streak+'-day streak'+
+      (SC().pair.ready?' · ready for L'+(SC().pair.level+1):'')+'</span>' : '')+
     (S.meta.readOnly?'<span class="chip" style="color:var(--warn)">Read-only</span>':'');
 
   document.querySelectorAll("#tabs button").forEach(b => {
@@ -545,7 +565,8 @@ async function onLog(ev){
   finally { btn.disabled = false; }
 }
 function renderToday(){
-  const st = S.day; if(!st) return;
+  const site = S.day; if(!site) return;
+  const st = SC();
   const pct = Math.min(100, st.target ? st.points/st.target*100 : 0);
   $("#score-num").textContent = st.points;
   $("#score-sub").textContent = "of "+st.target+" points needed today";
@@ -554,7 +575,7 @@ function renderToday(){
                    good:["Good","b-good"], great:["Great","b-great"]};
   const be = $("#score-band");
   be.textContent = bandMap[st.band][0]; be.className = "band "+bandMap[st.band][1];
-  $("#today-eyebrow").textContent = P().short+" · today's score";
+  $("#today-eyebrow").textContent = P().short+(st!==site?" · your score today":" · today's score");
   $("#score-hint").textContent = st.counted===0 ? "Log your first link to start the day."
     : st.done ? "Every requirement met. Nice day's work."
     : "Requirements left: "+st.reqs.filter(r=>!r.ok).length+" of "+st.reqs.length+".";
@@ -568,12 +589,12 @@ function renderToday(){
   $("#f-kw").innerHTML = opts.map(k=>'<option value="'+esc(k)+'">'+esc(k)+'</option>').join("");
   if(cur && opts.includes(cur)) $("#f-kw").value = cur;
 
-  $("#sheet-lede").textContent = (st.counted||st.rejected)
-    ? st.rows.length+" link"+(st.rows.length===1?"":"s")+" logged · "+st.points+
-      " points counting · avg DA "+(st.avgDa||"—")
+  $("#sheet-lede").textContent = (site.counted||site.rejected)
+    ? site.rows.length+" link"+(site.rows.length===1?"":"s")+" logged on this site · "+site.points+
+      " points counting · avg DA "+(site.avgDa||"—")
     : "Nothing logged yet.";
   const tm = typeMap();
-  $("#entries").innerHTML = st.rows.length ? st.rows.slice().reverse().map(r => {
+  $("#entries").innerHTML = site.rows.length ? site.rows.slice().reverse().map(r => {
     const t = tm[r.type] || {l:r.type};
     return '<tr>'+
       '<td><div class="mono" style="word-break:break-all">'+esc(r.url)+'</div>'+
@@ -596,7 +617,7 @@ function renderToday(){
     catch(err){ toast(err.message); b.disabled = false; }
   };
 
-  const key = S.project+"|"+(S.meta.today||"");
+  const key = S.project+"|"+(S.meta.today||"")+"|"+(S.me.email||S.me.name);
   if(st.done){
     $("#celebrate-slot").innerHTML =
       '<div class="celebrate"><span style="font-size:30px">🎉</span><div>'+
@@ -606,7 +627,7 @@ function renderToday(){
     if(!S.celebrated[key]){ S.celebrated[key]=true; fireConfetti(); }
   } else { $("#celebrate-slot").innerHTML = ""; }
 
-  if(st.coach) renderCoach(st.coach); else $("#coach-slot").innerHTML = "";
+  if(site.coach) renderCoach(site.coach); else $("#coach-slot").innerHTML = "";
   previewPoints();
 }
 
@@ -617,7 +638,7 @@ function nextKeyword(){
 }
 function renderLab(){
   const kw = nextKeyword(), slot = $("#query-slot");
-  $("#lab-progress").textContent = (S.day?S.day.queries:0)+" of "+L().queries+" done today.";
+  $("#lab-progress").textContent = (SC()?SC().queries:0)+" of "+L().queries+" done today.";
   $("#bank-count").textContent = S.bank.length+" analysed";
   if(slot.dataset.kw === (kw||"__none__") && slot.dataset.proj === S.project){ renderBankTable(); return; }
   slot.dataset.kw = kw||"__none__"; slot.dataset.proj = S.project;
@@ -684,7 +705,7 @@ async function analyse(kw, skip){
         '<ul class="bullets">'+(o.linkPlan||[]).map(x=>'<li>'+esc(x)+'</li>').join("")+'</ul>'+
         '<div class="hint" style="margin-top:10px"><b>Next:</b> '+esc(o.nextFocus||"")+'</div></div>';
     renderAll();
-    toast(skip ? "Keyword skipped." : "Query logged. "+S.day.queries+" of "+L().queries+" today.");
+    toast(skip ? "Keyword skipped." : "Query logged. "+SC().queries+" of "+L().queries+" today.");
   } catch(err){ toast(err.message); }
   finally { if(btn){ btn.disabled=false; btn.textContent="Analyse & log query"; } }
 }
@@ -720,7 +741,7 @@ function renderAllProjects(){
   const G = S.prog;
   if(!G){ el.innerHTML = '<div class="card"><p class="hint" style="margin:0">Loading every project…</p></div>'; return; }
   if(G.error){ el.innerHTML = '<div class="card"><p class="hint" style="margin:0">All-projects view is not available on this server yet.</p></div>'; return; }
-  const Lv = G.level, projs = Object.values(G.projects||{}).filter(p => p.active!==false || isOwner());
+  const Lv = G.level, projs = Object.values(G.projects||{}).filter(p => G.visible ? G.visible.includes(p.id) : (p.active!==false || isOwner()));
   const days = []; const t0 = new Date(G.today+"T00:00:00Z");
   for(let i=13;i>=0;i--){ const d=new Date(t0); d.setUTCDate(d.getUTCDate()-i); days.push(d.toISOString().slice(0,10)); }
   const by = {};   // project|date -> {links, approved, pending, fix, rejected, points, queries, people:[]}
@@ -800,13 +821,13 @@ function renderBoard(){
   for(let i=13;i>=0;i--){ const d=new Date(today); d.setDate(d.getDate()-i);
     days.push(d.toISOString().slice(0,10)); }
   const byKey = {};
-  (S.board.series||[]).forEach(s => { byKey[s.author+"|"+s.project+"|"+s.date] = s; });
+  (S.board.series||[]).forEach(s => { byKey[normName(s.author)+"|"+s.project+"|"+s.date] = s; });
   const people = (S.board.roster||[]).filter(r => !r.owner);
   const Lv = S.board.level;
   $("#board").innerHTML = people.map(p => {
     const proj = S.meta.projects[p.project] || P();
     const series = days.map(d => {
-      const s = byKey[p.name+"|"+p.project+"|"+d];
+      const s = byKey[normName(p.name)+"|"+p.project+"|"+d];
       return {date:d, pts: s?s.points:0, done: !!(s&&s.done)};
     });
     const hit = series.filter(s=>s.done).length;
@@ -925,8 +946,10 @@ function renderSettings(){
   const cur = S.cfg.level || 1, roster = S.cfg.roster || [];
   const Lv = (S.meta.levels||[]).find(l => l.n === cur) || S.meta.levels[0];
   $("#settings").innerHTML =
-    '<div class="card" style="margin-bottom:14px"><div class="card-h"><h3>Difficulty level</h3>'+
-      '<span class="eyebrow">Applies to both sites</span></div><div class="levelbar">'+
+    '<div class="card" style="margin-bottom:14px"><div class="card-h"><h3>'+
+      (S.meta.perProjectLevels?'Starting level':'Difficulty level')+'</h3>'+
+      '<span class="eyebrow">'+(S.meta.perProjectLevels?'For a person starting on a new site':'Applies to every site')+
+      '</span></div><div class="levelbar">'+
       (S.meta.levels||[]).map(l => '<button class="lvl" type="button" data-l="'+l.n+'" aria-pressed="'+
         (l.n===cur)+'"><b>L'+l.n+' · '+esc(l.name)+'</b><span>'+l.target+' pts · '+(l.min_links?l.min_links+' links · ':'')+l.queries+
         ' queries · DA '+l.min_avg_da+'+'+(l.high_value?' · '+l.high_value+' high-value':'')+
@@ -937,9 +960,11 @@ function renderSettings(){
       '%</b> verified live':'')+'.</p></div>'+
     '<div class="card"><div class="card-h"><h3>Team &amp; assignments</h3>'+
       '<span class="eyebrow">Superuser only</span></div>'+
-      '<div class="tw" style="border:0"><table style="min-width:420px"><thead><tr><th>Name</th><th>Site</th>'+
-      '<th>Role</th><th></th></tr></thead><tbody>'+
-      roster.map((r,i)=>'<tr><td><input value="'+esc(r.name)+'" data-n="'+i+'"></td><td><select data-p="'+i+'">'+
+      '<div class="tw" style="border:0"><table style="min-width:560px"><thead><tr><th>Name</th>'+
+      '<th>Login email</th><th>Site</th><th>Role</th><th></th></tr></thead><tbody>'+
+      roster.map((r,i)=>'<tr><td><input value="'+esc(r.name)+'" data-n="'+i+'"></td>'+
+        '<td><input type="email" value="'+esc(r.email||"")+'" data-e="'+i+'" placeholder="their dashboard login"></td>'+
+        '<td><select data-p="'+i+'">'+
         Object.values(S.meta.projects).map(p=>'<option value="'+p.id+'"'+(p.id===r.project?" selected":"")+
         '>'+esc(p.short)+'</option>').join("")+'</select></td><td>'+
         (r.owner?'<span class="chip role">Superuser</span>':'<span class="chip">Admin</span>')+'</td><td>'+
@@ -949,8 +974,13 @@ function renderSettings(){
         '<button class="btn" id="saveteam" type="button">Save team</button>'+
         '<button class="btn ghost" id="addmember" type="button">Add associate</button>'+
         '<button class="btn ghost" id="backupnow" type="button">Back up the desk now</button></div>'+
-      '<p class="hint" style="margin:12px 0 0">Admins can do everything on the desk — log links, run the '+
-      'keyword lab, see both sites. Only you can approve links, change the level, and edit this table.</p></div>'+
+      '<p class="hint" style="margin:12px 0 0">Put the person\'s <b>dashboard login email</b> on each row — '+
+      'that is what ties the row to them. One row per site; a person on two sites gets two rows. '+
+      'A site that is not live is still shown to the people rostered on it. '+
+      'Only you can approve links, change levels, and edit this table.</p></div>'+
+    (S.meta.perProjectLevels ? '<div class="card" style="margin-top:14px"><div class="card-h"><h3>Levels by person and site</h3>'+
+      '<span class="eyebrow">Each pair has its own level</span></div><div id="pairgrid">'+
+      (S.pairsHtml||'<p class="hint" style="margin:0">Loading…</p>')+'</div></div>' : '')+
 
     /* ---- v1.1: auto-review ---- */
     '<div class="card" style="margin-top:14px"><div class="card-h"><h3>Automatic link review</h3>'+
@@ -990,8 +1020,16 @@ function renderSettings(){
       'tick it. Pages are the paths links may point to, one per line or comma-separated. '+
       'Seed keywords (one per line) feed the Keyword Lab for that site.</p></div>';
 
+  if(S.meta.perProjectLevels && S.tab==="settings") loadPairs();
   $("#settings").onclick = async ev => {
     const l = ev.target.closest("[data-l]"), rm = ev.target.closest("[data-rm]");
+    const pl = ev.target.closest("[data-pairset]");
+    if(pl){ const sel = document.querySelector('[data-pairlv="'+pl.dataset.pairset+'"]');
+      const [uid, proj] = pl.dataset.pairset.split("|");
+      try { await api("/levels",{method:"PUT", body:JSON.stringify({userId:uid, project:proj, level:Number(sel.value)})});
+            toast("Level saved."); loadPairs(); await loadDay(); renderAll(); }
+      catch(err){ toast(err.message); }
+      return; }
     if(l) return putConfig({level: Number(l.dataset.l)});
     if(ev.target.id==="ar-run"){
       ev.target.disabled = true; ev.target.textContent = "Checking links…";
@@ -1031,7 +1069,9 @@ function renderSettings(){
     if(ev.target.id==="saveteam"){
       const r = (S.cfg.roster||[]).map((m,i)=>{
         const n=document.querySelector('[data-n="'+i+'"]'), p=document.querySelector('[data-p="'+i+'"]');
-        return {name: n?(n.value.trim()||m.name):m.name, project: p?p.value:m.project, owner:!!m.owner};
+        const e=document.querySelector('[data-e="'+i+'"]');
+        return {name: n?(n.value.trim()||m.name):m.name, email: e?e.value.trim():(m.email||""),
+                project: p?p.value:m.project, owner:!!m.owner};
       });
       return putConfig({roster:r});
     }
@@ -1040,6 +1080,32 @@ function renderSettings(){
       catch(err){ toast(err.message); }
     }
   };
+}
+/* v1.3: superuser grid of every person x site */
+async function loadPairs(){
+  const el = $("#pairgrid"); if(!el) return;
+  let g; try { g = await api("/levels/all"); } catch(err){ el.innerHTML = '<p class="hint" style="margin:0">'+esc(err.message)+'</p>'; return; }
+  const lv = g.levels||[];
+  const rows = (g.rows||[]).map(r => {
+    const pr = (g.projects||{})[r.project]||{}, key = r.userId+"|"+r.project;
+    const pct = r.target ? Math.min(100, Math.round(r.todayPoints/r.target*100)) : 0;
+    return '<tr><td><b>'+esc(r.name)+'</b><div class="hint">'+esc(r.email)+'</div></td>'+
+      '<td><span class="dot" style="background:'+esc(pr.hue||"#5B6B68")+';display:inline-block;width:8px;height:8px;border-radius:50%"></span> '+esc(pr.short||r.project)+'</td>'+
+      '<td><select data-pairlv="'+esc(key)+'">'+lv.map(l=>'<option value="'+l.n+'"'+(l.n===r.level?' selected':'')+'>L'+l.n+' · '+esc(l.name)+'</option>').join("")+'</select> '+
+        '<button class="btn ghost sm" type="button" data-pairset="'+esc(key)+'">Set</button></td>'+
+      '<td class="num">'+Math.round(r.xp)+'</td><td class="num">'+r.streak+(r.ready?' <span class="pill approved">ready</span>':'')+'</td>'+
+      '<td class="num">'+r.todayPoints+' / '+r.target+' <span class="hint">('+pct+'%)</span></td></tr>';
+  }).join("");
+  const um = (g.unmatched||[]).map(u => '<li><b>'+esc(u.name)+'</b>'+(u.email?' ('+esc(u.email)+')':' — no email on the row')+
+    ' on '+esc(((g.projects||{})[u.project]||{}).short||u.project)+'</li>').join("");
+  el.innerHTML = S.pairsHtml = (rows ? '<div class="tw" style="border:0"><table style="min-width:640px"><thead><tr><th>Person</th><th>Site</th>'+
+      '<th>Level</th><th>XP</th><th>Streak</th><th>Today</th></tr></thead><tbody>'+rows+'</tbody></table></div>'
+      : '<p class="hint" style="margin:0">Nobody has opened the desk since per-site levels were switched on.</p>')+
+    (um ? '<div class="flagline" style="margin-top:12px"><b>Roster rows that match no login yet:</b><ul class="bullets">'+um+'</ul>'+
+      'Either the person has not opened the desk since the switch, or the name/email on the row is not their dashboard login.</div>' : '')+
+    '<p class="hint" style="margin:12px 0 0">Raise a level when the pair shows <b>ready</b> ('+(g.readyAfter||5)+
+    ' clean days in a row). A new pair starts at the starting level above'+
+    (g.migration?'; at the switch-over everyone kept L'+g.migration.global_level:'')+'.</p>';
 }
 async function putConfig(patch){
   try { S.cfg = await api("/config",{method:"PUT", body:JSON.stringify(patch)});

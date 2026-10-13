@@ -101,6 +101,19 @@ def build_routers():
     async def progress(request: Request, days: int = 14):
         return _json(service.progress(current_user(request), days))
 
+    # --- v1.3: per-person, per-site levels
+    @api.get("/levels")
+    async def my_levels(request: Request):
+        return _json(service.my_levels(current_user(request)))
+
+    @api.get("/levels/all")
+    async def all_levels(request: Request):
+        return _json(service.all_levels(current_user(request)))
+
+    @api.put("/levels")
+    async def set_level(request: Request):
+        return _json(service.set_pair_level(current_user(request), await _body(request)))
+
     @api.get("/config")
     async def get_config(request: Request):
         return _json(service.get_config(current_user(request)))

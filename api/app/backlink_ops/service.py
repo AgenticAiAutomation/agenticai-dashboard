@@ -12,7 +12,8 @@ it in docs/API.md.
 import json
 import uuid
 
-from . import ai, audit, store
+from . import ai, audit, levels, store
+from .assignments import assigned_projects, norm, unmatched_roster, visible_projects
 from .config import settings
 from .identity import can_write, is_superuser
 from .scoring import day_stats, host_of
@@ -61,12 +62,18 @@ def _project(value):
     return p if p in projects_of(store.get_config()) else "agenticai"
 
 
-def _stats(project, date):
+def _stats(project, date, user=None):
     cfg = store.get_config()
-    return day_stats(store.entries_for(project, date),
-                     store.decisions_for(project, date),
-                     store.queries_for(project, date),
-                     cfg.get("level", 1), project, store.bank_keywords(project), cfg)
+    st = day_stats(store.entries_for(project, date),
+                   store.decisions_for(project, date),
+                   store.queries_for(project, date),
+                   cfg.get("level", 1), project, store.bank_keywords(project), cfg)
+    # v1.3: the person's own day at their own level, beside the site view.
+    # The site view (rows, review queue) is unchanged.
+    # The superuser reviews rather than logs, so gets no level of their own.
+    if settings.PER_PROJECT_LEVELS and user and not is_superuser(user):
+        st["mine"] = levels.my_day(user, project, date, cfg)
+    return st
 
 
 # --------------------------------------------------------------- health
@@ -88,6 +95,7 @@ def bootstrap(user, project=None):
     if not user:
         return ERR_AUTH
     cfg = store.get_config()
+    assigned = assigned_projects(user, cfg)
     return 200, {
         "me": user, "config": cfg, "levels": levels_of(cfg),
         "level": level_for(cfg.get("level", 1), cfg), "linkTypes": LINK_TYPES,
@@ -96,7 +104,9 @@ def bootstrap(user, project=None):
         "autoReview": store.get_meta("autoreview_last") if is_superuser(user) else None,
         "today": store.today_ist(), "readOnly": settings.READ_ONLY or not can_write(user),
         "aiEnabled": ai.available(), "version": settings.VERSION,
-        "project": _project(project),
+        "project": _project(project or (assigned[0] if assigned else None)),
+        "assigned": assigned, "visible": visible_projects(user, cfg),
+        "perProjectLevels": settings.PER_PROJECT_LEVELS,
     }
 
 
@@ -104,7 +114,7 @@ def day(user, project=None, date=None):
     if not user:
         return ERR_AUTH
     p, d = _project(project), (date or store.today_ist())
-    st = _stats(p, d)
+    st = _stats(p, d, user)
     st.update({"project": p, "date": d,
                "coach": store.get_coach(p, d, user.get("name", ""))})
     return 200, st
@@ -141,7 +151,7 @@ def add_entry(user, body):
     audit.stamp_user(user, "entry.add", target=e["id"],
                      detail={"project": project, "host": e["host"],
                              "type": e["type"], "da": e["da"]})
-    return 201, _stats(project, e["date"])
+    return 201, _stats(project, e["date"], user)
 
 
 def delete_entry(user, entry_id, project=None):
@@ -152,7 +162,7 @@ def delete_entry(user, entry_id, project=None):
     if not store.delete_entry(entry_id, p):
         return 404, {"error": "not_found", "message": "That link is no longer on the sheet."}
     audit.stamp_user(user, "entry.delete", target=entry_id, detail={"project": p})
-    return 200, _stats(p, store.today_ist())
+    return 200, _stats(p, store.today_ist(), user)
 
 
 # --------------------------------------------------------------- keyword lab
@@ -194,7 +204,7 @@ def analyse(user, body):
     audit.stamp_user(user, "keyword.analyse", target=kw,
                      detail={"project": project, "verdict": out.get("verdict"),
                              "engine": out.get("_source")})
-    return 200, {"analysis": out, "day": _stats(project, store.today_ist()),
+    return 200, {"analysis": out, "day": _stats(project, store.today_ist(), user),
                  "bank": store.bank_for(project)}
 
 
@@ -259,10 +269,14 @@ def board(user, days=14):
     points, queries = store.history(days_back)
     cfg = store.get_config()
     L = level_for(cfg.get("level", 1), cfg)
-    series = [{"author": a, "project": p, "date": d, "points": v,
-               "queries": queries.get((a, p, d), 0),
-               "done": v >= L["target"] and queries.get((a, p, d), 0) >= L["queries"]}
-              for (a, p, d), v in points.items()]
+    lv = _pair_level(cfg)
+    series = []
+    for (a, p, d), v in points.items():
+        Lp = lv(a, p)
+        series.append({"author": a, "project": p, "date": d, "points": v,
+                       "queries": queries.get((a, p, d), 0), "level": Lp["n"],
+                       "target": Lp["target"],
+                       "done": v >= Lp["target"] and queries.get((a, p, d), 0) >= Lp["queries"]})
     return 200, {"series": series, "level": L,
                  "roster": cfg.get("roster", DEFAULT_CONFIG["roster"]),
                  "bankCounts": {p: len(store.bank_for(p)) for p in projects_of(cfg)},
@@ -282,18 +296,111 @@ def progress(user, days=14):
         days_back = 14
     cfg = store.get_config()
     L = level_for(cfg.get("level", 1), cfg)
+    lv = _pair_level(cfg)
     rows = []
     for (p, d, a), c in store.progress(days_back).items():
         c = dict(c)
-        c.update({"project": p, "date": d, "author": a,
-                  "done": (c["points"] >= L["target"]
-                           and (c["links"] - c["rejected"]) >= L.get("min_links", 0)
-                           and c["queries"] >= L["queries"])})
+        Lp = lv(a, p)
+        c.update({"project": p, "date": d, "author": a, "level": Lp["n"], "target": Lp["target"],
+                  "done": (c["points"] >= Lp["target"]
+                           and (c["links"] - c["rejected"]) >= Lp.get("min_links", 0)
+                           and c["queries"] >= Lp["queries"])})
         rows.append(c)
     rows.sort(key=lambda r: (r["date"], r["project"], r["author"]))
     return 200, {"rows": rows, "level": L, "days": days_back,
                  "today": store.today_ist(), "projects": projects_of(cfg),
+                 "visible": visible_projects(user, cfg),
                  "roster": cfg.get("roster", DEFAULT_CONFIG["roster"])}
+
+
+def _pair_level(cfg):
+    """Level for an (author name, site) pair: their own when per-site levels
+    are on and the desk has met them, else the global level as before."""
+    g = level_for(cfg.get("level", 1), cfg)
+    if not settings.PER_PROJECT_LEVELS:
+        return lambda author, project: g
+    table = levels.level_lookup(cfg)
+
+    def lookup(author, project):
+        n = table.get((norm(author), project))
+        return level_for(n, cfg) if n else g
+    return lookup
+
+
+# --------------------------------------------------------------- levels (v1.3)
+ERR_LEVELS_OFF = (404, {"error": "disabled",
+                        "message": "Per-site levels are not switched on yet."})
+
+
+def my_levels(user):
+    """One row per site this person is on: level, today's progress, streak.
+    Feeds the homepage "My Levels" card."""
+    if not user:
+        return ERR_AUTH
+    if not settings.PER_PROJECT_LEVELS:
+        return ERR_LEVELS_OFF
+    cfg = store.get_config()
+    known = projects_of(cfg)
+    # The superuser reviews rather than logs: no level rows are made for them.
+    sites = [] if is_superuser(user) else assigned_projects(user, cfg)
+    uid = levels.user_key(user)
+    for r in store.all_levels():          # sites they worked on without a roster row
+        if r["user_id"] == uid and r["project_id"] in known and r["project_id"] not in sites:
+            sites.append(r["project_id"])
+    rows = []
+    for p in sites:
+        row = store.get_level(uid, p) if is_superuser(user) else levels.ensure(user, p, cfg)
+        out = levels.refresh(row, cfg)
+        out.update({"site": known[p].get("short") or p, "domain": known[p].get("domain", ""),
+                    "hue": known[p].get("hue", "#5B6B68")})
+        rows.append(out)
+    return 200, {"me": {"name": user.get("name"), "email": user.get("email"),
+                        "role": user.get("role")},
+                 "rows": rows, "today": store.today_ist(), "readyAfter": levels.READY_STREAK}
+
+
+def all_levels(user):
+    """Superuser grid: every person x every site the desk has met, plus roster
+    rows that match no login yet (the T1 symptom, made visible)."""
+    if not user:
+        return ERR_AUTH
+    if not is_superuser(user):
+        return ERR_FORBID
+    if not settings.PER_PROJECT_LEVELS:
+        return ERR_LEVELS_OFF
+    cfg = store.get_config()
+    known = projects_of(cfg)
+    rows = [levels.refresh(r, cfg) for r in store.all_levels() if r["project_id"] in known]
+    seen = [{"name": r["name"], "email": r["email"]} for r in rows]
+    return 200, {"rows": rows, "levels": levels_of(cfg),
+                 "projects": {k: {"short": v.get("short"), "hue": v.get("hue"),
+                                  "active": v.get("active") is not False} for k, v in known.items()},
+                 "unmatched": unmatched_roster(cfg, seen),
+                 "migration": store.get_meta("levels_v2_migration"),
+                 "today": store.today_ist(), "readyAfter": levels.READY_STREAK}
+
+
+def set_pair_level(user, body):
+    guard = _super(user)
+    if guard:
+        return guard
+    if not settings.PER_PROJECT_LEVELS:
+        return ERR_LEVELS_OFF
+    body = body or {}
+    cfg = store.get_config()
+    uid, project = str(body.get("userId") or ""), str(body.get("project") or "")
+    if not store.get_level(uid, project):
+        return 404, {"error": "not_found", "message": "That person has not worked on that site yet."}
+    try:
+        lv = int(body.get("level"))
+    except (TypeError, ValueError):
+        return _bad("Level must be a number from 1 to 5.")
+    if not 1 <= lv <= len(LEVELS):
+        return _bad(f"Level must be between 1 and {len(LEVELS)}.")
+    row = levels.set_level(uid, project, lv, cfg)
+    audit.stamp_user(user, "level.set", target=f"{uid}:{project}",
+                     detail={"level": lv, "name": row["user_name"]})
+    return 200, levels.refresh(row, cfg)
 
 
 # --------------------------------------------------------------- config
@@ -321,7 +428,9 @@ def put_config(user, body):
         roster = body["roster"]
         if not isinstance(roster, list) or not roster:
             return _bad("The team needs at least one person.")
+        # v1.3: optional email binds the row to a login exactly (assignments.py).
         clean = [{"name": str(m.get("name") or "").strip(),
+                  "email": str(m.get("email") or "").strip().lower(),
                   "project": _project(m.get("project")), "owner": bool(m.get("owner"))}
                  for m in roster if str(m.get("name") or "").strip()]
         if not any(m["owner"] for m in clean):
