@@ -70,6 +70,13 @@ register_wa_leads(app)
 from app.invoice_desk import register as register_invoice_desk
 register_invoice_desk(app)
 
+# --- Daily Tracker + Idea Board (/api/tasks/*, /api/ideas/*). Additive,
+#     flagged (FEATURE_DAILY_TRACKER, FEATURE_IDEA_BOARD — both off = not
+#     mounted, /tasks/ shows the old list), own SQLite file, never raises.
+#     Remove these two lines to uninstall. See docs/DAILY_TRACKER.md.
+from app.daily_tracker import register as register_daily_tracker  # noqa: E402
+register_daily_tracker(app)
+
 
 @app.get("/")
 def root():
