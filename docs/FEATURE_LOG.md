@@ -16,6 +16,13 @@ before it lands.
 
 ---
 
+## 2026-10-13 · Per-site levels, Daily Tracker, Idea Board, /articles removed — built, not deployed
+
+- Team-visible once the flags go on: each associate's Backlink Ops score becomes **their own
+  links at their own level per website** (was: the whole site's sheet). Tell the team first.
+- Tracker marks: base × quality (1–5 → 0–1.5×), late = 50%, Backlink Ops links 5 each up to 20/day.
+- See `docs/DAILY_TRACKER.md` and the team guide `docs/DAILY_TRACKER_GUIDE.md`.
+
 ## 2026-10-08 · Article HTML export (above the threshold)
 
 - Writer page → Scores: **Export HTML** appears once the house score reaches 80.

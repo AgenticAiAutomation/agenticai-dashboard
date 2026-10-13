@@ -33,6 +33,14 @@ Environment="INVOICE_DESK_BACKUP_DIR=/var/www/agenticai-dashboard/api/backups/in
 Environment="INVOICE_DESK_SUPERUSERS=contact@agenticaiautomation.co,jai.prajapati91@gmail.com"
 Environment="INVOICE_DESK_USER_HOOK=app.backlink_ops_hook:get_user_or_none"
 Environment="INVOICE_DESK_PUBLIC_BASE=https://dashboard.agenticaiautomation.co"
+# --- Per-site levels, Daily Tracker, Idea Board. See docs/DAILY_TRACKER.md.
+# Off here; ops/daily-tracker-flags.sh turns them on with a drop-in
+# (dashboard-api.service.d/daily-tracker.conf), which overrides these lines.
+Environment="FEATURE_PER_PROJECT_LEVELS=0"
+Environment="FEATURE_DAILY_TRACKER=0"
+Environment="FEATURE_IDEA_BOARD=0"
+Environment="DAILY_TRACKER_DB=/var/www/agenticai-dashboard/api/instance/daily_tracker.db"
+Environment="DAILY_TRACKER_BACKUP_DIR=/var/www/agenticai-dashboard/api/backups/daily_tracker"
 # -----------------------------------------------------------------------
 ExecStart=/var/www/agenticai-dashboard/api/venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 5004 --workers 2
 Restart=always
