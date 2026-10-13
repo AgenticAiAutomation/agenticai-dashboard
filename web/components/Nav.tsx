@@ -4,12 +4,22 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 
-const PRIMARY = [
+// `external`: pages the API serves through nginx (not Next routes) — plain <a>.
+// The old static /articles page was removed 2026-10-13; the SEO Articles tab
+// below is the article pipeline.
+type Item = { href: string; label: string; external?: boolean };
+
+const PRIMARY: Item[] = [
   { href: '/dashboard', label: 'Dashboard' },
   { href: '/dashboard/seo', label: 'SEO Operations' },
   { href: '/keywords', label: 'Keywords' },
-  { href: '/articles', label: 'Articles' },
-  { href: '/tasks', label: 'Tasks' },
+  { href: '/seo/backlink-ops/', label: 'Backlink Ops', external: true },
+  { href: '/tasks', label: 'Daily Tracker' },
+];
+
+const ADMIN: Item[] = [
+  { href: '/invoices/', label: 'Invoices', external: true },
+  { href: '/settings/users', label: 'Users' },
 ];
 
 const SEO_TABS = [
@@ -41,10 +51,23 @@ export default function Nav() {
 
   const isAdmin = role === 'admin' || role === 'owner';
   const inSeo = pathname?.startsWith('/dashboard/seo');
-  const items = isAdmin ? [...PRIMARY, { href: '/settings/users', label: 'Users' }] : PRIMARY;
+  const items = isAdmin ? [...PRIMARY, ...ADMIN] : PRIMARY;
 
   const isActive = (href: string) =>
     href === '/dashboard' ? pathname === '/dashboard' : pathname?.startsWith(href);
+
+  const links = items.map((item) => {
+    const cls = `whitespace-nowrap rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+      !item.external && isActive(item.href)
+        ? 'bg-primary text-white'
+        : 'text-slate-300 hover:bg-raised hover:text-white'
+    }`;
+    return item.external ? (
+      <a key={item.href} href={item.href} className={cls}>{item.label}</a>
+    ) : (
+      <Link key={item.href} href={item.href} className={cls}>{item.label}</Link>
+    );
+  });
 
   return (
     <nav className="border-b border-line bg-surface">
@@ -53,26 +76,14 @@ export default function Nav() {
           <Link href="/dashboard" className="shrink-0 text-base font-bold text-white">
             AgenticAI <span className="text-primary">SEO</span>
           </Link>
-          <div className="hidden items-center gap-1 md:flex">
-            {items.map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={`rounded-md px-3 py-2 text-sm font-medium transition-colors ${
-                  isActive(item.href)
-                    ? 'bg-primary text-white'
-                    : 'text-slate-300 hover:bg-raised hover:text-white'
-                }`}
-              >
-                {item.label}
-              </Link>
-            ))}
-          </div>
+          <div className="hidden items-center gap-1 md:flex">{links}</div>
         </div>
         <button onClick={logout} className="shrink-0 text-sm text-muted hover:text-white">
           Log out
         </button>
       </div>
+      {/* Phones: the same links as a scrollable row. */}
+      <div className="flex gap-1 overflow-x-auto border-t border-line px-4 py-1.5 md:hidden">{links}</div>
 
       {inSeo && (
         <div className="border-t border-line bg-bg">

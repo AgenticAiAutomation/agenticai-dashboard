@@ -15,6 +15,7 @@ import {
   YAxis,
 } from 'recharts';
 import Shell from '@/components/Shell';
+import Workspace, { MyLevels } from '@/components/Workspace';
 import {
   Card,
   CardSkeleton,
@@ -89,6 +90,10 @@ export default function DashboardPage() {
           {data.go_live_message}
         </div>
       )}
+
+      {/* Workspace — the desks, then the person's level on each website */}
+      <Workspace />
+      <MyLevels />
 
       {/* Row 1 — KPI cards */}
       <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
