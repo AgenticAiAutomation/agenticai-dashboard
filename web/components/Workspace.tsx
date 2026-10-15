@@ -5,6 +5,8 @@ import { useEffect, useState } from 'react';
 import { Card } from '@/components/ui';
 import { Flags, PUBLIC_ORIGIN, RouteEntry, homeGroups } from '@/lib/registry';
 import { LevelRow, trackerApi } from '@/lib/tracker';
+import { RAG_DOT, RAG_LABEL, Rag, Signal, tasksApi } from '@/lib/tasks';
+import { SignalTile } from '@/components/tasks/MirrorPanel';
 
 /* Homepage "Workspace": every dashboard page this person may open, grouped,
    straight from the route registry (web/lib/routes.json) — no list here.
@@ -116,6 +118,47 @@ function RouteCard({ r }: { r: RouteEntry }) {
           {copied ? 'Copied' : 'Copy'}
         </button>
       </div>
+    </div>
+  );
+}
+
+/* T7: your own Today / Week / Month signal at the top of the homepage; admins
+   also get the team grid. Hidden when the task manager is off (404). */
+export function RagSignals() {
+  const [mine, setMine] = useState<Record<'day' | 'week' | 'month', Signal> | null>(null);
+  const [team, setTeam] = useState<{ userId: string; name: string; day: Rag; week: Rag; month: Rag }[] | null>(null);
+  useEffect(() => {
+    tasksApi.rag().then((r) => setMine(r.data.signals)).catch(() => setMine(null));
+    tasksApi.teamRag().then((r) => setTeam(r.data.rows)).catch(() => setTeam(null));
+  }, []);
+  if (!mine && !team) return null;
+  const hasOwn = mine && Object.values(mine).some((s) => s.signal !== 'none');
+  return (
+    <div className="mb-6 space-y-4">
+      {mine && hasOwn && (
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          {(['day', 'week', 'month'] as const).map((p) => <SignalTile key={p} s={mine[p]} />)}
+        </div>
+      )}
+      {team && team.length > 0 && (
+        <Card title="Team signals" action={<Link href="/tasks/?tab=plan" className="text-xs text-primary hover:underline">Targets</Link>}>
+          <div className="overflow-x-auto">
+            <table className="data-table min-w-[420px]">
+              <thead><tr><th>Person</th><th>Today</th><th>This week</th><th>This month</th></tr></thead>
+              <tbody>
+                {team.map((r) => (
+                  <tr key={r.userId}>
+                    <td className="text-slate-100">{r.name}</td>
+                    {(['day', 'week', 'month'] as const).map((p) => (
+                      <td key={p}><span className="flex items-center gap-1.5"><span className={`inline-block h-3 w-3 rounded-full ${RAG_DOT[r[p]]}`} />{RAG_LABEL[r[p]]}</span></td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
     </div>
   );
 }

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Card, EmptyState, ErrorBanner } from '@/components/ui';
 import { Idea, Log, msg, trackerApi } from '@/lib/tracker';
+import { Task, fmtDue, tasksApi } from '@/lib/tasks';
 
 const QUALITY = [
   { q: 1, l: '1 · 0×' },
@@ -15,6 +16,8 @@ const QUALITY = [
 export default function ReviewPanel({ onIdeas }: { onIdeas: () => void }) {
   const [logs, setLogs] = useState<Log[]>([]);
   const [ideas, setIdeas] = useState<Idea[]>([]);
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [tq, setTq] = useState<Record<number, number>>({});
   const [picked, setPicked] = useState<Set<number>>(new Set());
   const [quality, setQuality] = useState<Record<number, number>>({});
   const [notes, setNotes] = useState<Record<number, string>>({});
@@ -27,6 +30,7 @@ export default function ReviewPanel({ onIdeas }: { onIdeas: () => void }) {
       const r = await trackerApi.queue();
       setLogs(r.data.logs);
       setIdeas(r.data.ideas);
+      setTasks(r.data.tasks ?? []);
       setPicked(new Set());
     } catch (e) {
       setError(msg(e, 'Could not load the review queue.'));
@@ -127,6 +131,25 @@ export default function ReviewPanel({ onIdeas }: { onIdeas: () => void }) {
           </div>
         )}
       </Card>
+
+      {tasks.length > 0 && (
+        <Card title={`Tasks submitted · ${tasks.length}`}>
+          <ul className="space-y-2">
+            {tasks.map((t) => (
+              <li key={t.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-raised px-3 py-2 text-sm">
+                <span className="text-slate-100">{t.title} <span className="text-xs text-muted">· {t.assignees.map((a) => a.user_name).join(', ')} · {t.progress}/{t.target_qty} {t.unitLabel} · due {fmtDue(t.due_at)} · {t.marks} marks</span></span>
+                <span className="flex items-center gap-2">
+                  <select aria-label="Quality" className="input-field w-auto py-1" value={tq[t.id] ?? 3} onChange={(e) => setTq({ ...tq, [t.id]: Number(e.target.value) })}>
+                    {QUALITY.map((x) => <option key={x.q} value={x.q}>{x.l}</option>)}
+                  </select>
+                  <button className="text-xs text-success hover:underline" onClick={() => tasksApi.approve(t.id, { status: 'approved', quality: tq[t.id] ?? 3 }).then(load).catch((e) => setError(msg(e)))}>Approve</button>
+                  <button className="text-xs text-primary hover:underline" onClick={() => tasksApi.approve(t.id, { status: 'needs_fix' }).then(load).catch((e) => setError(msg(e)))}>Needs fix</button>
+                </span>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
 
       {ideas.length > 0 && (
         <Card title={`Ideas to decide · ${ideas.length}`} action={<button className="btn-secondary py-1" onClick={onIdeas}>Open Idea Board</button>}>

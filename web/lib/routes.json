@@ -72,6 +72,8 @@
       "purpose": "Team & site assignments, levels per person and site, websites, auto-review." },
     { "slug": "/tasks/?tab=review", "title": "Review queue", "icon": "check", "group": "Admin", "roles": ["owner", "admin"], "status": "live", "requires": "tracker",
       "purpose": "Approve logged work and decide on ideas, one by one or in bulk." },
+    { "slug": "/tasks/?tab=plan", "title": "Targets & rewards", "icon": "target", "group": "Admin", "roles": ["owner", "admin"], "status": "live", "requires": "taskManager",
+      "purpose": "Monthly targets per person and site, leave days, RAG thresholds, tiers and payout sheet." },
     { "slug": "/tasks/?tab=report", "title": "Tracker report & settings", "icon": "gear", "group": "Admin", "roles": ["owner", "admin"], "status": "live", "requires": "tracker",
       "purpose": "Marks and % on target per person, CSV export, work types, targets." },
 

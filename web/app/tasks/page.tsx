@@ -9,9 +9,26 @@ import ProgressPanel from '@/components/tracker/ProgressPanel';
 import ReportPanel from '@/components/tracker/ReportPanel';
 import ReviewPanel from '@/components/tracker/ReviewPanel';
 import TodayPanel from '@/components/tracker/TodayPanel';
+import MirrorPanel from '@/components/tasks/MirrorPanel';
+import PlanPanel from '@/components/tasks/PlanPanel';
+import TasksPanel from '@/components/tasks/TasksPanel';
 import { TrackerStatus, WorkType, is404, msg, trackerApi } from '@/lib/tracker';
 
-type Tab = 'today' | 'progress' | 'ideas' | 'review' | 'report';
+type Tab = 'tasks' | 'today' | 'progress' | 'ideas' | 'mirror' | 'review' | 'plan' | 'report';
+
+/* The tabs this person gets, in order. Used for the tab bar and ?tab= links. */
+function tabsFor(s: TrackerStatus): [Tab, string][] {
+  const tm = !!s.taskManager;
+  return [
+    ...(tm ? ([['tasks', 'My tasks']] as [Tab, string][]) : []),
+    ...(s.tracker ? ([['today', tm ? 'Daily log' : 'Today'], ['progress', 'Progress & leaderboard']] as [Tab, string][]) : []),
+    ...(s.ideas ? ([['ideas', 'Idea Board']] as [Tab, string][]) : []),
+    ...(tm ? ([['mirror', 'Mirror']] as [Tab, string][]) : []),
+    ...(s.isAdmin && (s.tracker || tm) ? ([['review', 'Review queue']] as [Tab, string][]) : []),
+    ...(s.isAdmin && tm ? ([['plan', 'Targets & rewards']] as [Tab, string][]) : []),
+    ...(s.isAdmin && s.tracker ? ([['report', 'Report & settings']] as [Tab, string][]) : []),
+  ];
+}
 
 /* /tasks/ — the Daily Tracker + Idea Board when FEATURE_DAILY_TRACKER /
    FEATURE_IDEA_BOARD are on; the old task list, unchanged, when they are off
@@ -35,11 +52,7 @@ export default function TasksPage() {
         if (s.tracker) setTypes((await trackerApi.workTypes()).data.types);
         // Deep link: /tasks/?tab=review etc.; anything unknown falls back to the first tab.
         const want = new URLSearchParams(window.location.search).get('tab') as Tab | null;
-        const allowed: Tab[] = [
-          ...(s.tracker ? (['today', 'progress'] as Tab[]) : []),
-          ...(s.ideas ? (['ideas'] as Tab[]) : []),
-          ...(s.isAdmin && s.tracker ? (['review', 'report'] as Tab[]) : []),
-        ];
+        const allowed = tabsFor(s).map(([k]) => k);
         setTab(want && allowed.includes(want) ? want : allowed[0] ?? 'today');
         setMode('tracker');
       } catch (err) {
@@ -51,16 +64,14 @@ export default function TasksPage() {
 
   if (mode === 'legacy') return <LegacyTasks />;
 
-  const tabs: [Tab, string][] = status ? [
-    ...(status.tracker ? ([['today', 'Today'], ['progress', 'Progress & leaderboard']] as [Tab, string][]) : []),
-    ...(status.ideas ? ([['ideas', 'Idea Board']] as [Tab, string][]) : []),
-    ...(status.isAdmin && status.tracker ? ([['review', 'Review queue'], ['report', 'Report & settings']] as [Tab, string][]) : []),
-  ] : [];
+  const tabs = status ? tabsFor(status) : [];
 
   return (
     <Shell
-      title="Daily Tracker"
-      subtitle="Log what you did today for each of your websites, with proof. Approved work earns marks toward your daily target."
+      title={status?.taskManager ? 'Tasks' : 'Daily Tracker'}
+      subtitle={status?.taskManager
+        ? 'Your tasks, today’s work log with proof, ideas, and where you stand. Approved work earns points.'
+        : 'Log what you did today for each of your websites, with proof. Approved work earns marks toward your daily target.'}
     >
       <ErrorBanner message={error} />
       {!status ? (
@@ -89,7 +100,10 @@ export default function TasksPage() {
               </button>
             ))}
           </div>
+          {tab === 'tasks' && status.taskManager && <TasksPanel status={status} />}
           {tab === 'today' && status.tracker && <TodayPanel status={status} types={types} />}
+          {tab === 'mirror' && status.taskManager && <MirrorPanel status={status} />}
+          {tab === 'plan' && status.isAdmin && status.taskManager && <PlanPanel status={status} />}
           {tab === 'progress' && status.tracker && <ProgressPanel status={status} />}
           {tab === 'ideas' && status.ideas && <IdeasPanel status={status} />}
           {tab === 'review' && status.isAdmin && <ReviewPanel onIdeas={() => setTab('ideas')} />}

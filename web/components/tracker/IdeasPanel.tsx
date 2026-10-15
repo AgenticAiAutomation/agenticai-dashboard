@@ -12,7 +12,7 @@ const TONE: Record<Idea['status'], string> = {
   didnt_work: 'text-muted border-line bg-raised',
 };
 
-const BLANK = { project_id: '', title: '', problem: '', idea: '', expected_result: '', metric: '' };
+const BLANK = { project_id: '', title: '', problem: '', idea: '', test_plan: '', expected_result: '', metric: '', effort: '' };
 
 export default function IdeasPanel({ status }: { status: TrackerStatus }) {
   const [ideas, setIdeas] = useState<Idea[]>([]);
@@ -74,7 +74,7 @@ export default function IdeasPanel({ status }: { status: TrackerStatus }) {
     <div className="space-y-6">
       <ErrorBanner message={error} />
       <Card
-        title="Idea Board · monthly bonus"
+        title={status.taskManager ? 'Idea Board · one idea a week' : 'Idea Board · monthly bonus'}
         action={status.allowed.length > 0 && (
           <button className="btn-primary" onClick={() => setOpen(!open)}>{open ? 'Close' : 'Submit an idea'}</button>
         )}
@@ -100,8 +100,10 @@ export default function IdeasPanel({ status }: { status: TrackerStatus }) {
             {field('title', 'Title')}
             {field('problem', 'Problem you noticed', true)}
             {field('idea', 'Your idea', true)}
+            {field('test_plan', 'How to test it in 2 weeks or less', true)}
             {field('expected_result', 'Expected result')}
-            {field('metric', 'How to measure it')}
+            {field('metric', 'Success metric')}
+            {field('effort', 'Effort (e.g. 2 days)')}
             <div className="sm:col-span-2"><button className="btn-primary" type="submit">Submit idea</button></div>
           </form>
         )}
@@ -123,7 +125,9 @@ export default function IdeasPanel({ status }: { status: TrackerStatus }) {
               {i.problem && <p className="text-sm text-slate-300"><b className="text-slate-100">Problem:</b> {i.problem}</p>}
               <p className="mt-1 text-sm text-slate-300"><b className="text-slate-100">Idea:</b> {i.idea}</p>
               {i.expected_result && <p className="mt-1 text-sm text-slate-300"><b className="text-slate-100">Expected:</b> {i.expected_result}</p>}
+              {i.test_plan && <p className="mt-1 text-sm text-slate-300"><b className="text-slate-100">Test:</b> {i.test_plan}</p>}
               {i.metric && <p className="mt-1 text-sm text-slate-300"><b className="text-slate-100">Measure:</b> {i.metric}</p>}
+              {i.effort && <p className="mt-1 text-sm text-slate-300"><b className="text-slate-100">Effort:</b> {i.effort}</p>}
               {i.result_note && <p className="mt-2 text-sm text-success"><b>Result:</b> {i.result_note}</p>}
               <footer className="mt-3 flex flex-wrap items-center gap-2">
                 <button

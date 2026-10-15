@@ -10,6 +10,8 @@ export type TrackerStatus = {
   tracker: boolean;
   ideas: boolean;
   taskManager?: boolean;
+  isSuperuser?: boolean;
+  role?: string;
   readOnly: boolean;
   me: { id: string; name: string; email: string };
   isAdmin: boolean;
@@ -19,7 +21,7 @@ export type TrackerStatus = {
   backdateDays: number;
   noteMax: number;
   target: number;
-  settings: { default_daily_target: number; backlink_daily_cap: number; late_factor: number } | null;
+  settings: { default_daily_target: number; backlink_daily_cap: number; late_factor: number; show_rank?: boolean } | null;
   badges: { month: string; kind: string; idea_id: number }[];
 };
 
@@ -70,6 +72,7 @@ export type Summary = {
 export type Idea = {
   id: number; user_id: string; user_name: string; project_id: string; site: string;
   title: string; problem: string; idea: string; expected_result: string; metric: string;
+  test_plan?: string; effort?: string; week?: string | null;
   status: 'new' | 'shortlisted' | 'in_trial' | 'worked' | 'didnt_work';
   result_note: string; month_won: string | null; created_at: string;
   votes: number; votedByMe: boolean; isMine: boolean;
@@ -121,7 +124,7 @@ export const trackerApi = {
     api.post<{ log: Log }>(`/api/tasks/logs/${id}/review`, body),
   reviewBulk: (body: { ids: number[]; status: string; quality?: number }) =>
     api.post<{ reviewed: number }>('/api/tasks/logs/review-bulk', body),
-  queue: () => api.get<{ logs: Log[]; ideas: Idea[] }>('/api/tasks/review-queue'),
+  queue: () => api.get<{ logs: Log[]; ideas: Idea[]; tasks?: import('@/lib/tasks').Task[] }>('/api/tasks/review-queue'),
   summary: (range: 'day' | 'week' | 'month', user_id?: string) =>
     api.get<Summary>('/api/tasks/summary', { params: { range, user_id } }),
   report: (start?: string, end?: string) =>

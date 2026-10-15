@@ -15,7 +15,7 @@ import {
   YAxis,
 } from 'recharts';
 import Shell from '@/components/Shell';
-import Workspace, { MyLevels } from '@/components/Workspace';
+import Workspace, { MyLevels, RagSignals } from '@/components/Workspace';
 import {
   Card,
   CardSkeleton,
@@ -92,6 +92,7 @@ export default function DashboardPage() {
       )}
 
       {/* Workspace — the desks, then the person's level on each website */}
+      <RagSignals />
       <Workspace />
       <MyLevels />
 

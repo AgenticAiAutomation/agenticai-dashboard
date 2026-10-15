@@ -845,13 +845,14 @@ def plan(user, user_id=None, month=None):
         for d, q in days.items():
             dd = _date.fromisoformat(d)
             ws = (dd - timedelta(days=dd.weekday())).isoformat()
-            weeks[ws] = round(weeks.get(ws, 0) + q, 2)
+            weeks[ws] = weeks.get(ws, 0) + q
         overrides = {o["week_start"] for o in store.rows(
             "SELECT week_start FROM target_splits WHERE user_id=? AND project_id=? AND unit=? AND month=?",
             (who, t["project_id"], t["unit"], month))}
         out.append({"project": t["project_id"], "unit": t["unit"], "unitLabel": unit_label(t["unit"]),
                     "month": month, "qty": t["qty"],
-                    "weeks": [{"weekStart": w, "qty": q, "edited": w in overrides} for w, q in sorted(weeks.items())],
+                    "weeks": [{"weekStart": w, "qty": round(q, 1), "edited": w in overrides}
+                              for w, q in sorted(weeks.items())],
                     "days": {d: round(q, 2) for d, q in days.items()}})
     y, m = int(month[:4]), int(month[5:7])
     leave = sorted(_leave(who, f"{month}-01", f"{month}-{calendar.monthrange(y, m)[1]:02d}"))
