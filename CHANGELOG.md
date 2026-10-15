@@ -2,6 +2,16 @@
 
 Newest first. Production state per feature lives in `docs/FEATURE_LOG.md`.
 
+## 2026-10-15 · Route registry + task manager (branch `feat/task-manager`), not deployed yet
+
+- **T5:** one route registry (`web/lib/routes.json`) feeds the nav, the SEO tabs and the homepage, which now
+  lists every page a person may open, grouped SEO / Content / Team / Finance / Admin, with copyable URLs.
+- **T7 (flag `FEATURE_TASK_MANAGER`):** SMART tasks with list / board / calendar views, auto progress from Backlink
+  Ops, published blogs, daily logs and ideas; monthly → weekly → daily targets with leave days; Red/Amber/Green
+  per task and per person; Mirror page; points ledger, tiers, badges, weekly idea task, monthly payout sheet.
+- **Found:** `/invoices/` is not proxied on the dashboard domain, so the desk and client fill links don't open.
+  The fix is `ops/fix-invoice-nginx.sh`.
+
 ## 2026-10-13 · Dashboard work order (branch `feat/daily-tracker-levels`), not deployed yet
 
 - **Fix (T1):** people rostered on a website now always see it on Backlink Ops, even when it is

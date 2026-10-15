@@ -35,6 +35,24 @@ Got an idea to grow your website? Click **Submit an idea**. Fill in the problem,
 the result you expect and how to measure it. Jai may trial it. If it **works**, you get
 the month's 🏆 winner badge and the bonus. Click 👍 on teammates' ideas you like.
 
+## Tasks (once switched on)
+
+The **My tasks** tab lists what Jai assigned you. Each task shows a colour:
+- 🟢 green means on track.
+- 🟠 amber means behind, or due within 24 hours and not submitted.
+- 🔴 red means well behind, or overdue.
+
+Backlinks, published blogs and work logged here count toward your tasks **by themselves**, so don't enter
+anything twice. For other tasks, open the task and add progress with a proof link. When you're done, click
+**Submit for review**. If something stops you, mark it **Blocked** and say why.
+
+Every week you get one **idea task**, due Friday. Submit an idea on the Idea Board to complete it.
+
+The **Mirror** tab shows where you stand:
+- today, this week and this month against your targets
+- your points and tier this month
+- exactly what would get you to the next tier
+
 ## Backlink Ops levels
 
 Your level is now **per website**: your own links and your own target on each site. The

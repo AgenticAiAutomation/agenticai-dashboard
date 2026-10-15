@@ -39,6 +39,7 @@ Environment="INVOICE_DESK_PUBLIC_BASE=https://dashboard.agenticaiautomation.co"
 Environment="FEATURE_PER_PROJECT_LEVELS=0"
 Environment="FEATURE_DAILY_TRACKER=0"
 Environment="FEATURE_IDEA_BOARD=0"
+Environment="FEATURE_TASK_MANAGER=0"
 Environment="DAILY_TRACKER_DB=/var/www/agenticai-dashboard/api/instance/daily_tracker.db"
 Environment="DAILY_TRACKER_BACKUP_DIR=/var/www/agenticai-dashboard/api/backups/daily_tracker"
 # -----------------------------------------------------------------------
