@@ -148,6 +148,180 @@ CREATE TABLE IF NOT EXISTS user_badges (
 """
 
 
+# ------------------------------------------------------------------------
+# Schema 2 (T7, task manager). All additive: new tables, and new nullable
+# columns on ideas / daily_logs. Nothing existing is renamed or dropped.
+# The spec's `user_targets(user_id, project_id, period, work_type, qty, month)`
+# would collide with T4's user_targets (daily marks target), so it is
+# `task_targets`. Bonus notes live on reward_tiers, never amounts on people.
+SCHEMA_2 = """
+CREATE TABLE IF NOT EXISTS tasks (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    title         TEXT NOT NULL,
+    description   TEXT NOT NULL,
+    project_id    TEXT NOT NULL,
+    goal          TEXT NOT NULL,
+    target_qty    REAL NOT NULL,
+    unit          TEXT NOT NULL,
+    work_type_id  INTEGER,
+    proof_type    TEXT NOT NULL DEFAULT 'link',
+    effort_hours  REAL NOT NULL,
+    priority      TEXT NOT NULL DEFAULT 'P2',
+    start_at      TEXT NOT NULL,
+    due_at        TEXT NOT NULL,
+    recurrence    TEXT NOT NULL DEFAULT 'none',
+    series_id     INTEGER,
+    status        TEXT NOT NULL DEFAULT 'todo',
+    blocked_reason TEXT NOT NULL DEFAULT '',
+    marks         REAL NOT NULL DEFAULT 0,
+    quality       INTEGER,
+    rework        INTEGER NOT NULL DEFAULT 0,
+    kind          TEXT NOT NULL DEFAULT 'task',
+    week          TEXT,
+    submitted_at  TEXT,
+    approved_at   TEXT,
+    approved_by   TEXT,
+    review_note   TEXT NOT NULL DEFAULT '',
+    created_by    TEXT NOT NULL,
+    created_by_name TEXT NOT NULL DEFAULT '',
+    created_at    TEXT NOT NULL,
+    updated_at    TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ix_tasks_due ON tasks(due_at);
+CREATE INDEX IF NOT EXISTS ix_tasks_status ON tasks(status);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_tasks_series_start ON tasks(series_id, start_at) WHERE series_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS ux_tasks_weekly_idea ON tasks(kind, week, created_by) WHERE kind = 'weekly_idea';
+
+CREATE TABLE IF NOT EXISTS task_assignees (
+    task_id   INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+    user_id   TEXT NOT NULL,
+    user_name TEXT NOT NULL DEFAULT '',
+    UNIQUE (task_id, user_id)
+);
+CREATE INDEX IF NOT EXISTS ix_ta_user ON task_assignees(user_id);
+
+CREATE TABLE IF NOT EXISTS task_checklist (
+    id      INTEGER PRIMARY KEY AUTOINCREMENT,
+    task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+    text    TEXT NOT NULL,
+    done    INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS task_links (
+    id      INTEGER PRIMARY KEY AUTOINCREMENT,
+    task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+    url     TEXT NOT NULL,
+    label   TEXT NOT NULL DEFAULT ''
+);
+
+-- One row per counted unit of work. Synced rows (backlink / blog / daily_log /
+-- idea) are rebuilt from their source on every sync, keyed by source_id, so a
+-- link can never count twice and a rejected one stops counting.
+CREATE TABLE IF NOT EXISTS task_progress (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    task_id    INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+    user_id    TEXT NOT NULL,
+    qty        REAL NOT NULL DEFAULT 1,
+    source     TEXT NOT NULL,
+    source_id  TEXT NOT NULL,
+    proof_url  TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    UNIQUE (task_id, source, source_id)
+);
+
+CREATE TABLE IF NOT EXISTS task_comments (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    task_id    INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+    user_id    TEXT NOT NULL,
+    user_name  TEXT NOT NULL DEFAULT '',
+    text       TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS task_targets (
+    user_id    TEXT NOT NULL,
+    project_id TEXT NOT NULL,
+    unit       TEXT NOT NULL,
+    month      TEXT NOT NULL,
+    qty        REAL NOT NULL,
+    set_by     TEXT,
+    PRIMARY KEY (user_id, project_id, unit, month)
+);
+-- Jai's edits to the automatic weekly split. week_start = that week's Monday.
+CREATE TABLE IF NOT EXISTS target_splits (
+    user_id    TEXT NOT NULL,
+    project_id TEXT NOT NULL,
+    unit       TEXT NOT NULL,
+    month      TEXT NOT NULL,
+    week_start TEXT NOT NULL,
+    qty        REAL NOT NULL,
+    PRIMARY KEY (user_id, project_id, unit, month, week_start)
+);
+CREATE TABLE IF NOT EXISTS role_templates (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    role         TEXT NOT NULL,
+    unit         TEXT NOT NULL,
+    qty_per_week REAL NOT NULL,
+    UNIQUE (role, unit)
+);
+CREATE TABLE IF NOT EXISTS leave_days (
+    user_id TEXT NOT NULL,
+    date    TEXT NOT NULL,
+    reason  TEXT NOT NULL DEFAULT '',
+    PRIMARY KEY (user_id, date)
+);
+
+CREATE TABLE IF NOT EXISTS points_ledger (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id    TEXT NOT NULL,
+    user_name  TEXT NOT NULL DEFAULT '',
+    points     REAL NOT NULL,
+    reason     TEXT NOT NULL,
+    ref_type   TEXT NOT NULL,
+    ref_id     TEXT NOT NULL,
+    month      TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    UNIQUE (user_id, ref_type, ref_id, reason)
+);
+CREATE INDEX IF NOT EXISTS ix_pl_month ON points_ledger(month, user_id);
+
+CREATE TABLE IF NOT EXISTS reward_tiers (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    name       TEXT NOT NULL UNIQUE,
+    min_points REAL NOT NULL,
+    bonus_note TEXT NOT NULL DEFAULT ''
+);
+CREATE TABLE IF NOT EXISTS rag_settings (
+    id        INTEGER PRIMARY KEY CHECK (id = 1),
+    green_min REAL NOT NULL DEFAULT 90,
+    amber_min REAL NOT NULL DEFAULT 60
+);
+-- Monthly payout sheet once Jai approves it (tier per person; no amounts).
+CREATE TABLE IF NOT EXISTS reward_months (
+    month       TEXT NOT NULL,
+    user_id     TEXT NOT NULL,
+    user_name   TEXT NOT NULL DEFAULT '',
+    points      REAL NOT NULL,
+    tier        TEXT NOT NULL DEFAULT '',
+    approved_by TEXT NOT NULL,
+    approved_at TEXT NOT NULL,
+    PRIMARY KEY (month, user_id)
+);
+"""
+
+# Columns added to existing tables (schema 2). Each is nullable or defaulted.
+ADD_COLUMNS = [
+    ("ideas", "week", "TEXT"),
+    ("ideas", "test_plan", "TEXT NOT NULL DEFAULT ''"),
+    ("ideas", "effort", "TEXT NOT NULL DEFAULT ''"),
+    ("daily_logs", "rework", "INTEGER NOT NULL DEFAULT 0"),
+]
+
+DEFAULT_TIERS = [("Bronze", 300), ("Silver", 600), ("Gold", 1000), ("Platinum", 1500)]
+DEFAULT_TEMPLATES = [("seo_lead", "backlinks", 20), ("seo_lead", "blogs", 2),
+                     ("seo_lead", "Social media post", 10)]
+
+
 def today_ist():
     return datetime.now(IST).strftime("%Y-%m-%d")
 
@@ -190,6 +364,22 @@ def init_db():
         conn.execute("INSERT INTO dt_settings(key, value, updated_by, updated_at) VALUES (?,?,?,?) "
                      "ON CONFLICT(key) DO NOTHING",
                      ("settings", json.dumps(DEFAULT_SETTINGS), "installer", now_iso()))
+        # ---- schema 2 (T7): additive, idempotent
+        conn.executescript(SCHEMA_2)
+        for table, col, decl in ADD_COLUMNS:
+            have = {r["name"] for r in conn.execute(f"PRAGMA table_info({table})")}
+            if col not in have:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {decl}")
+        conn.execute("CREATE INDEX IF NOT EXISTS ix_ideas_week ON ideas(week, user_id)")
+        conn.execute("INSERT OR IGNORE INTO rag_settings(id, green_min, amber_min) VALUES (1, 90, 60)")
+        if conn.execute("SELECT COUNT(*) c FROM reward_tiers").fetchone()["c"] == 0:
+            conn.executemany("INSERT INTO reward_tiers(name, min_points) VALUES (?,?)", DEFAULT_TIERS)
+        if conn.execute("SELECT COUNT(*) c FROM role_templates").fetchone()["c"] == 0:
+            conn.executemany("INSERT INTO role_templates(role, unit, qty_per_week) VALUES (?,?,?)",
+                             DEFAULT_TEMPLATES)
+        if (conn.execute("SELECT MAX(version) v FROM dt_schema_version").fetchone()["v"] or 1) < 2:
+            conn.execute("INSERT INTO dt_schema_version VALUES (?,?,?)",
+                         (2, now_iso(), "task manager (T7): tasks, targets, points, tiers"))
     return conn
 
 

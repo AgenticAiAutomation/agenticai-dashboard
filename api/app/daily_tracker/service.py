@@ -227,7 +227,7 @@ def _range(kind, today):
 
 # ------------------------------------------------------------------ status + types
 def status(user):
-    if not (settings.TRACKER or settings.IDEAS):
+    if not (settings.TRACKER or settings.IDEAS or settings.TASKS):
         return ERR_TRACKER_OFF
     if not user:
         return ERR_AUTH
@@ -237,7 +237,9 @@ def status(user):
     today = store.today_ist()
     badges = store.rows("SELECT month, kind, idea_id FROM user_badges WHERE user_id=? "
                         "ORDER BY month DESC", (uid(user),))
-    return 200, {"tracker": settings.TRACKER, "ideas": settings.IDEAS,
+    return 200, {"tracker": settings.TRACKER, "ideas": settings.IDEAS, "taskManager": settings.TASKS,
+                 "isSuperuser": str(user.get("email") or "").strip().lower() in settings.SUPERUSERS,
+                 "role": user.get("role"),
                  "version": settings.VERSION, "readOnly": settings.READ_ONLY,
                  "me": {"id": uid(user), "name": user.get("name"), "email": user.get("email")},
                  "isAdmin": is_admin(user), "sites": known, "allowed": allowed,
@@ -468,9 +470,9 @@ def _review_one(reviewer, r, status, quality, note, cfg):
     else:
         q, marks = (int(quality) if quality else None), 0.0
     store.write("UPDATE daily_logs SET status=?, quality=?, marks_awarded=?, reviewer_id=?, "
-                "reviewer_name=?, reviewed_at=?, review_note=? WHERE id=?",
+                "reviewer_name=?, reviewed_at=?, review_note=?, rework=rework+? WHERE id=?",
                 (status, q, marks, uid(reviewer), reviewer.get("name") or "", store.now_iso(),
-                 str(note or "")[:300], r["id"]))
+                 str(note or "")[:300], 1 if status == "needs_fix" else 0, r["id"]))
     return None
 
 
@@ -524,6 +526,10 @@ def review_queue(user):
             "SELECT * FROM daily_logs WHERE status='submitted' ORDER BY log_date, submitted_at")]
     if settings.IDEAS:
         out["ideas"] = _ideas_rows("WHERE i.status IN ('new','shortlisted','in_trial')", (), user)
+    if settings.TASKS:
+        from . import taskmgr
+        _, t = taskmgr.list_tasks(user, scope="all", status="submitted")
+        out["tasks"] = t.get("tasks", [])
     return 200, out
 
 
@@ -871,7 +877,7 @@ def create_idea(user, body):
     if project not in allowed:
         return _bad("Pick one of your sites.")
     f = {k: str(body.get(k) or "").strip() for k in
-         ("title", "problem", "idea", "expected_result", "metric")}
+         ("title", "problem", "idea", "expected_result", "metric", "test_plan", "effort")}
     if len(f["title"]) < 4:
         return _bad("Give the idea a short title.")
     if len(f["idea"]) < 10:
@@ -879,11 +885,19 @@ def create_idea(user, body):
     if len(f["title"]) > 140 or any(len(v) > 2000 for v in f.values()):
         return _bad("Keep the title under 140 characters and each box under 2000.")
     now = store.now_iso()
+    from datetime import datetime as _dtm
+    y, w, _ = _dtm.now(store.IST).isocalendar()
     cur = store.write("INSERT INTO ideas(user_id, user_name, project_id, title, problem, idea, "
-                      "expected_result, metric, status, created_at, updated_at) "
-                      "VALUES (?,?,?,?,?,?,?,?,'new',?,?)",
+                      "expected_result, metric, test_plan, effort, week, status, created_at, updated_at) "
+                      "VALUES (?,?,?,?,?,?,?,?,?,?,?,'new',?,?)",
                       (uid(user), user.get("name") or "", project, f["title"], f["problem"],
-                       f["idea"], f["expected_result"], f["metric"], now, now))
+                       f["idea"], f["expected_result"], f["metric"], f["test_plan"], f["effort"],
+                       f"{y}-W{w:02d}", now, now))
+    try:
+        from . import taskmgr
+        taskmgr.idea_submitted(user)          # completes this week's idea task (T7)
+    except Exception:
+        pass
     return 201, {"idea": _ideas_rows("WHERE i.id=?", (cur.lastrowid,), user)[0]}
 
 

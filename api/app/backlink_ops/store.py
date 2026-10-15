@@ -143,6 +143,16 @@ CREATE TABLE IF NOT EXISTS bo_user_levels (
     UNIQUE (user_id, project_id)
 );
 
+-- v1.3.1: XP from approved tasks (task manager, T7) on top of link XP.
+-- One row per approval (ref), so a re-approval can't add twice.
+CREATE TABLE IF NOT EXISTS bo_level_bonus (
+    ref         TEXT PRIMARY KEY,
+    user_id     TEXT NOT NULL,
+    project_id  TEXT NOT NULL,
+    xp          REAL NOT NULL,
+    created_at  TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS bo_ai_usage (
     date        TEXT NOT NULL,
     kind        TEXT NOT NULL,
@@ -422,6 +432,20 @@ def update_level(user_id, project, **fields):
                      % ", ".join(k + "=?" for k in keys),
                      [fields[k] for k in keys] + [now_iso(), str(user_id), project])
     return get_level(user_id, project)
+
+
+def add_level_bonus(user_id, project, xp, ref):
+    conn = connect()
+    with conn:
+        conn.execute("INSERT INTO bo_level_bonus(ref, user_id, project_id, xp, created_at) VALUES (?,?,?,?,?) "
+                     "ON CONFLICT(ref) DO UPDATE SET xp=excluded.xp",
+                     (ref, str(user_id), project, float(xp), now_iso()))
+
+
+def level_bonus(user_id, project):
+    r = connect().execute("SELECT COALESCE(SUM(xp),0) x FROM bo_level_bonus WHERE user_id=? AND project_id=?",
+                          (str(user_id), project)).fetchone()
+    return float(r["x"]) if r else 0.0
 
 
 def all_levels():

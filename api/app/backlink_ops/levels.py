@@ -93,6 +93,7 @@ def refresh(row, cfg):
         streak += 1
         day -= timedelta(days=1)
 
+    xp += store.level_bonus(row["user_id"], project)      # approved tasks (T7)
     L = level_for(row["level"], cfg)
     row = store.update_level(row["user_id"], project, xp=round(xp, 1), streak_days=streak,
                              last_completed_date=max(done_days) if done_days else None,

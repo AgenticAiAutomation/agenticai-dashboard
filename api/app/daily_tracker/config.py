@@ -18,6 +18,10 @@ def _csv(name, default=""):
 class Settings:
     TRACKER     = _b("FEATURE_DAILY_TRACKER", "0")
     IDEAS       = _b("FEATURE_IDEA_BOARD", "0")
+    # T7: tasks (SMART), targets, Red/Amber/Green, Mirror, points and tiers.
+    TASKS       = _b("FEATURE_TASK_MANAGER", "0")
+    # Working weekdays for target splits, Monday = 0. Default Monday-Saturday.
+    WORKDAYS    = [int(x) for x in os.environ.get("TASK_MANAGER_WORKDAYS", "0,1,2,3,4,5").split(",") if x.strip()]
     READ_ONLY   = _b("DAILY_TRACKER_READ_ONLY", "0")     # BCP degrade: serve, refuse writes
 
     # Spec'd paths. They do not collide with the old /tasks router (no /api).
@@ -38,8 +42,8 @@ class Settings:
                                  "app.backlink_ops_hook:get_user_or_none")
 
     LOG_PREFIX  = "daily-tracker"
-    VERSION     = "1.0.0"
-    SCHEMA_VERSION = 1
+    VERSION     = "1.1.0"
+    SCHEMA_VERSION = 2
 
 
 settings = Settings()

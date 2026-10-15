@@ -8,7 +8,7 @@ import importlib
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, Response
 
-from . import service
+from . import service, taskmgr
 from .config import settings
 
 _hook = None
@@ -121,6 +121,137 @@ def build():
     @tasks.put("/targets")
     async def set_target(request: Request):
         return _json(service.set_target(current_user(request), await _body(request)))
+
+    # ---------------------------------------------------- task manager (T7)
+    @tasks.get("/items")
+    async def list_items(request: Request, scope: str = "mine", user_id: str = None,
+                         project_id: str = None, status: str = None, due_before: str = None):
+        return _json(taskmgr.list_tasks(current_user(request), scope, user_id, project_id, status, due_before))
+
+    @tasks.post("/items")
+    async def create_item(request: Request):
+        return _json(taskmgr.create_task(current_user(request), await _body(request)))
+
+    @tasks.get("/items/{task_id}")
+    async def get_item(request: Request, task_id: int):
+        return _json(taskmgr.get_task(current_user(request), task_id))
+
+    @tasks.put("/items/{task_id}")
+    async def update_item(request: Request, task_id: int):
+        return _json(taskmgr.update_task(current_user(request), task_id, await _body(request)))
+
+    @tasks.delete("/items/{task_id}")
+    async def delete_item(request: Request, task_id: int):
+        return _json(taskmgr.delete_task(current_user(request), task_id))
+
+    @tasks.post("/items/{task_id}/status")
+    async def item_status(request: Request, task_id: int):
+        return _json(taskmgr.set_status(current_user(request), task_id, await _body(request)))
+
+    @tasks.post("/items/{task_id}/approve")
+    async def item_approve(request: Request, task_id: int):
+        return _json(taskmgr.approve(current_user(request), task_id, await _body(request)))
+
+    @tasks.post("/items/{task_id}/progress")
+    async def item_progress(request: Request, task_id: int):
+        return _json(taskmgr.add_progress(current_user(request), task_id, await _body(request)))
+
+    @tasks.post("/items/{task_id}/comments")
+    async def item_comment(request: Request, task_id: int):
+        return _json(taskmgr.add_comment(current_user(request), task_id, await _body(request)))
+
+    @tasks.post("/items/{task_id}/links")
+    async def item_link(request: Request, task_id: int):
+        return _json(taskmgr.add_link(current_user(request), task_id, await _body(request)))
+
+    @tasks.post("/items/{task_id}/checklist")
+    async def item_check_add(request: Request, task_id: int):
+        return _json(taskmgr.add_checklist(current_user(request), task_id, await _body(request)))
+
+    @tasks.put("/items/{task_id}/checklist/{item_id}")
+    async def item_check(request: Request, task_id: int, item_id: int):
+        return _json(taskmgr.toggle_checklist(current_user(request), task_id, item_id, await _body(request)))
+
+    @tasks.get("/people")
+    async def people(request: Request):
+        return _json(taskmgr.people(current_user(request)))
+
+    @tasks.get("/plan")
+    async def plan(request: Request, user_id: str = None, month: str = None):
+        return _json(taskmgr.plan(current_user(request), user_id, month))
+
+    @tasks.put("/plan")
+    async def plan_set(request: Request):
+        return _json(taskmgr.set_target(current_user(request), await _body(request)))
+
+    @tasks.put("/plan/split")
+    async def plan_split(request: Request):
+        return _json(taskmgr.set_split(current_user(request), await _body(request)))
+
+    @tasks.post("/plan/template")
+    async def plan_template(request: Request):
+        return _json(taskmgr.apply_template(current_user(request), await _body(request)))
+
+    @tasks.get("/templates")
+    async def templates(request: Request):
+        return _json(taskmgr.templates(current_user(request)))
+
+    @tasks.put("/templates")
+    async def templates_put(request: Request):
+        return _json(taskmgr.put_templates(current_user(request), await _body(request)))
+
+    @tasks.put("/leave")
+    async def leave_set(request: Request):
+        return _json(taskmgr.set_leave(current_user(request), await _body(request)))
+
+    @tasks.post("/leave/remove")
+    async def leave_remove(request: Request):
+        return _json(taskmgr.set_leave(current_user(request), await _body(request), remove=True))
+
+    @tasks.get("/rag")
+    async def rag(request: Request, user_id: str = None):
+        return _json(taskmgr.my_rag(current_user(request), user_id))
+
+    @tasks.get("/rag/team")
+    async def rag_team(request: Request):
+        return _json(taskmgr.team_rag(current_user(request)))
+
+    @tasks.put("/rag-settings")
+    async def rag_settings(request: Request):
+        return _json(taskmgr.put_rag_settings(current_user(request), await _body(request)))
+
+    @tasks.get("/mirror")
+    async def mirror(request: Request, user_id: str = None, month: str = None):
+        return _json(taskmgr.mirror(current_user(request), user_id, month))
+
+    @tasks.put("/mirror-settings")
+    async def mirror_settings(request: Request):
+        return _json(taskmgr.put_mirror_settings(current_user(request), await _body(request)))
+
+    @tasks.get("/tiers")
+    async def get_tiers(request: Request):
+        return _json(taskmgr.get_tiers(current_user(request)))
+
+    @tasks.put("/tiers")
+    async def put_tiers(request: Request):
+        return _json(taskmgr.put_tiers(current_user(request), await _body(request)))
+
+    @tasks.get("/rewards")
+    async def rewards(request: Request, month: str = None):
+        return _json(taskmgr.rewards(current_user(request), month))
+
+    @tasks.post("/rewards/approve")
+    async def rewards_approve(request: Request):
+        return _json(taskmgr.approve_rewards(current_user(request), await _body(request)))
+
+    @tasks.get("/rewards.csv")
+    async def rewards_csv(request: Request, month: str = None):
+        status, out = taskmgr.rewards_csv(current_user(request), month)
+        if status != 200:
+            return _json((status, out))
+        return Response(out, media_type="text/csv; charset=utf-8", headers={
+            "Content-Disposition": f'attachment; filename="rewards-{month or "month"}.csv"',
+            "Cache-Control": "no-store"})
 
     @ideas.get("")
     async def list_ideas(request: Request, project_id: str = None, status: str = None,
