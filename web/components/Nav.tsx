@@ -4,34 +4,12 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 
-// `external`: pages the API serves through nginx (not Next routes) — plain <a>.
-// The old static /articles page was removed 2026-10-13; the SEO Articles tab
-// below is the article pipeline.
+import { navRoutes, pathOf, seoTabs } from '@/lib/registry';
+
+// Every link here comes from the route registry (web/lib/routes.json):
+// `nav` entries for the top bar, `tab` entries for the SEO sub-tabs.
+// `server` pages are served by the API through nginx — plain <a>, not <Link>.
 type Item = { href: string; label: string; external?: boolean };
-
-const PRIMARY: Item[] = [
-  { href: '/dashboard', label: 'Dashboard' },
-  { href: '/dashboard/seo', label: 'SEO Operations' },
-  { href: '/keywords', label: 'Keywords' },
-  { href: '/seo/backlink-ops/', label: 'Backlink Ops', external: true },
-  { href: '/tasks', label: 'Daily Tracker' },
-];
-
-const ADMIN: Item[] = [
-  { href: '/invoices/', label: 'Invoices', external: true },
-  { href: '/settings/users', label: 'Users' },
-];
-
-const SEO_TABS = [
-  { href: '/dashboard/seo/inbox', label: 'Inbox' },
-  { href: '/dashboard/seo/articles', label: 'Articles' },
-  { href: '/dashboard/seo/calendar', label: 'Calendar' },
-  { href: '/dashboard/seo/team', label: 'Team' },
-  { href: '/dashboard/seo/backlinks', label: 'Backlinks' },
-  { href: '/dashboard/seo/recommendations', label: 'Recommendations' },
-  { href: '/dashboard/seo/technical-audit', label: 'Technical audit' },
-  { href: '/dashboard/seo/articles/scoring-guide#blog-playbook', label: 'Playbook guide' },
-];
 
 export default function Nav() {
   const router = useRouter();
@@ -49,9 +27,10 @@ export default function Nav() {
     router.push('/login');
   };
 
-  const isAdmin = role === 'admin' || role === 'owner';
   const inSeo = pathname?.startsWith('/dashboard/seo');
-  const items = isAdmin ? [...PRIMARY, ...ADMIN] : PRIMARY;
+  const items: Item[] = navRoutes(role).map((r) => ({
+    href: r.server ? r.slug : pathOf(r.slug), label: r.navTitle ?? r.title, external: r.server }));
+  const tabs = seoTabs(role).map((r) => ({ href: r.slug.replace(/\/(#|$)/, '$1'), label: r.tabTitle ?? r.title }));
 
   const isActive = (href: string) =>
     href === '/dashboard' ? pathname === '/dashboard' : pathname?.startsWith(href);
@@ -88,7 +67,7 @@ export default function Nav() {
       {inSeo && (
         <div className="border-t border-line bg-bg">
           <div className="mx-auto flex max-w-[1400px] gap-1 overflow-x-auto px-4">
-            {SEO_TABS.map((tab) => (
+            {tabs.map((tab) => (
               <Link
                 key={tab.href}
                 href={tab.href}

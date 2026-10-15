@@ -3,18 +3,14 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { Card } from '@/components/ui';
+import { Flags, PUBLIC_ORIGIN, RouteEntry, homeGroups } from '@/lib/registry';
 import { LevelRow, trackerApi } from '@/lib/tracker';
 
-/* Homepage "Workspace": the desks people actually work in, plus their level
-   on each website (Backlink Ops, per person and per site). Backlink Ops and
-   Invoices are pages served by the API through nginx, so they are plain
-   <a> links, not Next routes. */
-
-const DESKS = [
-  { href: '/seo/backlink-ops/', label: 'Backlink Ops', blurb: 'Log links, keyword lab, your level per website.', external: true },
-  { href: '/tasks/', label: 'Daily Tracker', blurb: 'Log today’s work with proof, marks, streaks and the Idea Board.', external: false },
-  { href: '/invoices/', label: 'Invoices', blurb: 'Client fill links, review queue and PDF invoices.', external: true, admin: true },
-];
+/* Homepage "Workspace": every dashboard page this person may open, grouped,
+   straight from the route registry (web/lib/routes.json) — no list here.
+   Plus their level on each website (Backlink Ops, per person and per site).
+   `server` pages (Backlink Ops, Invoices) are served by the API through
+   nginx, so they are plain <a> links, not Next routes. */
 
 function Bar({ value, max, done }: { value: number; max: number; done: boolean }) {
   return (
@@ -102,29 +98,51 @@ export function MyLevels() {
   );
 }
 
+function RouteCard({ r }: { r: RouteEntry }) {
+  const [copied, setCopied] = useState(false);
+  const url = PUBLIC_ORIGIN + r.slug;
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(url); setCopied(true); setTimeout(() => setCopied(false), 1500); }
+    catch { /* clipboard blocked: the URL is selectable text anyway */ }
+  };
+  const title = <span className="font-semibold text-white group-hover:text-primary">{r.title} →</span>;
+  return (
+    <div className="card group flex flex-col gap-1.5 p-4 transition-colors hover:border-primary">
+      {r.server ? <a href={r.slug}>{title}</a> : <Link href={r.slug}>{title}</Link>}
+      <p className="text-sm text-muted">{r.purpose}</p>
+      <div className="mt-auto flex items-center gap-2 pt-1">
+        <code className="min-w-0 flex-1 select-all truncate text-xs text-slate-400" title={url}>{url}</code>
+        <button type="button" onClick={copy} className="shrink-0 text-xs text-primary hover:underline" aria-label={`Copy ${url}`}>
+          {copied ? 'Copied' : 'Copy'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function Workspace() {
   const [role, setRole] = useState<string | null>(null);
-  useEffect(() => { setRole(localStorage.getItem('role')); }, []);
-  const isAdmin = role === 'admin' || role === 'owner';
+  const [flags, setFlags] = useState<Flags>(null);
+  useEffect(() => {
+    setRole(localStorage.getItem('role'));
+    // Flagged pages (Idea Board, Mirror, review queue…) show only when switched on.
+    // No tracker on the server (404) = none of them.
+    trackerApi.status()
+      .then((r) => setFlags({ tracker: r.data.tracker, ideas: r.data.ideas, taskManager: !!r.data.taskManager }))
+      .catch(() => setFlags({}));
+  }, []);
 
   return (
-    <div className="mb-6">
-      <h2 className="card-title mb-3">Workspace</h2>
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        {DESKS.filter((d) => !d.admin || isAdmin).map((d) => {
-          const inner = (
-            <>
-              <p className="font-semibold text-white">{d.label} →</p>
-              <p className="mt-1 text-sm text-muted">{d.blurb}</p>
-            </>
-          );
-          return d.external ? (
-            <a key={d.href} href={d.href} className="card block transition-colors hover:border-primary">{inner}</a>
-          ) : (
-            <Link key={d.href} href={d.href} className="card block transition-colors hover:border-primary">{inner}</Link>
-          );
-        })}
-      </div>
+    <div className="mb-6 space-y-5">
+      <h2 className="card-title">Workspace</h2>
+      {homeGroups(role, flags).map(({ group, routes }) => (
+        <section key={group} aria-label={group}>
+          <h3 className="mb-2 text-sm font-semibold text-slate-300">{group}</h3>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            {routes.map((r) => <RouteCard key={r.slug} r={r} />)}
+          </div>
+        </section>
+      ))}
     </div>
   );
 }

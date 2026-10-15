@@ -9,6 +9,7 @@ export type Site = { id: string; name: string; short: string; domain: string; hu
 export type TrackerStatus = {
   tracker: boolean;
   ideas: boolean;
+  taskManager?: boolean;
   readOnly: boolean;
   me: { id: string; name: string; email: string };
   isAdmin: boolean;
