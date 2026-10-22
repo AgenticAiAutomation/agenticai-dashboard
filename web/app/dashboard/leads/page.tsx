@@ -12,6 +12,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import api from '@/lib/api';
 import Nav from '@/components/Nav';
@@ -301,15 +302,19 @@ export default function LeadsPage() {
       <div className="mx-auto max-w-[1400px] px-4 py-8">
         <header className="mb-6 flex flex-wrap items-end justify-between gap-4">
           <div>
+            <p className="mb-1 text-sm"><Link href="/dashboard/" className="text-primary hover:underline">← Dashboard</Link></p>
             <h1 className="text-3xl font-bold text-white">Leads</h1>
             <p className="mt-1 text-sm text-muted">
               Everyone who finished the questionnaire at wa.agenticaiautomation.co.
               {meta && !meta.can_write && ' You have read access — ask an owner to change a status.'}
             </p>
           </div>
-          <button onClick={load} className="btn-secondary" disabled={loading}>
-            {loading ? 'Refreshing…' : 'Refresh'}
-          </button>
+          <div className="flex flex-wrap gap-2">
+            <Link href="/followups/" className="btn-primary">Follow-ups &amp; calendar →</Link>
+            <button onClick={load} className="btn-secondary" disabled={loading}>
+              {loading ? 'Refreshing…' : 'Refresh'}
+            </button>
+          </div>
         </header>
 
         {error && (

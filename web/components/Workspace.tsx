@@ -3,7 +3,8 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { Card } from '@/components/ui';
-import { Flags, PUBLIC_ORIGIN, RouteEntry, homeGroups } from '@/lib/registry';
+import { Flags, PUBLIC_ORIGIN, RouteEntry, homeGroups, pinnedRoutes } from '@/lib/registry';
+import api from '@/lib/api';
 import { LevelRow, trackerApi } from '@/lib/tracker';
 import { RAG_DOT, RAG_LABEL, Rag, Signal, tasksApi } from '@/lib/tasks';
 import { SignalTile } from '@/components/tasks/MirrorPanel';
@@ -163,21 +164,47 @@ export function RagSignals() {
   );
 }
 
-export default function Workspace() {
+/** Role + feature flags for the registry (flagged pages hide until switched on). */
+function useRegistryContext() {
   const [role, setRole] = useState<string | null>(null);
   const [flags, setFlags] = useState<Flags>(null);
   useEffect(() => {
     setRole(localStorage.getItem('role'));
-    // Flagged pages (Idea Board, Mirror, review queue…) show only when switched on.
-    // No tracker on the server (404) = none of them.
+    const fu = api.get<{ allowed: boolean }>('/api/followups/status').then((r) => !!r.data.allowed).catch(() => false);
     trackerApi.status()
-      .then((r) => setFlags({ tracker: r.data.tracker, ideas: r.data.ideas, taskManager: !!r.data.taskManager }))
-      .catch(() => setFlags({}));
+      .then(async (r) => setFlags({ tracker: r.data.tracker, ideas: r.data.ideas, taskManager: !!r.data.taskManager, followups: await fu }))
+      .catch(async () => setFlags({ followups: await fu }));
   }, []);
+  return { role, flags };
+}
+
+/* The first thing on the homepage: one click to each desk people use daily
+   (registry entries with `pin`). */
+export function DeskRow() {
+  const { role, flags } = useRegistryContext();
+  const pinned = pinnedRoutes(role, flags);
+  if (!pinned.length) return null;
+  return (
+    <div className="mb-6">
+        <nav aria-label="Your desks" className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+          {pinned.map((r) => {
+            const cls = 'card flex items-center justify-between gap-2 p-4 text-base font-semibold text-white transition-colors hover:border-primary hover:text-primary';
+            return r.server
+              ? <a key={r.slug} href={r.slug} className={cls}>{r.title}<span aria-hidden>→</span></a>
+              : <Link key={r.slug} href={r.slug} className={cls}>{r.title}<span aria-hidden>→</span></Link>;
+          })}
+        </nav>
+    </div>
+  );
+}
+
+export default function Workspace() {
+  // Flagged pages (Idea Board, Mirror, Follow-ups…) show only when switched on.
+  const { role, flags } = useRegistryContext();
 
   return (
     <div className="mb-6 space-y-5">
-      <h2 className="card-title">Workspace</h2>
+      <h2 className="card-title">Workspace · every page</h2>
       {homeGroups(role, flags).map(({ group, routes }) => (
         <section key={group} aria-label={group}>
           <h3 className="mb-2 text-sm font-semibold text-slate-300">{group}</h3>

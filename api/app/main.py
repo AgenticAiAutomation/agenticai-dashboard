@@ -87,3 +87,9 @@ def root():
 @app.get("/health")
 def health_check():
     return {"status": "healthy"}
+
+# --- Follow-ups (CRM: who to call, when, about what). Additive, flagged
+#     (FEATURE_FOLLOWUPS), own SQLite file, never raises.
+#     Remove these two lines to uninstall. See docs/FOLLOWUPS.md.
+from app.followups import register as register_followups  # noqa: E402
+register_followups(app)

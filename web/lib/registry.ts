@@ -4,7 +4,7 @@ import data from './routes.json';
    Nav, SEO sub-tabs and the homepage grid all read it through these helpers. */
 
 export type Group = 'SEO' | 'Content' | 'Team' | 'Finance' | 'Admin';
-export type Flag = 'tracker' | 'ideas' | 'taskManager';
+export type Flag = 'tracker' | 'ideas' | 'taskManager' | 'followups';
 
 export type RouteEntry = {
   slug: string;
@@ -17,6 +17,7 @@ export type RouteEntry = {
   nav?: boolean;
   navTitle?: string;
   tab?: number;
+  pin?: number;
   tabTitle?: string;
   server?: boolean;
   requires?: Flag;
@@ -48,6 +49,12 @@ export function homeGroups(role: string | null | undefined, flags: Flags) {
     group: g,
     routes: ROUTES.filter((r) => r.group === g && r.status === 'live' && allowed(r, role) && flagOk(r, flags)),
   })).filter((g) => g.routes.length > 0);
+}
+
+/** The homepage's top row: the desks people open every day. */
+export function pinnedRoutes(role: string | null | undefined, flags: Flags) {
+  return ROUTES.filter((r) => r.pin && r.status === 'live' && allowed(r, role) && flagOk(r, flags))
+    .sort((a, b) => (a.pin ?? 0) - (b.pin ?? 0));
 }
 
 export function navRoutes(role: string | null | undefined) {

@@ -7,7 +7,7 @@
     "server: true = served by the API through nginx (Backlink Ops, Invoices), not a Next.js page.",
     "roles: 'all' or a list of dashboard roles (owner, admin, seo, seo_lead, writer, viewer).",
     "group: SEO | Content | Team | Finance | Admin.  status: live | hidden (deep page, not listed) | planned | removed.",
-    "nav: in the top bar.  tab: position in the SEO Operations sub-tabs.  requires: only shown when that /api/tasks/status flag is on."
+    "nav: in the top bar.  tab: position in the SEO Operations sub-tabs.  pin: position in the homepage's top \"Your desks\" row.  requires: only shown when that /api/tasks/status flag is on."
   ],
   "groups": ["SEO", "Content", "Team", "Finance", "Admin"],
   "routes": [
@@ -30,7 +30,7 @@
       "purpose": "Keyword clusters, scores and who owns each one." },
     { "slug": "/countries/", "title": "Countries", "icon": "globe", "group": "SEO", "roles": "all", "status": "live",
       "purpose": "Articles and keywords per target country (India, UK, NZ, Ireland)." },
-    { "slug": "/seo/backlink-ops/", "title": "Backlink Ops", "icon": "link", "group": "SEO", "roles": "all", "status": "live", "nav": true, "server": true,
+    { "slug": "/seo/backlink-ops/", "title": "Backlink Ops", "icon": "link", "group": "SEO", "roles": "all", "status": "live", "pin": 4, "nav": true, "server": true,
       "purpose": "Log links, keyword lab, your level and score per website." },
     { "slug": "/seo/backlink-ops/#board", "title": "Backlink scoreboard", "icon": "trophy", "group": "Team", "roles": "all", "status": "live", "server": true,
       "purpose": "14-day points and targets hit, per associate." },
@@ -52,7 +52,7 @@
     { "slug": "/blog-gate/", "title": "Blog Gate", "icon": "shield", "group": "Content", "roles": "all", "status": "planned",
       "purpose": "Every article must score 85/100 and pass all gates before it publishes (T6)." },
 
-    { "slug": "/tasks/", "title": "Tasks & Daily Tracker", "icon": "list", "group": "Team", "roles": "all", "status": "live", "nav": true, "navTitle": "Tasks",
+    { "slug": "/tasks/", "title": "Tasks & Daily Tracker", "icon": "list", "group": "Team", "roles": "all", "status": "live", "pin": 5, "nav": true, "navTitle": "Tasks",
       "purpose": "Your tasks, today's work log with proof, marks and streaks." },
     { "slug": "/tasks/?tab=ideas", "title": "Idea Board", "icon": "bulb", "group": "Team", "roles": "all", "status": "live", "requires": "ideas",
       "purpose": "Submit an idea for your website; ideas that work win the bonus." },
@@ -63,9 +63,11 @@
     { "slug": "/account/password/", "title": "My account", "icon": "lock", "group": "Team", "roles": "all", "status": "live",
       "purpose": "Change your password and two-factor sign-in." },
 
-    { "slug": "/dashboard/leads/", "title": "WhatsApp Leads (CRM)", "icon": "chat", "group": "Finance", "roles": ["owner"], "status": "live", "nav": true, "navTitle": "Leads",
+    { "slug": "/followups/", "title": "Follow-ups", "icon": "phone", "group": "Finance", "roles": ["owner", "admin"], "status": "live", "nav": true, "pin": 1, "requires": "followups",
+      "purpose": "Who to call or meet, when and about what: urgent list, calendar, contacts and the log of every meeting." },
+    { "slug": "/dashboard/leads/", "title": "WhatsApp Leads (CRM)", "icon": "chat", "group": "Finance", "roles": ["owner"], "status": "live", "pin": 2, "nav": true, "navTitle": "Leads",
       "purpose": "Every lead from the WhatsApp funnel: fit score, status, follow-up. Owner only." },
-    { "slug": "/invoices/", "title": "Invoices", "icon": "receipt", "group": "Finance", "roles": ["owner", "admin"], "status": "live", "nav": true, "server": true,
+    { "slug": "/invoices/", "title": "Invoices", "icon": "receipt", "group": "Finance", "roles": ["owner", "admin"], "status": "live", "pin": 3, "nav": true, "server": true,
       "purpose": "Client fill links, review queue and GST PDF invoices." },
 
     { "slug": "/settings/users/", "title": "Users", "icon": "users", "group": "Admin", "roles": ["owner", "admin"], "status": "live", "nav": true,

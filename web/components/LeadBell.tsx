@@ -81,6 +81,8 @@ export default function LeadBell() {
 
   const seenRef = useRef<number>(0);
   const startedRef = useRef(false);
+  // Highest lead id already chimed for: ring once per NEW lead, not on every poll.
+  const chimedRef = useRef<number>(0);
   const boxRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -103,7 +105,10 @@ export default function LeadBell() {
       // Chime only for leads that arrived while this tab was watching. On the
       // first poll after a reload there may be a backlog; showing the count is
       // right, making a noise about leads from yesterday is not.
-      if (startedRef.current && data.unseen > 0 && !muted) ping();
+      // 22 Oct 2026: it used to ring on every 30 s poll while anything was
+      // unseen, which read as a fake alert every few minutes.
+      if (startedRef.current && data.latest_id > chimedRef.current && data.unseen > 0 && !muted) ping();
+      chimedRef.current = Math.max(chimedRef.current, data.latest_id || 0);
       startedRef.current = true;
     } catch (e: any) {
       // 404 = not the owner, 503 = funnel not deployed. Either way the bell

@@ -75,13 +75,13 @@ def test_every_page_is_registered():
 def test_removed_and_planned_never_listed():
     arts = [r for r in ROUTES if path_of(r["slug"]) == "/articles"]
     assert arts and all(r["status"] == "removed" for r in arts)
-    everything = home("owner", {"tracker": 1, "ideas": 1, "taskManager": 1})
+    everything = home("owner", {"tracker": 1, "ideas": 1, "taskManager": 1, "followups": 1})
     assert "/articles/" not in everything
     assert all(r["slug"] not in everything for r in ROUTES if r["status"] in ("planned", "removed", "hidden"))
 
 
 def test_roles():
-    flags = {"tracker": True, "ideas": True, "taskManager": True}
+    flags = {"tracker": True, "ideas": True, "taskManager": True, "followups": True}
     admin, lead, viewer, jai = (home(x, flags) for x in ("admin", "seo_lead", "viewer", "owner"))
     assert "/invoices/" in admin and "/settings/users/" in admin
     assert "/invoices/" not in lead and "/settings/users/" not in lead
