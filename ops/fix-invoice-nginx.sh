@@ -69,6 +69,34 @@ awk '
 ' "$SITE" > "$NEW" 2> "$NEW.count"
 ADD=$(cat "$NEW.count")
 
+if [ "$ADD" = 0 ] && [ ! -f "$SNIPPET" ] && grep -q 'include snippets/invoice-desk.conf' "$SITE"; then
+  # Found 22 Oct 2026: the include is there but the snippet file is gone, so
+  # the nginx config on disk is invalid (nginx keeps running an older one in
+  # memory; the next reload or certbot renewal would fail). Put it back.
+  rm -f "$NEW" "$NEW.count"
+  [ -f "$REPO/infra/nginx-invoice-desk.conf" ] || stop "$REPO/infra/nginx-invoice-desk.conf not found."
+  echo
+  echo "==> Change: restore $SNIPPET from the repo"
+  cp "$REPO/infra/nginx-invoice-desk.conf" "$SNIPPET"
+  if ! nginx -t; then
+    rm -f "$SNIPPET"
+    stop "nginx config test still fails with the snippet back — removed it again. Send this output to Claude."
+  fi
+  systemctl reload nginx
+  H=""
+  for _ in $(seq 1 6); do
+    sleep 3
+    H=$(curl -s -m 10 "$PUBLIC/api/invoices/health" || true)
+    echo "$H" | grep -q '"feature": *"invoice-desk"' && break
+  done
+  echo "$H" | grep -q '"feature": *"invoice-desk"' || { echo "!!! nginx reloaded but the desk still does not answer. Send this output to Claude." >&2; exit 1; }
+  BO=$(curl -s -m 10 -o /dev/null -w '%{http_code}' "$PUBLIC/seo/backlink-ops/" || true)
+  [ "$BO" = 200 ] || { echo "!!! Backlink Ops answered $BO after the reload. Send this output to Claude." >&2; exit 1; }
+  echo
+  echo "==> Done — $PUBLIC/invoices/ is the Invoice Desk again; client fill links work."
+  exit 0
+fi
+
 if [ "$ADD" = 0 ]; then
   rm -f "$NEW" "$NEW.count"
   echo
