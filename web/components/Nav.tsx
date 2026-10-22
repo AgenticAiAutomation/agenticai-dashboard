@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 
+import LeadBell from '@/components/LeadBell';
 import { navRoutes, pathOf, seoTabs } from '@/lib/registry';
 
 // Every link here comes from the route registry (web/lib/routes.json):
@@ -57,9 +58,14 @@ export default function Nav() {
           </Link>
           <div className="hidden items-center gap-1 md:flex">{links}</div>
         </div>
-        <button onClick={logout} className="shrink-0 text-sm text-muted hover:text-white">
-          Log out
-        </button>
+        <div className="flex shrink-0 items-center gap-2">
+          {/* The leads desk (CRM) is owner-only, so only the owner gets the
+              new-lead bell; it hides itself on a 404 as well. */}
+          {role === 'owner' && <LeadBell />}
+          <button onClick={logout} className="text-sm text-muted hover:text-white">
+            Log out
+          </button>
+        </div>
       </div>
       {/* Phones: the same links as a scrollable row. */}
       <div className="flex gap-1 overflow-x-auto border-t border-line px-4 py-1.5 md:hidden">{links}</div>

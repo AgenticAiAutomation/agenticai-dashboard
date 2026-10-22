@@ -55,6 +55,9 @@ input:focus-visible,select:focus-visible,textarea:focus-visible,button:focus-vis
 .topbar{border-bottom:1px solid var(--line);background:var(--surface);position:sticky;top:0;z-index:40}
 .topbar-in{max-width:1180px;margin:0 auto;padding:12px 18px;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
 .brand{display:flex;align-items:center;gap:10px;margin-right:auto}
+.home-link{font-size:13px;font-weight:600;text-decoration:none;color:inherit;padding:6px 10px;border:1px solid rgba(127,127,127,.35);border-radius:8px;white-space:nowrap}
+.home-link:hover{border-color:currentColor}
+
 .mark{width:30px;height:30px;border-radius:8px;background:var(--accent);display:grid;place-items:center;color:#fff;font-family:var(--font-display);font-weight:800;font-size:15px;flex:none}
 .brand-t{font-family:var(--font-display);font-weight:700;font-size:16px;letter-spacing:-.02em;line-height:1.15}
 .brand-s{font-size:11px;color:var(--muted);letter-spacing:.06em;text-transform:uppercase}
@@ -204,6 +207,7 @@ tr:last-child td{border-bottom:0}
 <body>
 <div class="topbar">
   <div class="topbar-in">
+    <a class="home-link" href="/dashboard/" title="Back to the dashboard home">← Dashboard</a>
     <div class="brand">
       <div class="mark" id="mark">A</div>
       <div>
