@@ -14,12 +14,24 @@
 set -euo pipefail
 
 SNIPPET=/etc/nginx/snippets/invoice-desk.conf
+BKDIR=/root/backups/nginx
 PUBLIC=https://dashboard.agenticaiautomation.co
 STAMP=$(date +%Y%m%d-%H%M%S)
 
 stop() { printf '\n!!! %s\n    Nothing was changed.\n' "$*" >&2; exit 1; }
 [ "$(id -u)" = 0 ] || stop "Run this as root."
 [ -f "$SNIPPET" ] || stop "$SNIPPET is missing — run bash /root/fix-invoice-nginx.sh --yes first."
+mkdir -p "$BKDIR"
+
+# 22 Oct: the first version of this script left its backup INSIDE
+# sites-enabled, where nginx loads it as a second site ("duplicate listen").
+# Move any such copies out first, or nginx -t can never pass.
+for f in /etc/nginx/sites-enabled/*.bak-* /etc/nginx/sites-enabled/*.bak; do
+  [ -e "$f" ] || continue
+  echo "==> Moving stray backup out of sites-enabled: $f -> $BKDIR/"
+  mv "$f" "$BKDIR/"
+done
+nginx -t 2>/dev/null || { nginx -t; stop "nginx config does not pass its test even before any change. Send this to Claude."; }
 
 # The file nginx really loads (sites-enabled may be a link or a copy).
 FILE=$(grep -lE '^[[:space:]]*#.*include snippets/invoice-desk\.conf' /etc/nginx/sites-enabled/* 2>/dev/null | head -1 || true)
@@ -31,14 +43,15 @@ grep -qE '^[[:space:]]*include snippets/invoice-desk\.conf' "$FILE" && stop "An 
 
 echo "==> Re-enabling the /invoices include in $FILE"
 grep -nE '#.*include snippets/invoice-desk\.conf' "$FILE"
-cp "$FILE" "$FILE.bak-$STAMP"
+BAK="$BKDIR/$(basename "$FILE").bak-$STAMP"
+cp "$FILE" "$BAK"
 sed -i -E 's|^[[:space:]]*#.*(include snippets/invoice-desk\.conf;).*$|    \1|' "$FILE"
 grep -nE 'include snippets/invoice-desk\.conf' "$FILE"
 
 undo() {
-  cp "$FILE.bak-$STAMP" "$FILE"
+  cp "$BAK" "$FILE"
   nginx -t 2>/dev/null && systemctl reload nginx
-  printf '\n!!! %s — put the old file back (%s). Invoices stays off; nothing else changed.\n' "$1" "$FILE.bak-$STAMP" >&2
+  printf '\n!!! %s — put the old file back (%s). Invoices stays off; nothing else changed.\n' "$1" "$BAK" >&2
   exit 1
 }
 nginx -t || undo "nginx config test failed"
@@ -57,4 +70,4 @@ done
 
 echo
 echo "==> Done — $PUBLIC/invoices/ is the Invoice Desk again; client fill links work."
-echo "    Old file kept at $FILE.bak-$STAMP"
+echo "    Old file kept at $BAK"
