@@ -69,18 +69,57 @@ awk '
 ' "$SITE" > "$NEW" 2> "$NEW.count"
 ADD=$(cat "$NEW.count")
 
-if [ "$ADD" = 0 ] && [ ! -f "$SNIPPET" ] && grep -q 'include snippets/invoice-desk.conf' "$SITE"; then
-  # Found 22 Oct 2026: the include is there but the snippet file is gone, so
-  # the nginx config on disk is invalid (nginx keeps running an older one in
-  # memory; the next reload or certbot renewal would fail). Put it back.
+if [ "$ADD" = 0 ] && grep -q 'include snippets/invoice-desk.conf' "$SITE"; then
+  # The include is in place, yet /invoices is not routed (22 Oct 2026: the
+  # snippet file was missing; then plain-prefix locations lost to a regex
+  # location). Install the repo's snippet, which uses ^~ like Backlink Ops.
   rm -f "$NEW" "$NEW.count"
-  [ -f "$REPO/infra/nginx-invoice-desk.conf" ] || stop "$REPO/infra/nginx-invoice-desk.conf not found."
   echo
-  echo "==> Change: restore $SNIPPET from the repo"
-  cp "$REPO/infra/nginx-invoice-desk.conf" "$SNIPPET"
+  echo "==> Change: write $SNIPPET (locations use ^~)"
+  [ -f "$SNIPPET" ] && cp "$SNIPPET" "$SNIPPET.bak-$STAMP"
+  # Same text as infra/nginx-invoice-desk.conf in the repo.
+  cat > "$SNIPPET" <<'NGINX'
+# Invoice Desk — location blocks for the dashboard.agenticaiautomation.co
+# server block (sites-available/dashboard-frontend), placed ABOVE `location /`,
+# next to the existing /seo/backlink-ops blocks.
+#
+# Same-origin is required: the desk reads the dashboard's JWT from
+# localStorage, which only works on the dashboard's own origin. The public
+# fill form (/invoices/f/<token>) needs no login.
+#
+# `^~` (as the Backlink Ops blocks use): a regex location elsewhere in the
+# server block must never catch /invoices first (seen 22 Oct 2026).
+#
+# Rollback: delete these blocks, `nginx -t && systemctl reload nginx`.
+
+location ^~ /invoices/ {
+    proxy_pass http://127.0.0.1:5004;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
+location = /invoices { return 301 /invoices/; }
+
+location ^~ /api/invoices/ {
+    proxy_pass http://127.0.0.1:5004;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    client_max_body_size 256k;
+}
+NGINX
+  diagnose() {
+    echo; echo "---- for Claude: which files nginx really loads ----"
+    ls -l /etc/nginx/sites-enabled/ || true
+    echo "---- loaded config: files, dashboard server blocks, invoices/backlink locations ----"
+    nginx -T 2>/dev/null | grep -nE '^# configuration file|server_name[^;]*dashboard|invoice|backlink-ops|location[[:space:]]+/[[:space:]]*\{|location[[:space:]]+~' || true
+  }
   if ! nginx -t; then
-    rm -f "$SNIPPET"
-    stop "nginx config test still fails with the snippet back — removed it again. Send this output to Claude."
+    if [ -f "$SNIPPET.bak-$STAMP" ]; then cp "$SNIPPET.bak-$STAMP" "$SNIPPET"; else rm -f "$SNIPPET"; fi
+    diagnose
+    stop "nginx config test failed with the new snippet — put the old state back."
   fi
   systemctl reload nginx
   H=""
@@ -89,7 +128,11 @@ if [ "$ADD" = 0 ] && [ ! -f "$SNIPPET" ] && grep -q 'include snippets/invoice-de
     H=$(curl -s -m 10 "$PUBLIC/api/invoices/health" || true)
     echo "$H" | grep -q '"feature": *"invoice-desk"' && break
   done
-  echo "$H" | grep -q '"feature": *"invoice-desk"' || { echo "!!! nginx reloaded but the desk still does not answer. Send this output to Claude." >&2; exit 1; }
+  if ! echo "$H" | grep -q '"feature": *"invoice-desk"'; then
+    diagnose
+    echo "!!! nginx reloaded but the desk still does not answer. Send this whole output to Claude." >&2
+    exit 1
+  fi
   BO=$(curl -s -m 10 -o /dev/null -w '%{http_code}' "$PUBLIC/seo/backlink-ops/" || true)
   [ "$BO" = 200 ] || { echo "!!! Backlink Ops answered $BO after the reload. Send this output to Claude." >&2; exit 1; }
   echo
