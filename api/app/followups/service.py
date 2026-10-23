@@ -7,8 +7,9 @@ Upcoming = the next 14 days by date; Done = the latest 20, newest first.
 Each item carries the contact's phone / WhatsApp / email and the last thing
 that happened with that contact, so the call starts from the log.
 """
+import calendar as _cal
 import re
-from datetime import datetime, timedelta
+from datetime import date as _date, datetime, timedelta
 
 from . import store
 from .config import settings
@@ -31,6 +32,10 @@ def allowed(user):
         return False
     return (str(user.get("email") or "").strip().lower() in settings.SUPERUSERS
             or str(user.get("role") or "").lower() in settings.ROLES)
+
+
+def is_super(user):
+    return bool(user) and str(user.get("email") or "").strip().lower() in settings.SUPERUSERS
 
 
 def _guard(user, write=False):
@@ -291,6 +296,7 @@ def done(user, fid, body):
             return err
     store.write("UPDATE crm_followups SET status='done', outcome=?, done_at=?, done_by=?, updated_at=? WHERE id=?",
                 (outcome[:4000], store.stamp(), user.get("name") or "", store.now_iso(), fid))
+    _billing_paid(f)
     out = {"followup": _fu_public(store.one("SELECT * FROM crm_followups WHERE id=?", (fid,)))}
     if nxt:
         st, n = create_followup(user, dict(nxt, contact_id=f["contact_id"], prev_id=fid,
@@ -317,12 +323,14 @@ def board(user, days=14):
     g = _guard(user)
     if g:
         return g
+    sync_billing()
     now = store.now_ist()
     today = now.date().isoformat()
     end = (now.date() + timedelta(days=int(days or 14))).isoformat()
     contacts = {c["id"]: c for c in store.rows("SELECT * FROM crm_contacts")}
+    hide = "" if is_super(user) else " AND (ref IS NULL OR ref NOT LIKE 'billing:%')"
     open_ = [_fu_public(f, contacts.get(f["contact_id"])) for f in
-             store.rows("SELECT * FROM crm_followups WHERE status='open' ORDER BY due_at")]
+             store.rows("SELECT * FROM crm_followups WHERE status='open'" + hide + " ORDER BY due_at")]
     pri = {p: i for i, p in enumerate(PRIORITIES)}
     overdue = [f for f in open_ if f["overdue"]]
     todays = sorted((f for f in open_ if not f["overdue"] and f["due_at"][:10] == today),
@@ -330,7 +338,7 @@ def board(user, days=14):
     upcoming = [f for f in open_ if not f["overdue"] and today < f["due_at"][:10] <= end]
     later = sum(1 for f in open_ if f["due_at"][:10] > end)
     done_ = [_fu_public(f, contacts.get(f["contact_id"])) for f in
-             store.rows("SELECT * FROM crm_followups WHERE status='done' ORDER BY done_at DESC LIMIT 20")]
+             store.rows("SELECT * FROM crm_followups WHERE status='done'" + hide + " ORDER BY done_at DESC LIMIT 20")]
     return 200, {"now": _fmt(now), "todo": overdue + todays, "overdue": len(overdue), "today": len(todays),
                  "upcoming": upcoming, "later": later, "done": done_, "kinds": KINDS}
 
@@ -342,14 +350,195 @@ def calendar(user, start=None, end=None):
     now = store.now_ist().date()
     start = str(start or now.replace(day=1).isoformat())[:10]
     end = str(end or (now + timedelta(days=45)).isoformat())[:10]
+    sync_billing()
     contacts = {c["id"]: c for c in store.rows("SELECT * FROM crm_contacts")}
+    hide = "" if is_super(user) else " AND (ref IS NULL OR ref NOT LIKE 'billing:%')"
     items = [_fu_public(f, contacts.get(f["contact_id"])) for f in store.rows(
-        "SELECT * FROM crm_followups WHERE status != 'cancelled' AND substr(due_at,1,10) BETWEEN ? AND ? "
-        "ORDER BY due_at", (start, end))]
+        "SELECT * FROM crm_followups WHERE status != 'cancelled' AND substr(due_at,1,10) BETWEEN ? AND ?" + hide +
+        " ORDER BY due_at", (start, end))]
     return 200, {"from": start, "to": end, "items": items}
 
 
 def status(user):
     if not user:
         return ERR_AUTH
-    return 200, {"enabled": True, "allowed": allowed(user), "version": settings.VERSION}
+    return 200, {"enabled": True, "allowed": allowed(user), "superuser": is_super(user),
+                 "version": settings.VERSION}
+
+
+# ------------------------------------------------------------------ projects + billing (Jai only)
+CYCLES = {"monthly": 1, "quarterly": 3, "half_yearly": 6, "yearly": 12}
+CYCLE_LABEL = {"monthly": "monthly", "quarterly": "quarterly", "half_yearly": "half-yearly", "yearly": "yearly"}
+
+
+def _add_months(d, n):
+    m = d.month - 1 + n
+    y, m = d.year + m // 12, m % 12 + 1
+    return d.replace(year=y, month=m, day=min(d.day, _cal.monthrange(y, m)[1]))
+
+
+def _ref(p):
+    return f"billing:{p['id']}:{p['next_due']}"
+
+
+def sync_billing():
+    """Every active recurring project with a next due date has exactly one open
+    payment follow-up, due REMIND_DAYS before. Anything else that was made for
+    it (old date, project now one-time or inactive) is cancelled, never deleted."""
+    want = {}
+    for p in store.rows("SELECT * FROM crm_projects"):
+        if p["active"] and p["billing"] == "recurring" and p["next_due"] and p["contact_id"]:
+            want[_ref(p)] = p
+    for f in store.rows("SELECT id, ref FROM crm_followups WHERE status='open' AND ref LIKE 'billing:%'"):
+        if f["ref"] not in want:
+            store.write("UPDATE crm_followups SET status='cancelled', updated_at=? WHERE id=?",
+                        (store.now_iso(), f["id"]))
+    for ref, p in want.items():
+        have = store.one("SELECT id, status FROM crm_followups WHERE ref=?", (ref,))
+        if have:
+            if have["status"] == "cancelled":       # switched back to recurring: reopen it
+                store.write("UPDATE crm_followups SET status='open', updated_at=? WHERE id=?",
+                            (store.now_iso(), have["id"]))
+            continue
+        due = _date.fromisoformat(p["next_due"]) - timedelta(days=settings.REMIND_DAYS)
+        title = (f"Payment due {_date.fromisoformat(p['next_due']).strftime('%d %b %Y')} for {p['name']} "
+                 f"({CYCLE_LABEL[p['cycle']]} plan)" + (f" · {p['amount_note']}" if p["amount_note"] else ""))
+        now = store.now_iso()
+        try:
+            store.write("INSERT INTO crm_followups(contact_id, kind, title, due_at, priority, ref, created_by, "
+                        "created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?)",
+                        (p["contact_id"], "payment", title[:300], f"{due.isoformat()}T10:00", "P1", ref,
+                         "billing", now, now))
+        except Exception:
+            pass                               # another worker made it first (unique ref)
+
+
+def _billing_paid(f):
+    """A payment reminder marked done = paid: the next due date moves on one cycle."""
+    ref = f.get("ref") or ""
+    if not ref.startswith("billing:"):
+        return
+    _, pid, due = ref.split(":", 2)
+    p = store.one("SELECT * FROM crm_projects WHERE id=?", (int(pid),))
+    if not p or p["billing"] != "recurring" or p["next_due"] != due:
+        return
+    nxt = _add_months(_date.fromisoformat(due), CYCLES[p["cycle"]]).isoformat()
+    store.write("UPDATE crm_projects SET next_due=?, updated_at=? WHERE id=?", (nxt, store.now_iso(), p["id"]))
+    sync_billing()
+
+
+def _project_public(p):
+    out = dict(p)
+    c = store.one("SELECT * FROM crm_contacts WHERE id=?", (p["contact_id"],)) if p["contact_id"] else None
+    out["contact"] = _contact_public(c) if c else None
+    rem = store.one("SELECT id, due_at, status FROM crm_followups WHERE ref=?", (_ref(p),)) if p["next_due"] else None
+    out["reminder"] = rem
+    if p["billing"] == "recurring" and p["next_due"]:
+        out["daysToDue"] = (_date.fromisoformat(p["next_due"]) - store.now_ist().date()).days
+    return out
+
+
+def _sites():
+    try:
+        from app.backlink_ops import seed
+        from app.backlink_ops import store as bo_store
+        return {k: v.get("domain") or v.get("name") for k, v in seed.projects(bo_store.get_config()).items()}
+    except Exception:
+        return {}
+
+
+def _project_clean(body, existing=None):
+    p = dict(existing or {})
+    b = body or {}
+    for k in ("name", "site_id", "amount_note", "notes"):
+        if k in b and b[k] is not None:
+            p[k] = str(b[k]).strip()[:300 if k != "notes" else 2000]
+    if "billing" in b:
+        p["billing"] = str(b["billing"])
+    if "cycle" in b and b["cycle"]:
+        p["cycle"] = str(b["cycle"])
+    if "next_due" in b:
+        p["next_due"] = str(b["next_due"] or "")[:10] or None
+    if "active" in b:
+        p["active"] = 1 if b["active"] else 0
+    p.setdefault("billing", "one_time")
+    p.setdefault("cycle", "monthly")
+    if len(p.get("name", "")) < 2:
+        return _bad("The project needs a name."), None
+    if p["billing"] not in ("one_time", "recurring"):
+        return _bad("Billing is one_time or recurring."), None
+    if p["cycle"] not in CYCLES:
+        return _bad("Cycle is monthly, quarterly, half_yearly or yearly."), None
+    if p.get("next_due"):
+        try:
+            _date.fromisoformat(p["next_due"])
+        except ValueError:
+            return _bad("Next payment date must look like 2026-11-30."), None
+    if p["billing"] == "recurring" and not p.get("next_due"):
+        return _bad("A recurring project needs its next payment date."), None
+    return None, p
+
+
+def _super_guard(user, write=False):
+    g = _guard(user, write)
+    if g:
+        return g
+    if not is_super(user):
+        return 403, {"error": "forbidden", "message": "Projects and billing are for Jai only."}
+    return None
+
+
+def list_projects(user):
+    g = _super_guard(user)
+    if g:
+        return g
+    sync_billing()
+    return 200, {"projects": [_project_public(p) for p in store.rows(
+        "SELECT * FROM crm_projects ORDER BY active DESC, lower(name)")],
+                 "sites": _sites(), "cycles": list(CYCLES), "remindDays": settings.REMIND_DAYS}
+
+
+def create_project(user, body):
+    g = _super_guard(user, write=True)
+    if g:
+        return g
+    body = body or {}
+    err, p = _project_clean(body)
+    if err:
+        return err
+    cid = body.get("contact_id")
+    if not cid:
+        cust = body.get("contact") if isinstance(body.get("contact"), dict) else {"name": p["name"] + " (customer)"}
+        st, out = create_contact(user, cust)
+        if st not in (200, 201):
+            return st, out
+        cid = out["contact"]["id"]
+    elif not store.one("SELECT id FROM crm_contacts WHERE id=?", (cid,)):
+        return _bad("Unknown customer contact.")
+    now = store.now_iso()
+    cur = store.write("INSERT INTO crm_projects(name, site_id, contact_id, billing, cycle, next_due, amount_note, notes, "
+                      "active, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,1,?,?)",
+                      (p["name"], p.get("site_id", ""), int(cid), p["billing"], p["cycle"], p.get("next_due"),
+                       p.get("amount_note", ""), p.get("notes", ""), now, now))
+    sync_billing()
+    return 201, {"project": _project_public(store.one("SELECT * FROM crm_projects WHERE id=?", (cur.lastrowid,)))}
+
+
+def update_project(user, pid, body):
+    """Any time: one-time ↔ recurring, cycle, next date, customer, active."""
+    g = _super_guard(user, write=True)
+    if g:
+        return g
+    p = store.one("SELECT * FROM crm_projects WHERE id=?", (pid,))
+    if not p:
+        return 404, {"error": "not_found", "message": "No such project."}
+    err, p2 = _project_clean(body, p)
+    if err:
+        return err
+    cid = (body or {}).get("contact_id") or p["contact_id"]
+    store.write("UPDATE crm_projects SET name=?, site_id=?, contact_id=?, billing=?, cycle=?, next_due=?, amount_note=?, "
+                "notes=?, active=?, updated_at=? WHERE id=?",
+                (p2["name"], p2.get("site_id", ""), cid, p2["billing"], p2["cycle"], p2.get("next_due"),
+                 p2.get("amount_note", ""), p2.get("notes", ""), p2.get("active", 1), store.now_iso(), pid))
+    sync_billing()
+    return 200, {"project": _project_public(store.one("SELECT * FROM crm_projects WHERE id=?", (pid,)))}

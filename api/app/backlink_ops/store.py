@@ -138,6 +138,7 @@ CREATE TABLE IF NOT EXISTS bo_user_levels (
     streak_days         INTEGER NOT NULL DEFAULT 0,
     last_completed_date TEXT,
     seeded_from         TEXT NOT NULL DEFAULT 'global',
+    override            INTEGER NOT NULL DEFAULT 0,   -- v1.4: 1 = Jai set this person's level by hand
     created_at          TEXT NOT NULL,
     updated_at          TEXT NOT NULL,
     UNIQUE (user_id, project_id)
@@ -207,7 +208,11 @@ def init_db(logger=None):
             conn.execute(
                 "INSERT INTO bo_schema_version(version, applied_at, note) VALUES (?,?,?)",
                 (settings.SCHEMA_VERSION, now_iso(), "initial install"))
-        elif have < 2:
+        # v1.4: per-person override flag (additive column).
+        cols = {r["name"] for r in conn.execute("PRAGMA table_info(bo_user_levels)")}
+        if "override" not in cols:
+            conn.execute("ALTER TABLE bo_user_levels ADD COLUMN override INTEGER NOT NULL DEFAULT 0")
+        if have is not None and have < 2:
             # The new table was created by SCHEMA above. Record the global level
             # as it stood at upgrade time: every (user, site) pair seen from now
             # on starts there, so nobody drops back to level 1.
@@ -422,7 +427,7 @@ def create_level(user_id, project, name, email, level, difficulty, seeded_from="
 
 def update_level(user_id, project, **fields):
     allowed = {"user_name", "user_email", "level", "xp", "current_difficulty",
-               "streak_days", "last_completed_date"}
+               "streak_days", "last_completed_date", "override"}
     keys = [k for k in fields if k in allowed]
     if not keys:
         return get_level(user_id, project)

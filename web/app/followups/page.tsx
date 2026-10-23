@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from 'react';
 import Shell from '@/components/Shell';
 import { Card, ErrorBanner } from '@/components/ui';
 import FollowupBoard from '@/components/followups/FollowupBoard';
+import ProjectsBilling from '@/components/followups/ProjectsBilling';
 import { msg } from '@/lib/tracker';
 import { Contact, Followup, KIND_LABEL, Note, PRI_STYLE, fuApi, when } from '@/lib/followups';
 
@@ -130,6 +131,7 @@ export default function FollowupsPage() {
       ) : (
         <div className="space-y-6">
           <FollowupBoard key={key} />
+          <ProjectsBilling onChanged={() => setKey((k) => k + 1)} />
           <MonthCalendar onOpen={setOpen} />
           <Card title={`Contacts · ${contacts.length}`} action={
             <input aria-label="Search contacts" className="input-field w-56 py-1" placeholder="Search name, company, phone" value={q} onChange={(e) => setQ(e.target.value)} />

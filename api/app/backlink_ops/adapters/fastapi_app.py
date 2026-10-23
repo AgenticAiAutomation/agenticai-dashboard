@@ -114,6 +114,15 @@ def build_routers():
     async def set_level(request: Request):
         return _json(service.set_pair_level(current_user(request), await _body(request)))
 
+    # --- v1.4: a level per website; add a project in one go
+    @api.put("/site-level")
+    async def site_level(request: Request):
+        return _json(service.set_site_level(current_user(request), await _body(request)))
+
+    @api.post("/projects")
+    async def add_project(request: Request):
+        return _json(service.add_project(current_user(request), await _body(request)))
+
     @api.get("/config")
     async def get_config(request: Request):
         return _json(service.get_config(current_user(request)))

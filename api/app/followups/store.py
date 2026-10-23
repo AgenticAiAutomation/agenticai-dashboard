@@ -51,6 +51,23 @@ CREATE TABLE IF NOT EXISTS crm_followups (
 CREATE INDEX IF NOT EXISTS ix_crm_fu_due ON crm_followups(status, due_at);
 CREATE INDEX IF NOT EXISTS ix_crm_fu_contact ON crm_followups(contact_id);
 
+-- Projects and how they are billed (Jai only). recurring → a payment
+-- follow-up 7 days before next_due; converting back to one_time cancels it.
+CREATE TABLE IF NOT EXISTS crm_projects (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    name        TEXT NOT NULL,
+    site_id     TEXT NOT NULL DEFAULT '',        -- Backlink Ops website id, if it is one
+    contact_id  INTEGER REFERENCES crm_contacts(id),
+    billing     TEXT NOT NULL DEFAULT 'one_time', -- one_time | recurring
+    cycle       TEXT NOT NULL DEFAULT 'monthly',  -- monthly | quarterly | half_yearly | yearly
+    next_due    TEXT,                             -- 'YYYY-MM-DD'
+    amount_note TEXT NOT NULL DEFAULT '',
+    notes       TEXT NOT NULL DEFAULT '',
+    active      INTEGER NOT NULL DEFAULT 1,
+    created_at  TEXT NOT NULL,
+    updated_at  TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS crm_notes (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
     contact_id INTEGER NOT NULL REFERENCES crm_contacts(id),
@@ -116,6 +133,11 @@ def init_db():
         conn.executescript(SCHEMA)
         if conn.execute("SELECT MAX(version) v FROM fu_schema_version").fetchone()["v"] is None:
             conn.execute("INSERT INTO fu_schema_version VALUES (1, ?, 'initial install')", (now_iso(),))
+        # v1.1: follow-ups made by the system (payment reminders) carry a ref.
+        cols = {r["name"] for r in conn.execute("PRAGMA table_info(crm_followups)")}
+        if "ref" not in cols:
+            conn.execute("ALTER TABLE crm_followups ADD COLUMN ref TEXT")
+        conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_crm_fu_ref ON crm_followups(ref) WHERE ref IS NOT NULL")
         seeded = conn.execute("SELECT value FROM fu_meta WHERE key='seed_2026_10_22'").fetchone()
         empty = conn.execute("SELECT COUNT(*) c FROM crm_contacts").fetchone()["c"] == 0
         if settings.SEED and not seeded and empty:

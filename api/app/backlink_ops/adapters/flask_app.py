@@ -127,6 +127,15 @@ def build_blueprints():
     def set_level():
         return _json(service.set_pair_level(current_user(), request.get_json(silent=True)))
 
+    # --- v1.4: a level per website; add a project in one go
+    @api.put("/site-level")
+    def site_level():
+        return _json(service.set_site_level(current_user(), request.get_json(silent=True)))
+
+    @api.post("/projects")
+    def add_project():
+        return _json(service.add_project(current_user(), request.get_json(silent=True)))
+
     @api.get("/config")
     def get_config():
         return _json(service.get_config(current_user()))

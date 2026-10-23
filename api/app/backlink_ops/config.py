@@ -95,7 +95,7 @@ class Settings:
     LOG_PREFIX     = os.environ.get("BACKLINK_OPS_LOG_PREFIX", "backlink-ops")
     FEATURE_LOG    = os.environ.get("BACKLINK_OPS_FEATURE_LOG", "docs/FEATURE_LOG.md")
 
-    VERSION        = "1.3.0"
+    VERSION        = "1.4.0"
     SCHEMA_VERSION = 2
 
 

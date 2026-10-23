@@ -21,6 +21,13 @@ export type Board = {
   done: Followup[]; kinds: Record<Kind, string>;
 };
 
+export type Project = {
+  id: number; name: string; site_id: string; contact_id: number | null; billing: 'one_time' | 'recurring';
+  cycle: 'monthly' | 'quarterly' | 'half_yearly' | 'yearly'; next_due: string | null; amount_note: string;
+  notes: string; active: number; contact: Contact | null; daysToDue?: number;
+  reminder: { id: number; due_at: string; status: string } | null;
+};
+
 export const KIND_LABEL: Record<Kind, string> = {
   call: '📞 Call', meeting: '🤝 Meeting', payment: '₹ Payment', whatsapp: '💬 WhatsApp', email: '✉ Email', other: '• Other',
 };
@@ -48,5 +55,8 @@ export const fuApi = {
   contact: (id: number) => api.get<{ contact: Contact & { followups: Followup[]; notes: Note[] } }>(`/api/followups/contacts/${id}`),
   createContact: (body: Record<string, unknown>) => api.post<{ contact: Contact }>('/api/followups/contacts', body),
   updateContact: (id: number, body: Record<string, unknown>) => api.put<{ contact: Contact }>(`/api/followups/contacts/${id}`, body),
+  projects: () => api.get<{ projects: Project[]; sites: Record<string, string>; cycles: string[]; remindDays: number }>('/api/followups/projects'),
+  createProject: (body: Record<string, unknown>) => api.post<{ project: Project }>('/api/followups/projects', body),
+  updateProject: (id: number, body: Record<string, unknown>) => api.put<{ project: Project }>(`/api/followups/projects/${id}`, body),
   note: (id: number, text: string) => api.post(`/api/followups/contacts/${id}/notes`, { text }),
 };

@@ -75,6 +75,18 @@ def build():
     async def snooze(request: Request, fid: int):
         return _json(service.snooze(current_user(request), fid, await _body(request)))
 
+    @r.get("/projects")
+    async def projects(request: Request):
+        return _json(service.list_projects(current_user(request)))
+
+    @r.post("/projects")
+    async def project_new(request: Request):
+        return _json(service.create_project(current_user(request), await _body(request)))
+
+    @r.put("/projects/{pid}")
+    async def project_edit(request: Request, pid: int):
+        return _json(service.update_project(current_user(request), pid, await _body(request)))
+
     @r.get("/contacts")
     async def contacts(request: Request, q: str = None):
         return _json(service.list_contacts(current_user(request), q))

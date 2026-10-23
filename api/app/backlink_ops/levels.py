@@ -22,7 +22,7 @@ from datetime import date as _date, timedelta
 from . import store
 from .assignments import norm
 from .scoring import day_stats
-from .seed import LEVELS, level as level_for
+from .seed import LEVELS, level as level_for, site_level
 
 READY_STREAK = 5
 
@@ -31,11 +31,18 @@ def user_key(user):
     return str(user.get("id") or user.get("email") or user.get("name") or "")
 
 
+def effective(row, cfg):
+    """v1.4: a person follows their website's level, unless Jai set theirs by hand."""
+    if row.get("override"):
+        return int(row["level"])
+    return site_level(row["project_id"], cfg)
+
+
 def ensure(user, project, cfg):
     uid = user_key(user)
     row = store.get_level(uid, project)
     if row is None:
-        L = level_for(int((cfg or {}).get("level", 1) or 1), cfg)
+        L = level_for(site_level(project, cfg), cfg)
         return store.create_level(uid, project, user.get("name", ""), user.get("email", ""),
                                   L["n"], L["name"])
     if row["user_name"] != (user.get("name") or "") or row["user_email"] != (user.get("email") or ""):
@@ -51,7 +58,7 @@ def my_day(user, project, date, cfg, row=None):
     site = store.entries_for(project, date)
     mine = [e for e in site if norm(e["author"]) == who]
     queries = [q for q in store.queries_for(project, date) if norm(q["author"]) == who]
-    st = day_stats(mine, store.decisions_for(project, date), queries, row["level"], project,
+    st = day_stats(mine, store.decisions_for(project, date), queries, effective(row, cfg), project,
                    store.bank_keywords(project), cfg, group=site)
     st.pop("rows", None)
     st["pair"] = public(row, cfg)
@@ -77,7 +84,7 @@ def refresh(row, cfg):
         bank = store.bank_keywords(project)
         for d in dates:
             mine = by_date.get(d, [])
-            st = day_stats(mine, decisions, [None] * qdates.get(d, 0), row["level"], project,
+            st = day_stats(mine, decisions, [None] * qdates.get(d, 0), effective(row, cfg), project,
                            bank, cfg, group=groups.get(d) or mine)
             xp += st["points"]
             if st["done"] and (mine or qdates.get(d)):
@@ -94,7 +101,7 @@ def refresh(row, cfg):
         day -= timedelta(days=1)
 
     xp += store.level_bonus(row["user_id"], project)      # approved tasks (T7)
-    L = level_for(row["level"], cfg)
+    L = level_for(effective(row, cfg), cfg)
     row = store.update_level(row["user_id"], project, xp=round(xp, 1), streak_days=streak,
                              last_completed_date=max(done_days) if done_days else None,
                              current_difficulty=L["name"])
@@ -106,22 +113,27 @@ def refresh(row, cfg):
 
 
 def set_level(user_id, project, level, cfg):
+    """level None = follow the website's level again."""
+    if level is None:
+        L = level_for(site_level(project, cfg), cfg)
+        return store.update_level(str(user_id), project, level=L["n"], override=0, current_difficulty=L["name"])
     L = level_for(level, cfg)
-    return store.update_level(str(user_id), project, level=L["n"], current_difficulty=L["name"])
+    return store.update_level(str(user_id), project, level=L["n"], override=1, current_difficulty=L["name"])
 
 
 def public(row, cfg):
-    L = level_for(row["level"], cfg)
+    L = level_for(effective(row, cfg), cfg)
     return {"userId": row["user_id"], "name": row["user_name"], "email": row["user_email"],
             "project": row["project_id"], "level": L["n"], "levelName": L["name"],
             "difficulty": row["current_difficulty"] or L["name"], "xp": row["xp"],
             "streak": row["streak_days"], "lastCompleted": row["last_completed_date"],
             "target": L["target"], "minLinks": L.get("min_links", 0), "queries": L["queries"],
             "ready": row["streak_days"] >= READY_STREAK and L["n"] < len(LEVELS),
-            "seededFrom": row.get("seeded_from")}
+            "seededFrom": row.get("seeded_from"), "override": bool(row.get("override")),
+            "siteLevel": site_level(row["project_id"], cfg)}
 
 
 def level_lookup(cfg):
     """{(normalised name, project): level n} for the board and All-projects tab,
     which only know authors by name."""
-    return {(norm(r["user_name"]), r["project_id"]): r["level"] for r in store.all_levels()}
+    return {(norm(r["user_name"]), r["project_id"]): effective(r, cfg) for r in store.all_levels()}

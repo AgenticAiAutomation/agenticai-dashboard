@@ -15,3 +15,15 @@ load only into an empty database, once; `FOLLOWUPS_SEED=0` skips them.
 
 API: `/api/followups/status`, `/board`, `/calendar`, `/items` (+ `/{id}`, `/{id}/done`, `/{id}/snooze`),
 `/contacts` (+ `/{id}`, `/{id}/notes`). Tests: `tests/test_followups.py` (25). Rollback: flag off (data kept).
+
+## Projects & billing (v1.1, Jai only)
+
+On `/followups/`, the "Projects & billing" card is for superuser emails only (admins get 403, and payment reminders
+are hidden from them). Each project has a customer contact, an optional Backlink Ops website, and **One-time** or
+**Recurring**, switchable any time. Recurring projects also have a cycle (monthly / quarterly / half-yearly / yearly),
+the next payment date and an amount note.
+
+A recurring project always has one P1 payment follow-up, due 7 days before the next payment date
+(`FOLLOWUPS_PAYMENT_REMIND_DAYS`). Marking it done means paid: the next date moves on one cycle and the next reminder
+is made. Switching to one-time, or making the project inactive, cancels the open reminder (nothing is deleted).
+Switching back reopens it.

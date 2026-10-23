@@ -125,6 +125,48 @@ def main():
     e = c.put(f"/api/followups/contacts/{ravi['contact_id']}", headers=H("jai"), json={"email": "ravi@mehta.in"})
     check("contact details editable", e.json()["contact"]["email"] == "ravi@mehta.in")
 
+    print("\n--- projects + billing (Jai only) ---")
+    due = (now.date() + timedelta(days=20)).isoformat()
+    check("admins can't see projects/billing", c.get("/api/followups/projects", headers=H("boss")).status_code == 403)
+    check("recurring needs a next payment date", c.post("/api/followups/projects", headers=H("jai"), json={
+        "name": "DIYMart SEO retainer", "billing": "recurring"}).status_code == 400)
+    pr = c.post("/api/followups/projects", headers=H("jai"), json={
+        "name": "DIYMart SEO retainer", "site_id": "diymart", "billing": "recurring", "cycle": "monthly",
+        "next_due": due, "amount_note": "Rs 25,000 + GST", "contact_id": ravi["contact_id"]}).json()["project"]
+    rem = pr["reminder"]
+    check("recurring project → payment follow-up 7 days before the due date",
+          rem and rem["due_at"].startswith((now.date() + timedelta(days=13)).isoformat()) and rem["status"] == "open")
+    cal = c.get(f"/api/followups/calendar?start={now.date().isoformat()}&end={due}", headers=H("jai")).json()["items"]
+    item = [x for x in cal if x["id"] == rem["id"]][0]
+    check("it reads as a P1 payment line with the plan", item["priority"] == "P1" and item["kind"] == "payment"
+          and "monthly plan" in item["title"] and "DIYMart SEO retainer" in item["title"])
+    adm = c.get(f"/api/followups/calendar?start={now.date().isoformat()}&end={due}", headers=H("boss")).json()["items"]
+    check("…and admins don't see payment reminders", all(x["id"] != rem["id"] for x in adm))
+    c.get("/api/followups/projects", headers=H("jai"))
+    check("re-reading doesn't make a second reminder", len([x for x in c.get(
+        f"/api/followups/calendar?start={now.date().isoformat()}&end={due}", headers=H("jai")).json()["items"]
+        if "DIYMart SEO retainer" in x["title"]]) == 1)
+    one = c.put(f"/api/followups/projects/{pr['id']}", headers=H("jai"), json={"billing": "one_time"}).json()["project"]
+    check("switch to one-time → the reminder is cancelled", one["billing"] == "one_time" and one["reminder"]["status"] == "cancelled")
+    back = c.put(f"/api/followups/projects/{pr['id']}", headers=H("jai"), json={"billing": "recurring"}).json()["project"]
+    check("…and back to recurring → a reminder again", back["reminder"]["status"] == "open")
+    paid = c.post(f"/api/followups/items/{back['reminder']['id']}/done", headers=H("jai"),
+                  json={"outcome": "Paid by NEFT"}).json()
+    nxt = c.get("/api/followups/projects", headers=H("jai")).json()["projects"][0]
+    from datetime import date as _d
+    expect = _d.fromisoformat(due)
+    expect = expect.replace(month=expect.month % 12 + 1, year=expect.year + (expect.month == 12))
+    check("marking it paid moves the next due date one month on", nxt["next_due"] == expect.isoformat())
+    check("…and books the next reminder 7 days before that",
+          nxt["reminder"] and nxt["reminder"]["status"] == "open" and nxt["reminder"]["due_at"].startswith(
+              (expect - timedelta(days=7)).isoformat()))
+    q = c.put(f"/api/followups/projects/{pr['id']}", headers=H("jai"), json={"cycle": "quarterly"}).json()["project"]
+    check("cycle can change (quarterly)", q["cycle"] == "quarterly")
+    np = c.post("/api/followups/projects", headers=H("jai"), json={"name": "Hospital Cloud website", "billing": "one_time"}).json()["project"]
+    check("a one-time project with no customer gets a customer contact made", np["contact"]["name"].startswith("Hospital Cloud website"))
+    check("admins can't change billing", c.put(f"/api/followups/projects/{pr['id']}", headers=H("boss"),
+          json={"billing": "one_time"}).status_code == 403)
+
     c2, ok = app_with("0")
     check("flag off → not mounted", ok is False and c2.get("/api/followups/board", headers=H("jai")).status_code == 404)
     print(f"\nAll {PASS} follow-up checks passed.")

@@ -82,12 +82,25 @@ def projects(cfg=None):
         base = out.get(p["id"], {"id": p["id"], "active": True, "pages": ["/"],
                                  "hue": "#5B6B68", "initial": (p.get("short") or p["id"])[:1].upper()})
         merged = dict(base)
-        for k in ("name", "short", "domain", "hue", "initial", "niche", "pages", "active"):
+        for k in ("name", "short", "domain", "hue", "initial", "niche", "pages", "active", "level"):
             if k in p and p[k] not in (None, ""):
                 merged[k] = p[k]
         merged["id"] = p["id"]
         out[p["id"]] = merged
     return out
+
+
+def site_level(project, cfg=None):
+    """v1.4: each website has its own difficulty level (Difficulty & team →
+    Difficulty per website). A site without one uses the desk's default level."""
+    p = projects(cfg).get(project) or {}
+    try:
+        n = int(p.get("level") or 0)
+    except (TypeError, ValueError):
+        n = 0
+    if 1 <= n <= len(LEVELS):
+        return n
+    return int((cfg or {}).get("level", 1) or 1)
 
 
 def seed_keywords(project, cfg=None):

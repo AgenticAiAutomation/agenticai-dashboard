@@ -24,7 +24,8 @@ class Settings:
     # The four follow-ups Jai listed on 22 Oct 2026 are loaded once into an
     # empty database. 0 = start empty.
     SEED       = _b("FOLLOWUPS_SEED", "1")
-    VERSION    = "1.0.0"
+    VERSION    = "1.1.0"
+    REMIND_DAYS = int(os.environ.get("FOLLOWUPS_PAYMENT_REMIND_DAYS", "7"))
 
 
 settings = Settings()

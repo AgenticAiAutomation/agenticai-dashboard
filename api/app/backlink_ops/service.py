@@ -19,7 +19,7 @@ from .identity import can_write, is_superuser
 from .scoring import day_stats, host_of
 from .seed import (DEFAULT_CONFIG, LEVELS, LEVEL_EDITABLE, LINK_TYPES, TYPE_MAP,
                    level as level_for, levels as levels_of, projects as projects_of,
-                   seed_keywords)
+                   seed_keywords, site_level)
 
 # --------------------------------------------------------------- guards
 ERR_AUTH = (401, {"error": "not_authenticated",
@@ -67,7 +67,7 @@ def _stats(project, date, user=None):
     st = day_stats(store.entries_for(project, date),
                    store.decisions_for(project, date),
                    store.queries_for(project, date),
-                   cfg.get("level", 1), project, store.bank_keywords(project), cfg)
+                   site_level(project, cfg), project, store.bank_keywords(project), cfg)
     # v1.3: the person's own day at their own level, beside the site view.
     # The site view (rows, review queue) is unchanged.
     # The superuser reviews rather than logs, so gets no level of their own.
@@ -98,7 +98,9 @@ def bootstrap(user, project=None):
     assigned = assigned_projects(user, cfg)
     return 200, {
         "me": user, "config": cfg, "levels": levels_of(cfg),
-        "level": level_for(cfg.get("level", 1), cfg), "linkTypes": LINK_TYPES,
+        "level": level_for(site_level(_project(project or (assigned[0] if assigned else None)), cfg), cfg),
+        "linkTypes": LINK_TYPES,
+        "siteLevels": {p: site_level(p, cfg) for p in projects_of(cfg)},
         "projects": projects_of(cfg),
         "seedKeywords": {p: seed_keywords(p, cfg) for p in projects_of(cfg)},
         "autoReview": store.get_meta("autoreview_last") if is_superuser(user) else None,
@@ -316,14 +318,15 @@ def progress(user, days=14):
 def _pair_level(cfg):
     """Level for an (author name, site) pair: their own when per-site levels
     are on and the desk has met them, else the global level as before."""
+    site = {p: level_for(site_level(p, cfg), cfg) for p in projects_of(cfg)}
     g = level_for(cfg.get("level", 1), cfg)
     if not settings.PER_PROJECT_LEVELS:
-        return lambda author, project: g
+        return lambda author, project: site.get(project, g)        # v1.4: per website
     table = levels.level_lookup(cfg)
 
     def lookup(author, project):
         n = table.get((norm(author), project))
-        return level_for(n, cfg) if n else g
+        return level_for(n, cfg) if n else site.get(project, g)
     return lookup
 
 
@@ -391,16 +394,92 @@ def set_pair_level(user, body):
     uid, project = str(body.get("userId") or ""), str(body.get("project") or "")
     if not store.get_level(uid, project):
         return 404, {"error": "not_found", "message": "That person has not worked on that site yet."}
+    if body.get("reset") or body.get("level") in (None, "", "site"):
+        lv = None                                     # follow the website's level again
+    else:
+        try:
+            lv = int(body.get("level"))
+        except (TypeError, ValueError):
+            return _bad("Level must be a number from 1 to 5.")
+        if not 1 <= lv <= len(LEVELS):
+            return _bad(f"Level must be between 1 and {len(LEVELS)}.")
+    row = levels.set_level(uid, project, lv, cfg)
+    audit.stamp_user(user, "level.set", target=f"{uid}:{project}",
+                     detail={"level": lv, "name": row["user_name"]})
+    return 200, levels.refresh(row, cfg)
+
+
+# --------------------------------------------------------------- websites (v1.4)
+def set_site_level(user, body):
+    """Difficulty for ONE website. Everyone on it follows this level unless
+    Jai has set their own (Levels by person and site)."""
+    guard = _super(user)
+    if guard:
+        return guard
+    body = body or {}
+    cfg = store.get_config()
+    pid = str(body.get("project") or "")
+    if pid not in projects_of(cfg):
+        return _bad("Unknown website.")
     try:
         lv = int(body.get("level"))
     except (TypeError, ValueError):
         return _bad("Level must be a number from 1 to 5.")
     if not 1 <= lv <= len(LEVELS):
         return _bad(f"Level must be between 1 and {len(LEVELS)}.")
-    row = levels.set_level(uid, project, lv, cfg)
-    audit.stamp_user(user, "level.set", target=f"{uid}:{project}",
-                     detail={"level": lv, "name": row["user_name"]})
-    return 200, levels.refresh(row, cfg)
+    plist = [dict(x) for x in cfg.get("projects") or [] if isinstance(x, dict)]
+    row = next((x for x in plist if x.get("id") == pid), None)
+    if row is None:
+        plist.append({"id": pid, "level": lv})
+    else:
+        row["level"] = lv
+    cfg["projects"] = plist
+    store.put_config(cfg, user.get("name", "superuser"))
+    audit.stamp_user(user, "site.level", target=pid, detail={"level": lv})
+    return 200, {"project": pid, "level": lv, "siteLevels": {p: site_level(p, cfg) for p in projects_of(cfg)}}
+
+
+def add_project(user, body):
+    """One form: a new website, who works on it, and its level."""
+    guard = _super(user)
+    if guard:
+        return guard
+    body = body or {}
+    cfg = store.get_config()
+    name = str(body.get("name") or "").strip()[:80]
+    domain = str(body.get("domain") or "").strip().lower()
+    domain = domain.replace("https://", "").replace("http://", "").split("/")[0].removeprefix("www.")
+    if len(name) < 2 or "." not in domain or " " in domain:
+        return _bad("A new project needs a name and a domain like example.com.")
+    if any((p.get("domain") or "").lower() == domain for p in projects_of(cfg).values()):
+        return _bad(f"{domain} is already on the desk.")
+    base = "".join(ch for ch in domain.split(".")[0] if ch.isalnum())[:24] or "site"
+    pid, n = base, 2
+    while pid in projects_of(cfg):
+        pid, n = f"{base}{n}", n + 1
+    try:
+        lv = int(body.get("level") or cfg.get("level", 1) or 1)
+    except (TypeError, ValueError):
+        return _bad("Level must be a number from 1 to 5.")
+    if not 1 <= lv <= len(LEVELS):
+        return _bad(f"Level must be between 1 and {len(LEVELS)}.")
+    people = []
+    for a in body.get("assignees") or []:
+        nm = str((a or {}).get("name") or "").strip()[:80]
+        em = str((a or {}).get("email") or "").strip().lower()[:120]
+        if nm or em:
+            if em and "@" not in em:
+                return _bad(f"'{em}' is not an email.")
+            people.append({"name": nm or em, "email": em, "project": pid, "owner": False})
+    rec = {"id": pid, "name": name, "short": str(body.get("short") or name)[:24], "domain": domain,
+           "level": lv, "active": True, "pages": ["/"],
+           "niche": str(body.get("niche") or "").strip()[:400], "keywords": []}
+    cfg["projects"] = [x for x in cfg.get("projects") or [] if isinstance(x, dict)] + [rec]
+    cfg["roster"] = (cfg.get("roster") or DEFAULT_CONFIG["roster"]) + people
+    store.put_config(cfg, user.get("name", "superuser"))
+    audit.stamp_user(user, "project.add", target=pid,
+                     detail={"domain": domain, "level": lv, "assigned": [p["email"] or p["name"] for p in people]})
+    return 201, {"project": projects_of(cfg)[pid], "config": cfg}
 
 
 # --------------------------------------------------------------- config
@@ -485,6 +564,19 @@ def put_config(user, body):
                 rec["keywords"] = [str(x).strip() for x in kws if str(x).strip()][:200]
             if "active" in p:
                 rec["active"] = bool(p["active"])
+            # v1.4: a site's own level. Not sent = keep what it had.
+            if p.get("level") not in (None, ""):
+                try:
+                    lv = int(p["level"])
+                except (TypeError, ValueError):
+                    return _bad(f"{pid}: level must be 1 to {len(LEVELS)}.")
+                if not 1 <= lv <= len(LEVELS):
+                    return _bad(f"{pid}: level must be 1 to {len(LEVELS)}.")
+                rec["level"] = lv
+            else:
+                old = next((x for x in cfg.get("projects") or [] if isinstance(x, dict) and x.get("id") == pid), {})
+                if old.get("level"):
+                    rec["level"] = old["level"]
             if pid not in projects_of() and not (rec.get("name") and rec.get("domain")):
                 return _bad(f"New site '{pid}' needs a name and a domain.")
             clean_projects.append(rec)

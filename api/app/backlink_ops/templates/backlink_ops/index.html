@@ -195,6 +195,10 @@ tr:last-child td{border-bottom:0}
 .lvl[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft)}
 .lvl b{display:block;font-family:var(--font-display);font-size:13.5px}
 .lvl span{font-size:11.5px;color:var(--muted)}
+/* v1.4: one compact row of L1–L5 per website */
+.siterow .levelbar{flex:1 1 420px;flex-wrap:nowrap}
+.siterow .lvl{flex:1 1 0;padding:6px 8px}
+@media (max-width:640px){.siterow .levelbar{flex-wrap:wrap}.siterow .lvl{flex:1 1 30%}}
 @media (prefers-reduced-motion:reduce){*{animation-duration:.01ms!important;transition-duration:.01ms!important}}
 @media (max-width:820px){
   .deck,.split{grid-template-columns:1fr}
@@ -429,7 +433,8 @@ function applyBootstrap(b){
   S.meta = {levels:b.levels, level:b.level, linkTypes:b.linkTypes, projects:b.projects,
             seedKeywords:b.seedKeywords, today:b.today, readOnly:b.readOnly,
             aiEnabled:b.aiEnabled, version:b.version, autoReview:b.autoReview,
-            assigned:b.assigned||null, visible:b.visible||null, perProjectLevels:!!b.perProjectLevels};
+            assigned:b.assigned||null, visible:b.visible||null, perProjectLevels:!!b.perProjectLevels,
+            siteLevels:b.siteLevels||null};
   // v1.3: the server matches the roster to this login (email, or name ignoring
   // case and spaces) and says which sites this person may see. Older servers
   // send neither, so fall back to the v1.2 rule.
@@ -949,19 +954,38 @@ function renderSettings(){
   if(!isOwner()){ $("#settings").innerHTML=""; return; }
   const cur = S.cfg.level || 1, roster = S.cfg.roster || [];
   const Lv = (S.meta.levels||[]).find(l => l.n === cur) || S.meta.levels[0];
+  const siteLv = S.meta.siteLevels || {};
+  const lvBtns = (cur, attr) => (S.meta.levels||[]).map(l => '<button class="lvl" type="button" '+attr+'="'+l.n+
+    '" aria-pressed="'+(l.n===cur)+'" title="'+l.target+' pts · '+(l.min_links?l.min_links+' links · ':'')+l.queries+
+    ' queries · DA '+l.min_avg_da+'+"><b>L'+l.n+'</b><span>'+esc(l.name)+'</span></button>').join("");
   $("#settings").innerHTML =
-    '<div class="card" style="margin-bottom:14px"><div class="card-h"><h3>'+
-      (S.meta.perProjectLevels?'Starting level':'Difficulty level')+'</h3>'+
-      '<span class="eyebrow">'+(S.meta.perProjectLevels?'For a person starting on a new site':'Applies to every site')+
-      '</span></div><div class="levelbar">'+
-      (S.meta.levels||[]).map(l => '<button class="lvl" type="button" data-l="'+l.n+'" aria-pressed="'+
-        (l.n===cur)+'"><b>L'+l.n+' · '+esc(l.name)+'</b><span>'+l.target+' pts · '+(l.min_links?l.min_links+' links · ':'')+l.queries+
-        ' queries · DA '+l.min_avg_da+'+'+(l.high_value?' · '+l.high_value+' high-value':'')+
-        '</span></button>').join("")+'</div>'+
-      '<p class="hint" style="margin:12px 0 0">Right now: <b>'+Lv.target+' points</b>, '+(Lv.min_links?'<b>'+Lv.min_links+' links</b>, ':'')+'<b>'+Lv.queries+
-      ' Ubersuggest queries</b>, average DA <b>'+Lv.min_avg_da+'+</b>, exact-match anchors under <b>'+
-      Math.round(Lv.max_exact*100)+'%</b>'+(Lv.index_rate?', <b>'+Math.round(Lv.index_rate*100)+
-      '%</b> verified live':'')+'.</p></div>'+
+    /* v1.4: each website has its own difficulty. */
+    '<div class="card" style="margin-bottom:14px"><div class="card-h"><h3>Difficulty per website</h3>'+
+      '<span class="eyebrow">Each site separately</span></div>'+
+      Object.values(S.meta.projects).map(p => {
+        const n = siteLv[p.id] || cur, L1 = (S.meta.levels||[]).find(l => l.n === n) || Lv;
+        return '<div class="siterow" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:10px 0;border-top:1px solid var(--line)">'+
+          '<div style="min-width:150px"><b>'+esc(p.short||p.id)+'</b><div class="hint">'+esc(p.domain||"")+'</div></div>'+
+          '<div class="levelbar" style="margin:0">'+lvBtns(n, 'data-sl-'+p.id)+'</div>'+
+          '<div class="hint">'+L1.target+' pts'+(L1.min_links?' · '+L1.min_links+' links':'')+' · '+L1.queries+' queries a day</div></div>';
+      }).join("")+
+      '<p class="hint" style="margin:12px 0 0">Changing one website changes only that website. Everyone on it follows '+
+      'its level'+(S.meta.perProjectLevels?', unless you set a person\'s own level below':'')+'.</p>'+
+      '<div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--line)"><div class="eyebrow" style="margin-bottom:6px">'+
+      'Default for websites without their own level</div><div class="levelbar" style="margin:0">'+lvBtns(cur, 'data-l')+'</div></div></div>'+
+
+    /* v1.4: add a project — website, who works on it, its level — in one go. */
+    '<div class="card" style="margin-bottom:14px"><div class="card-h"><h3>Add a project</h3>'+
+      '<span class="eyebrow">Website + team + level</span></div>'+
+      '<div class="form" id="newproj">'+
+        '<div><label>Project name</label><input data-np="name" placeholder="Hospital Cloud"></div>'+
+        '<div><label>Website domain</label><input data-np="domain" placeholder="hospitalcloud.ai"></div>'+
+        '<div><label>Level</label><select data-np="level">'+(S.meta.levels||[]).map(l=>'<option value="'+l.n+'"'+(l.n===cur?' selected':'')+'>L'+l.n+' · '+esc(l.name)+'</option>').join("")+'</select></div>'+
+        '<div><label>What the business is (one line)</label><input data-np="niche"></div>'+
+        '<div class="f-full"><label>Assigned to — name and dashboard login email, one person per line</label>'+
+          '<textarea data-np="people" rows="3" placeholder="Akash, akash0710yadav@gmail.com"></textarea></div>'+
+      '</div><div style="display:flex;gap:8px;margin-top:12px"><button class="btn" id="addproject" type="button">Add project</button></div></div>'+
+
     '<div class="card"><div class="card-h"><h3>Team &amp; assignments</h3>'+
       '<span class="eyebrow">Superuser only</span></div>'+
       '<div class="tw" style="border:0"><table style="min-width:560px"><thead><tr><th>Name</th>'+
@@ -1030,11 +1054,29 @@ function renderSettings(){
     const pl = ev.target.closest("[data-pairset]");
     if(pl){ const sel = document.querySelector('[data-pairlv="'+pl.dataset.pairset+'"]');
       const [uid, proj] = pl.dataset.pairset.split("|");
-      try { await api("/levels",{method:"PUT", body:JSON.stringify({userId:uid, project:proj, level:Number(sel.value)})});
+      const body = sel.value==="site" ? {userId:uid, project:proj, reset:true} : {userId:uid, project:proj, level:Number(sel.value)};
+      try { await api("/levels",{method:"PUT", body:JSON.stringify(body)});
             toast("Level saved."); loadPairs(); await loadDay(); renderAll(); }
       catch(err){ toast(err.message); }
       return; }
     if(l) return putConfig({level: Number(l.dataset.l)});
+    const sl = [...ev.target.closest("button")?.attributes||[]].find(a => a.name.startsWith("data-sl-"));
+    if(sl){
+      try { const r = await api("/site-level",{method:"PUT", body:JSON.stringify({project: sl.name.slice(8), level: Number(sl.value)})});
+            S.meta.siteLevels = r.siteLevels; toast("Level saved for "+((S.meta.projects[r.project]||{}).short||r.project)+" only.");
+            await loadDay(); await loadBoard(); renderAll(); }
+      catch(err){ toast(err.message); }
+      return; }
+    if(ev.target.id==="addproject"){
+      const g = k => (document.querySelector('[data-np="'+k+'"]')||{}).value || "";
+      const assignees = g("people").split("\n").map(x => x.trim()).filter(Boolean).map(x => {
+        const parts = x.split(/[,;]/).map(y => y.trim()); const email = parts.find(y => y.includes("@")) || "";
+        return {name: parts.find(y => !y.includes("@")) || email, email}; });
+      try { const r = await api("/projects",{method:"POST", body:JSON.stringify({name:g("name"), domain:g("domain"),
+              level:Number(g("level")), niche:g("niche"), assignees})});
+            toast("Added "+r.project.name+" — reloading…"); setTimeout(() => location.reload(), 700); }
+      catch(err){ toast(err.message); }
+      return; }
     if(ev.target.id==="ar-run"){
       ev.target.disabled = true; ev.target.textContent = "Checking links…";
       try { const res = await api("/auto-review",{method:"POST"}); S.meta.autoReview = res.run;
@@ -1095,7 +1137,8 @@ async function loadPairs(){
     const pct = r.target ? Math.min(100, Math.round(r.todayPoints/r.target*100)) : 0;
     return '<tr><td><b>'+esc(r.name)+'</b><div class="hint">'+esc(r.email)+'</div></td>'+
       '<td><span class="dot" style="background:'+esc(pr.hue||"#5B6B68")+';display:inline-block;width:8px;height:8px;border-radius:50%"></span> '+esc(pr.short||r.project)+'</td>'+
-      '<td><select data-pairlv="'+esc(key)+'">'+lv.map(l=>'<option value="'+l.n+'"'+(l.n===r.level?' selected':'')+'>L'+l.n+' · '+esc(l.name)+'</option>').join("")+'</select> '+
+      '<td><select data-pairlv="'+esc(key)+'"><option value="site"'+(!r.override?' selected':'')+'>Follow website (L'+r.siteLevel+')</option>'+
+        lv.map(l=>'<option value="'+l.n+'"'+(r.override&&l.n===r.level?' selected':'')+'>L'+l.n+' · '+esc(l.name)+' (own)</option>').join("")+'</select> '+
         '<button class="btn ghost sm" type="button" data-pairset="'+esc(key)+'">Set</button></td>'+
       '<td class="num">'+Math.round(r.xp)+'</td><td class="num">'+r.streak+(r.ready?' <span class="pill approved">ready</span>':'')+'</td>'+
       '<td class="num">'+r.todayPoints+' / '+r.target+' <span class="hint">('+pct+'%)</span></td></tr>';
