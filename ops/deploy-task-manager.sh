@@ -125,7 +125,7 @@ say "Restarting $SERVICE"
 systemctl restart "$SERVICE"
 wait_healthy http://127.0.0.1:5004/health || rollback "dashboard not healthy after 60s"
 BO=$(curl -s http://127.0.0.1:5004/api/seo/backlink-ops/health || true)
-echo "$BO" | grep -q '"version": *"1.3.0"' || rollback "Backlink Ops is not on 1.3.0: $BO"
+echo "$BO" | grep -qE '"version": *"1\.([3-9]|[1-9][0-9])\.' || rollback "Backlink Ops is older than 1.3: $BO"
 echo "$BO" | grep -q '"schema": *2' || rollback "Backlink Ops database did not reach schema 2: $BO"
 echo "$BO" | grep -q '"db_ok": *true' || rollback "Backlink Ops database check failed: $BO"
 for _ in $(seq 1 8); do
@@ -136,7 +136,7 @@ for _ in $(seq 1 8); do
   CODE=$(route_code /api/tasks/status)
   case "$CODE" in 404|401) ;; *) rollback "/api/tasks/status answered $CODE (wanted 404, or 401 if a tracker flag is on)" ;; esac
 done
-echo "    dashboard healthy · Backlink Ops 1.3.0 schema 2 · tracker routes answer as expected"
+echo "    dashboard healthy · Backlink Ops $(echo "$BO" | grep -o '"version": *"[0-9.]*"') schema 2 · tracker routes answer as expected"
 
 say "Frontend build (about 1-2 minutes)"
 if ! (cd web && npm run build) || [ ! -f web/out/index.html ] || [ ! -f web/out/tasks/index.html ]    || ! api/venv/bin/python tests/test_route_registry.py >/dev/null; then
