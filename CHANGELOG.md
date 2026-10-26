@@ -2,6 +2,13 @@
 
 Newest first. Production state per feature lives in `docs/FEATURE_LOG.md`.
 
+## 2026-10-26 · Tasks v2, Step 1 database foundation (branch `feat/tasks-v2`), not deployed
+
+- `daily_tracker.db` schema 3: 12 **new** tables (tasks, 15-minute proof, timer intervals, events, corrections,
+  leave calendar, settings history, points, badges, employee of the month). No existing table changed.
+- Guardrails in the database: v2 rows can never be deleted or replaced, and the trail, proof and points never
+  change. Backup taken before the upgrade. Tests: `tests/test_tasks_v2_schema.py` (47).
+
 ## 2026-10-26 · Tasks v2, Step 0 audit (branch `feat/tasks-v2`), no code changed
 
 - Audit of the current `/tasks/` (T4 tracker + T7 task manager), the gap list against the v2 work order, and the

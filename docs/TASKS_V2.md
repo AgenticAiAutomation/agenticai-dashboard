@@ -88,40 +88,63 @@ The flags are switched with `/root/daily-tracker-flags.sh` (systemd drop-in `das
    `test_followups.py`, `smoke_app.py`, `test_scoring.py`, `test_autoreview.py`, `test_blog_playbook.py`,
    `test_export_html.py`. Two PDF-text checks in `test_invoice_desk.py` already fail on this laptop (reportlab).
 
-### Migration plan
+### Migration plan (revised after Jai's decisions)
 
-- **Where:** the same `daily_tracker.db`, schema 2 → 3, in `store.init_db()`, the way schema 2 was added:
-  `CREATE TABLE IF NOT EXISTS`, plus `ADD COLUMN` that is nullable or has a default. Nothing is dropped or renamed.
-  Old code ignores the new tables and columns.
-- **Behind a new flag `FEATURE_TASKS_V2`** (default off), switched with `daily-tracker-flags.sh`. Off = exactly
-  today's `/tasks/`.
-- **Before migrating:** `store.backup("pre-v3")` (already exists) and the deploy script's backup tarball. Rollback = flag
-  off (the data stays), or check out the previous commit and restart. The v3 tables are new, so old code never reads
-  them.
-- **Step 1 tables:** `task_categories`, `task_events` (+ triggers that block UPDATE/DELETE), `work_intervals`
-  (+ a partial unique index for one open interval per user), `time_corrections`, `badges`. New columns on `tasks`,
-  `leave_days`, `points_ledger`. Work settings go in `dt_settings` key `work`. `user_badges` is reused (new `kind` values).
-- **Interval math:** split at IST midnight, so an interval that crosses midnight counts on both days. A user's
-  overlapping intervals are merged before summing, so time is never counted twice.
+- **Where:** the same `daily_tracker.db`, schema 2 → 3, in `store.init_db()` → `_migrate_v3()`.
+  **Only new tables.** No existing table gets even a new column (Jai: "the database remains the same, with a
+  new task table").
+- **Never delete or replace:** SQLite triggers on every v2 table refuse DELETE. `recursive_triggers` is on, so
+  INSERT OR REPLACE is refused too. The event trail, 15-minute proof, points, settings history, awards and employee
+  of the month can never be edited. An interval can only be closed, once. Leave can only be cancelled, once. A time
+  correction is decided once.
+- **Behind a new flag `FEATURE_TASKS_V2`** (default off), added in Step 2 when there are screens to switch.
+- **Backup:** `_migrate_v3` writes `backups/daily_tracker/daily_tracker-<time>-pre-v3.db` before it creates anything.
+- **Interval math:** split at IST midnight. A user's overlapping intervals are merged before summing, so time is
+  never counted twice.
 
-### Questions for Jai (answers change Step 1 onwards)
+### Decisions (Jai, 26 Oct 2026)
 
-1. **The master prompt.** Please add `MASTER_DEVELOPMENT_PROMPT.md` to the repo. Step 1 needs its 22 categories,
-   Steps 2–13 its 20 acceptance tests, and Step 3 the structured "Other" form and role templates. Without it I'd be
-   guessing.
-2. **Hours vs output targets.** Today a person's signal comes from **output** (backlinks, blogs per month, T7) and
-   **marks** (T4). v2 adds **hours** (7 h/day). My recommendation: the hours signal becomes the headline
-   🟢🟡🔴, and the output targets stay in Mirror as a second line. Is that right, or should hours replace them?
-3. **Two point systems.** T7 already gives points (task marks × quality × on-time, streak +50, ideas) and tiers use
-   them. My recommendation: the v2 rules write into the **same** ledger under their own rule names, so tiers and the
-   payout sheet keep working. Do you agree?
-4. **Leave.** Today any admin can set leave, and leave lowers the output target. v2: only you declare emergency
-   leave, and it credits 7 h. Should the existing admin-set leave become "planned" leave (admins can still set it),
-   with emergency leave yours only?
-5. **Production flags.** Which flags are on today? Run on the VPS:
-   `cat /etc/systemd/system/dashboard-api.service.d/daily-tracker.conf`
+| Topic | Decision |
+|---|---|
+| Past days | Locked at IST midnight. The employee can't edit yesterday. A fix goes as a correction request (reason + proof) that only Jai approves; the original stays saved next to it. |
+| Database | Existing tables stay exactly as they are. v2 gets new tables, and its data is never deleted or replaced. |
+| 15-minute proof | The employee starts a task timer. Every 15 minutes they record what they did: link/URL, domain, URL slug, image name, logo name, note. A 15-minute block with no proof doesn't count as worked time. |
+| Leave | Sunday is off. Each employee can mark **2 leave days a month** themselves. Those days, and any leave Jai creates (emergency, planned, holiday), never hurt daily, weekly or monthly progress. A third self-marked day counts as a normal missed day. |
+| Superuser view | Jai sees everyone's progress, plus an effort graph like Google Search Console's: last 24 h, 3, 7, 15, 30, 60 and 90 days. **Employee of the month** is always shown. |
+| Employee view | "How much is left": today's hours left, and the hours a day needed to finish the month. |
+| Headline signal | Hours (7 h/day). The T7 output targets stay in Mirror as a second line. |
+| Points | A separate v2 ledger (`work_points`), because existing tables don't change. Tiers are linked up in Step 9. |
+| Master prompt | Not available. Go ahead without it: 22 editable categories (the 13 T4 work types + Design, Development, Automation, Research, SOP, Office, Meeting, Learning, Other), and tests written from this work order. |
 
-### Business continuity
+Still open: which flags are on in production (`cat /etc/systemd/system/dashboard-api.service.d/daily-tracker.conf`).
+
+## Step 1 — database foundation (done 26 Oct 2026, not deployed)
+
+| Spec table | Built as | Notes |
+|---|---|---|
+| task_categories | `task_categories` | 22 seeded, editable, no delete |
+| tasks (extend) | **`work_tasks`** (new) | category, project/site, domain, priority, estimate_min, status, pool, assigned_to, picked_by/at, due_date, evidence_url, points_value. Status may change; creator and created time may not |
+| task_events | `task_events` | write-once |
+| work_intervals | `work_intervals` | type work / break / lunch / blocked / thinking; question/outcome for thinking; **one open interval per person** (unique index); closed once |
+| (15-min proof) | `work_slots` | url, domain, url_slug, image_name, logo_name, note; one row per person per slot; write-once |
+| time_corrections | `time_corrections` | original + new value, reason, evidence; pending → approved/rejected once |
+| leave_days | **`leave_calendar`** (new) | type allowance / emergency / planned / holiday (`*`), credited_hours, declared_by/at; cancel once, row stays |
+| work_settings | `work_settings` | append-only JSON history, latest row wins: 7 h, Mon–Sat, Sunday counts, 15-min slots, 2 leaves/month, past-day lock, breaks, signal 95/80, points, levels, leaderboard visibility |
+| points_ledger | **`work_points`** (new) | UNIQUE(user, rule, ref): one award per rule per task/day/month; write-once |
+| badges, user_badges | `badges`, **`badges_awarded`** | 7 badges seeded |
+| (employee of the month) | `employee_of_month` | one per month, write-once |
+
+Tests: `PYTHONPATH="api;." python tests/test_tasks_v2_schema.py` (47 checks). They build a real schema-2 database with
+the existing code and add T4/T7 rows, then upgrade it. They check the backup, that every old table and row is
+byte-for-byte unchanged, that a second run changes nothing, every guardrail, and the rollback. The existing suites
+still pass: task manager 65, tracker 58, levels 32, site levels 22, follow-ups 38, registry 7. `smoke_app` stops at
+check 52 because Flask isn't installed on this laptop, and it does the same on the base commit.
+
+**Rollback (Step 1):** stop the API, copy `backups/daily_tracker/daily_tracker-*-pre-v3.db` over
+`instance/daily_tracker.db` (delete its `-wal` and `-shm` files first), check out the previous commit, and start it
+again. Or simply leave the tables: old code never reads them.
+
+## Business continuity
 
 If v2 misbehaves after go-live, `daily-tracker-flags.sh` turns `FEATURE_TASKS_V2` off. `/tasks/` falls back to the
 T4/T7 screens and no data is deleted. If the whole dashboard is down, the team logs time in the shared Google Sheet

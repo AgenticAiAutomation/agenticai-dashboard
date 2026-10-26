@@ -43,7 +43,7 @@ class Settings:
 
     LOG_PREFIX  = "daily-tracker"
     VERSION     = "1.1.0"
-    SCHEMA_VERSION = 2
+    SCHEMA_VERSION = 3
 
 
 settings = Settings()

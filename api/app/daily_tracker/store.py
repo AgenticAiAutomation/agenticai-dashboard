@@ -317,6 +317,259 @@ ADD_COLUMNS = [
     ("daily_logs", "rework", "INTEGER NOT NULL DEFAULT 0"),
 ]
 
+# ------------------------------------------------------------------------
+# Schema 3 (Tasks v2: timer, 15-minute proof, hours targets). Jai's rule: the
+# existing tables stay exactly as they are, v2 gets NEW tables only, and its
+# data is never deleted or replaced. The triggers below enforce that in the
+# database itself, so no code path (or a hand-typed sqlite3 command) can do it.
+# Names that would collide with T4/T7 tables get a new name:
+#   spec tasks -> work_tasks, leave_days -> leave_calendar,
+#   points_ledger -> work_points, work_settings is append-only (latest row wins).
+V3_TABLES = ["task_categories", "work_tasks", "task_events", "work_intervals", "work_slots",
+             "time_corrections", "leave_calendar", "work_settings", "work_points", "badges",
+             "badges_awarded", "employee_of_month"]
+
+SCHEMA_3 = """
+CREATE TABLE IF NOT EXISTS task_categories (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    name       TEXT NOT NULL UNIQUE,
+    role       TEXT NOT NULL DEFAULT '',
+    active     INTEGER NOT NULL DEFAULT 1,
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+);
+
+-- pool = 1 while nobody has picked it. Status is free text checked by the app
+-- (a CHECK would need a table rebuild to extend, and rebuilds are not allowed).
+CREATE TABLE IF NOT EXISTS work_tasks (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    title         TEXT NOT NULL,
+    description   TEXT NOT NULL DEFAULT '',
+    category_id   INTEGER REFERENCES task_categories(id),
+    project_id    TEXT NOT NULL DEFAULT '',
+    domain        TEXT NOT NULL DEFAULT '',
+    priority      TEXT NOT NULL DEFAULT 'P2',
+    estimate_min  INTEGER NOT NULL DEFAULT 0,
+    status        TEXT NOT NULL DEFAULT 'pool',
+    pool          INTEGER NOT NULL DEFAULT 0,
+    assigned_to   TEXT,
+    picked_by     TEXT,
+    picked_at     TEXT,
+    due_date      TEXT,
+    evidence_url  TEXT NOT NULL DEFAULT '',
+    points_value  REAL NOT NULL DEFAULT 0,
+    created_by    TEXT NOT NULL,
+    created_at    TEXT NOT NULL,
+    updated_at    TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ix_wt_assigned ON work_tasks(assigned_to, status);
+CREATE INDEX IF NOT EXISTS ix_wt_pool ON work_tasks(pool, status);
+
+CREATE TABLE IF NOT EXISTS task_events (
+    event_id   INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id    TEXT NOT NULL,
+    task_id    INTEGER,
+    event_type TEXT NOT NULL,
+    server_ts  TEXT NOT NULL,
+    prev_state TEXT NOT NULL DEFAULT '',
+    new_state  TEXT NOT NULL DEFAULT '',
+    reason     TEXT NOT NULL DEFAULT '',
+    source     TEXT NOT NULL DEFAULT 'web',
+    actor_id   TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS ix_te_user ON task_events(user_id, server_ts);
+CREATE INDEX IF NOT EXISTS ix_te_task ON task_events(task_id);
+
+-- type: work | break | lunch | blocked | thinking. Thinking needs question at
+-- start, outcome at end (app). One OPEN interval per person, enforced here.
+CREATE TABLE IF NOT EXISTS work_intervals (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id    TEXT NOT NULL,
+    task_id    INTEGER,
+    type       TEXT NOT NULL DEFAULT 'work',
+    start_ts   TEXT NOT NULL,
+    end_ts     TEXT,
+    is_manual  INTEGER NOT NULL DEFAULT 0,
+    question   TEXT NOT NULL DEFAULT '',
+    outcome    TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_wi_one_open ON work_intervals(user_id) WHERE end_ts IS NULL;
+CREATE INDEX IF NOT EXISTS ix_wi_user_start ON work_intervals(user_id, start_ts);
+
+-- The 15-minute proof: what was done in that slot, with evidence.
+CREATE TABLE IF NOT EXISTS work_slots (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id      TEXT NOT NULL,
+    task_id      INTEGER,
+    interval_id  INTEGER,
+    slot_start   TEXT NOT NULL,
+    slot_minutes INTEGER NOT NULL DEFAULT 15,
+    url          TEXT NOT NULL DEFAULT '',
+    domain       TEXT NOT NULL DEFAULT '',
+    url_slug     TEXT NOT NULL DEFAULT '',
+    image_name   TEXT NOT NULL DEFAULT '',
+    logo_name    TEXT NOT NULL DEFAULT '',
+    note         TEXT NOT NULL DEFAULT '',
+    server_ts    TEXT NOT NULL,
+    UNIQUE (user_id, slot_start)
+);
+
+CREATE TABLE IF NOT EXISTS time_corrections (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id        TEXT NOT NULL,
+    task_id        INTEGER,
+    interval_id    INTEGER,
+    field          TEXT NOT NULL,
+    original_value TEXT NOT NULL DEFAULT '',
+    new_value      TEXT NOT NULL,
+    reason         TEXT NOT NULL,
+    evidence_url   TEXT NOT NULL DEFAULT '',
+    status         TEXT NOT NULL DEFAULT 'pending',
+    requested_by   TEXT NOT NULL,
+    requested_at   TEXT NOT NULL,
+    decided_by     TEXT,
+    decided_at     TEXT,
+    decision_note  TEXT NOT NULL DEFAULT ''
+);
+
+-- type: allowance (employee's own, 2 a month) | emergency | planned (both
+-- superuser) | holiday (user_id '*', removed from the target). Cancelling
+-- stamps cancelled_at; the row stays.
+CREATE TABLE IF NOT EXISTS leave_calendar (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id        TEXT NOT NULL,
+    date           TEXT NOT NULL,
+    type           TEXT NOT NULL,
+    credited_hours REAL NOT NULL DEFAULT 0,
+    reason         TEXT NOT NULL DEFAULT '',
+    declared_by    TEXT NOT NULL,
+    declared_at    TEXT NOT NULL,
+    cancelled_by   TEXT,
+    cancelled_at   TEXT
+);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_lc_active ON leave_calendar(user_id, date) WHERE cancelled_at IS NULL;
+
+CREATE TABLE IF NOT EXISTS work_settings (
+    id     INTEGER PRIMARY KEY AUTOINCREMENT,
+    value  TEXT NOT NULL,
+    set_by TEXT NOT NULL,
+    set_at TEXT NOT NULL
+);
+
+-- ref = 'task:<id>' or 'day:<date>' or 'month:<yyyy-mm>'; one award per rule per ref.
+CREATE TABLE IF NOT EXISTS work_points (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id    TEXT NOT NULL,
+    task_id    INTEGER,
+    rule       TEXT NOT NULL,
+    ref        TEXT NOT NULL,
+    points     REAL NOT NULL,
+    reason     TEXT NOT NULL DEFAULT '',
+    awarded_by TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    UNIQUE (user_id, rule, ref)
+);
+
+CREATE TABLE IF NOT EXISTS badges (
+    code        TEXT PRIMARY KEY,
+    name        TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    active      INTEGER NOT NULL DEFAULT 1,
+    sort_order  INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS badges_awarded (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id    TEXT NOT NULL,
+    code       TEXT NOT NULL,
+    ref        TEXT NOT NULL,
+    awarded_by TEXT NOT NULL,
+    awarded_at TEXT NOT NULL,
+    UNIQUE (user_id, code, ref)
+);
+CREATE TABLE IF NOT EXISTS employee_of_month (
+    month      TEXT PRIMARY KEY,
+    user_id    TEXT NOT NULL,
+    score      REAL NOT NULL DEFAULT 0,
+    note       TEXT NOT NULL DEFAULT '',
+    chosen_by  TEXT NOT NULL,
+    chosen_at  TEXT NOT NULL
+);
+
+-- ---- guardrails: nothing in v2 is ever deleted
+""" + "".join(
+    f"CREATE TRIGGER IF NOT EXISTS g_{t}_nodelete BEFORE DELETE ON {t} "
+    f"BEGIN SELECT RAISE(ABORT, 'tasks v2: {t} rows are never deleted'); END;\n" for t in V3_TABLES
+) + "".join(
+    # Written once, never changed: the trail, the proof, points, settings history, awards.
+    f"CREATE TRIGGER IF NOT EXISTS g_{t}_noupdate BEFORE UPDATE ON {t} "
+    f"BEGIN SELECT RAISE(ABORT, 'tasks v2: {t} rows are never changed'); END;\n"
+    for t in ("task_events", "work_slots", "work_settings", "work_points", "badges_awarded", "employee_of_month")
+) + """
+-- An interval can only be CLOSED (end_ts set once, after start); never reopened or moved.
+CREATE TRIGGER IF NOT EXISTS g_work_intervals_close BEFORE UPDATE ON work_intervals
+WHEN OLD.end_ts IS NOT NULL OR NEW.end_ts IS NULL OR NEW.end_ts < OLD.start_ts
+  OR NEW.user_id IS NOT OLD.user_id OR NEW.task_id IS NOT OLD.task_id OR NEW.type IS NOT OLD.type
+  OR NEW.start_ts IS NOT OLD.start_ts OR NEW.is_manual IS NOT OLD.is_manual OR NEW.question IS NOT OLD.question
+BEGIN SELECT RAISE(ABORT, 'tasks v2: an interval can only be closed once'); END;
+
+-- A correction is decided once; the request itself never changes.
+CREATE TRIGGER IF NOT EXISTS g_time_corrections_decide BEFORE UPDATE ON time_corrections
+WHEN OLD.status <> 'pending' OR NEW.user_id IS NOT OLD.user_id OR NEW.field IS NOT OLD.field
+  OR NEW.original_value IS NOT OLD.original_value OR NEW.new_value IS NOT OLD.new_value
+  OR NEW.reason IS NOT OLD.reason OR NEW.requested_at IS NOT OLD.requested_at
+  OR NEW.task_id IS NOT OLD.task_id OR NEW.interval_id IS NOT OLD.interval_id
+BEGIN SELECT RAISE(ABORT, 'tasks v2: a correction is decided once and never edited'); END;
+
+-- Leave can only be cancelled (once); who, when, type and credit never change.
+CREATE TRIGGER IF NOT EXISTS g_leave_calendar_cancel BEFORE UPDATE ON leave_calendar
+WHEN OLD.cancelled_at IS NOT NULL OR NEW.cancelled_at IS NULL OR NEW.user_id IS NOT OLD.user_id
+  OR NEW.date IS NOT OLD.date OR NEW.type IS NOT OLD.type OR NEW.credited_hours IS NOT OLD.credited_hours
+  OR NEW.declared_by IS NOT OLD.declared_by OR NEW.declared_at IS NOT OLD.declared_at
+BEGIN SELECT RAISE(ABORT, 'tasks v2: leave can only be cancelled, once'); END;
+
+-- A task keeps who made it and when.
+CREATE TRIGGER IF NOT EXISTS g_work_tasks_origin BEFORE UPDATE ON work_tasks
+WHEN NEW.created_by IS NOT OLD.created_by OR NEW.created_at IS NOT OLD.created_at
+BEGIN SELECT RAISE(ABORT, 'tasks v2: who created a task never changes'); END;
+"""
+
+# The 13 T4 work types + 9 for the other roles, "Other" last = 22, all editable by Jai.
+DEFAULT_CATEGORIES = [name for name, _m, kind in DEFAULT_WORK_TYPES if kind != "other"] + [
+    "Design (graphics, logo, banner)", "Development (website, code)", "Automation (time saved)",
+    "Research / analysis",
+    "SOP / documentation", "Office / admin", "Meeting / client call", "Learning / training",
+    "Other (must describe)"]
+
+# Every number Jai can change from admin settings. A new setting = a new row.
+DEFAULT_WORK_SETTINGS = {
+    "timezone": "Asia/Kolkata",
+    "daily_target_hours": 7,
+    "working_days": [0, 1, 2, 3, 4, 5],          # Monday = 0; Sunday off
+    "sunday_counts": True,                        # Sunday hours count toward the month
+    "slot_minutes": 15,                           # proof every 15 minutes
+    "leave_allowance_per_month": 2,               # employee's own leave days, besides Sunday
+    "lock_past_days": True,                       # yesterday is read-only; correction request to Jai
+    "breaks": {"short_minutes": 15, "short_per_day": 2, "lunch_minutes": 30, "lunch_per_day": 1},
+    "signal": {"green_min": 95, "amber_min": 80},
+    "points": {"task_accepted": 10, "on_time": 5, "high_priority_min": 5, "high_priority_max": 15,
+               "daily_target": 5, "sunday_catchup_per_2h": 5, "sunday_catchup_cap": 20,
+               "monthly_target": 50},
+    "levels": [["Starter", 0], ["Consistent Contributor", 200], ["Skilled Specialist", 500],
+               ["Problem Solver", 900], ["Automation Champion", 1400]],
+    "leaderboard_visible": False,
+}
+
+DEFAULT_BADGES = [
+    ("streak_7", "7-day streak", "Target hit 7 working days in a row"),
+    ("streak_30", "30-day streak", "Target hit 30 working days in a row"),
+    ("monthly_target", "Month done", "Hit the monthly hours target"),
+    ("on_time_10", "Always on time", "10 tasks accepted on time in a month"),
+    ("helper", "Unblocker", "Helped a teammate get unblocked"),
+    ("automation", "Automation Champion", "An automation with measured time saved"),
+    ("employee_of_month", "Employee of the Month", "Chosen by Jai"),
+]
+
 DEFAULT_TIERS = [("Bronze", 300), ("Silver", 600), ("Gold", 1000), ("Platinum", 1500)]
 DEFAULT_TEMPLATES = [("seo_lead", "backlinks", 20), ("seo_lead", "blogs", 2),
                      ("seo_lead", "Social media post", 10)]
@@ -346,6 +599,9 @@ def connect():
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys=ON")
     conn.execute("PRAGMA busy_timeout=8000")
+    # INSERT OR REPLACE deletes the old row; this makes that fire the v2
+    # no-delete triggers, so "replace" is refused too.
+    conn.execute("PRAGMA recursive_triggers=ON")
     _local.conn = conn
     return conn
 
@@ -380,7 +636,27 @@ def init_db():
         if (conn.execute("SELECT MAX(version) v FROM dt_schema_version").fetchone()["v"] or 1) < 2:
             conn.execute("INSERT INTO dt_schema_version VALUES (?,?,?)",
                          (2, now_iso(), "task manager (T7): tasks, targets, points, tiers"))
+    _migrate_v3(conn)
     return conn
+
+
+def _migrate_v3(conn):
+    """Schema 3 (Tasks v2): new tables only. Backs up first on an upgrade."""
+    if conn.execute("SELECT MAX(version) v FROM dt_schema_version").fetchone()["v"] < 3:
+        backup("pre-v3")
+    with conn:
+        conn.executescript(SCHEMA_3)
+        if conn.execute("SELECT COUNT(*) c FROM task_categories").fetchone()["c"] == 0:
+            conn.executemany("INSERT INTO task_categories(name, sort_order, created_at) VALUES (?,?,?)",
+                             [(n, (i + 1) * 10, now_iso()) for i, n in enumerate(DEFAULT_CATEGORIES)])
+        if conn.execute("SELECT COUNT(*) c FROM work_settings").fetchone()["c"] == 0:
+            conn.execute("INSERT INTO work_settings(value, set_by, set_at) VALUES (?,?,?)",
+                         (json.dumps(DEFAULT_WORK_SETTINGS), "installer", now_iso()))
+        conn.executemany("INSERT OR IGNORE INTO badges(code, name, description, sort_order) VALUES (?,?,?,?)",
+                         [(c, n, d, (i + 1) * 10) for i, (c, n, d) in enumerate(DEFAULT_BADGES)])
+        if conn.execute("SELECT MAX(version) v FROM dt_schema_version").fetchone()["v"] < 3:
+            conn.execute("INSERT INTO dt_schema_version VALUES (?,?,?)",
+                         (3, now_iso(), "tasks v2: timer, 15-min proof, hours targets (new tables only)"))
 
 
 def rows(sql, args=()):
