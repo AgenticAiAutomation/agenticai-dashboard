@@ -2,6 +2,12 @@
 
 Newest first. Production state per feature lives in `docs/FEATURE_LOG.md`.
 
+## 2026-10-26 · Tasks v2, Step 0 audit (branch `feat/tasks-v2`), no code changed
+
+- Audit of the current `/tasks/` (T4 tracker + T7 task manager), the gap list against the v2 work order, and the
+  migration plan (schema 3 in `daily_tracker.db`, behind the new flag `FEATURE_TASKS_V2`). See `docs/TASKS_V2.md`.
+  Five open questions for Jai, including the missing master prompt.
+
 ## 2026-10-15 · Route registry + task manager (branch `feat/task-manager`), not deployed yet
 
 - **T5:** one route registry (`web/lib/routes.json`) feeds the nav, the SEO tabs and the homepage, which now
