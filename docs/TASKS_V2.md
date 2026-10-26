@@ -114,7 +114,8 @@ The flags are switched with `/root/daily-tracker-flags.sh` (systemd drop-in `das
 | Employee view | "How much is left": today's hours left, and the hours a day needed to finish the month. |
 | Headline signal | Hours (7 h/day). The T7 output targets stay in Mirror as a second line. |
 | Points | A separate v2 ledger (`work_points`), because existing tables don't change. Tiers are linked up in Step 9. |
-| Master prompt | Not available. Go ahead without it: 22 editable categories (the 13 T4 work types + Design, Development, Automation, Research, SOP, Office, Meeting, Learning, Other), and tests written from this work order. |
+| Master prompt | Not available. Go ahead without it, with tests written from this work order. |
+| Categories (26 Oct) | Replace the starter list. **Article writing** (website name required), **Content writing** (for: Social media / Backlinks), **Website development** (which page + what updates), **New website development** (website; due 3 working days after it's picked; stopping the watch for a dependency names a teammate or outside person + reason, and waits for Jai's approval, then approved hold time is added back to the deadline and rejected hold time counts as normal), **Calling**, **Follow-up**, **Meeting** (reason required), **Other** (must describe). Jai can add more in settings. |
 
 Still open: which flags are on in production (`cat /etc/systemd/system/dashboard-api.service.d/daily-tracker.conf`).
 
@@ -122,10 +123,11 @@ Still open: which flags are on in production (`cat /etc/systemd/system/dashboard
 
 | Spec table | Built as | Notes |
 |---|---|---|
-| task_categories | `task_categories` | 22 seeded, editable, no delete |
-| tasks (extend) | **`work_tasks`** (new) | category, project/site, domain, priority, estimate_min, status, pool, assigned_to, picked_by/at, due_date, evidence_url, points_value. Status may change; creator and created time may not |
+| task_categories | `task_categories` | Jai's 8 seeded; `fields` = what must be filled in, `deadline_workdays`, `hold_needs_approval`; editable, no delete |
+| tasks (extend) | **`work_tasks`** (new) | category, project/site, domain, priority, estimate_min, status, pool, assigned_to, picked_by/at, due_date, evidence_url, points_value, `details` (the category fields, filled in). Status may change; creator and created time may not |
 | task_events | `task_events` | write-once |
 | work_intervals | `work_intervals` | type work / break / lunch / blocked / thinking; question/outcome for thinking; **one open interval per person** (unique index); closed once |
+| (dependency stop) | `task_holds` | waits on a teammate (id) or an outside name + reason; pending → approved/rejected once; one open hold per task; ends once |
 | (15-min proof) | `work_slots` | url, domain, url_slug, image_name, logo_name, note; one row per person per slot; write-once |
 | time_corrections | `time_corrections` | original + new value, reason, evidence; pending → approved/rejected once |
 | leave_days | **`leave_calendar`** (new) | type allowance / emergency / planned / holiday (`*`), credited_hours, declared_by/at; cancel once, row stays |
@@ -134,7 +136,7 @@ Still open: which flags are on in production (`cat /etc/systemd/system/dashboard
 | badges, user_badges | `badges`, **`badges_awarded`** | 7 badges seeded |
 | (employee of the month) | `employee_of_month` | one per month, write-once |
 
-Tests: `PYTHONPATH="api;." python tests/test_tasks_v2_schema.py` (47 checks). They build a real schema-2 database with
+Tests: `PYTHONPATH="api;." python tests/test_tasks_v2_schema.py` (56 checks). They build a real schema-2 database with
 the existing code and add T4/T7 rows, then upgrade it. They check the backup, that every old table and row is
 byte-for-byte unchanged, that a second run changes nothing, every guardrail, and the rollback. The existing suites
 still pass: task manager 65, tracker 58, levels 32, site levels 22, follow-ups 38, registry 7. `smoke_app` stops at

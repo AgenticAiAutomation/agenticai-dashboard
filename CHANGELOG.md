@@ -4,10 +4,12 @@ Newest first. Production state per feature lives in `docs/FEATURE_LOG.md`.
 
 ## 2026-10-26 · Tasks v2, Step 1 database foundation (branch `feat/tasks-v2`), not deployed
 
-- `daily_tracker.db` schema 3: 12 **new** tables (tasks, 15-minute proof, timer intervals, events, corrections,
+- `daily_tracker.db` schema 3: 13 **new** tables (tasks, 15-minute proof, timer intervals, dependency holds, events, corrections,
   leave calendar, settings history, points, badges, employee of the month). No existing table changed.
 - Guardrails in the database: v2 rows can never be deleted or replaced, and the trail, proof and points never
-  change. Backup taken before the upgrade. Tests: `tests/test_tasks_v2_schema.py` (47).
+  change. Backup taken before the upgrade. Tests: `tests/test_tasks_v2_schema.py` (56).
+- Jai's 8 task categories, each with the fields that must be filled in. New website development: 3 working days,
+  dependency stops wait for Jai's approval.
 
 ## 2026-10-26 · Tasks v2, Step 0 audit (branch `feat/tasks-v2`), no code changed
 

@@ -78,7 +78,16 @@ check("a pre-v3 backup was taken", len(backups) == 1)
 check("every old table and row is unchanged", snapshot(DB, list(before)) == before)
 have = {r["name"] for r in store.rows("SELECT name FROM sqlite_master WHERE type='table'")}
 check("all v2 tables exist", set(store.V3_TABLES) <= have)
-check("22 categories seeded", store.one("SELECT COUNT(*) c FROM task_categories")["c"] == 22)
+check("Jai's 8 categories seeded", store.one("SELECT COUNT(*) c FROM task_categories")["c"] == 8)
+nw = store.one("SELECT * FROM task_categories WHERE name='New website development'")
+check("New website development: 3 working days, dependency stop needs Jai",
+      nw["deadline_workdays"] == 3 and nw["hold_needs_approval"] == 1)
+need = {r["name"]: [f["key"] for f in __import__("json").loads(r["fields"])]
+        for r in store.rows("SELECT name, fields FROM task_categories")}
+check("each category names what must be filled in",
+      need["Article writing"] == ["website"] and need["Content writing"] == ["purpose"]
+      and need["Website development"] == ["page", "updates"]
+      and need["Calling"] == need["Follow-up"] == need["Meeting"] == ["reason"])
 cfg = store.one("SELECT value FROM work_settings ORDER BY id DESC LIMIT 1")["value"]
 check("settings: 7 h, Mon-Sat, 2 leaves, 15-min slots",
       all(s in cfg for s in ('"daily_target_hours": 7', '"working_days": [0, 1, 2, 3, 4, 5]',
@@ -88,7 +97,7 @@ check("badges seeded", store.one("SELECT COUNT(*) c FROM badges")["c"] == 7)
 store.init_db()
 check("running it again: no second backup, nothing re-seeded",
       len(glob.glob(os.path.join(TMP, "bk", "*.db"))) == 1
-      and store.one("SELECT COUNT(*) c FROM task_categories")["c"] == 22
+      and store.one("SELECT COUNT(*) c FROM task_categories")["c"] == 8
       and store.one("SELECT COUNT(*) c FROM work_settings")["c"] == 1
       and store.one("SELECT COUNT(*) c FROM dt_schema_version WHERE version=3")["c"] == 1)
 
@@ -145,6 +154,16 @@ check("a decided correction can't be decided again", refused("UPDATE time_correc
 check("T7 tables still allow their normal edits (no v2 triggers leaked)",
       not refused("INSERT OR REPLACE INTO leave_days VALUES ('7', '2026-10-20', 'sick (updated)')"))
 
+store.write("INSERT INTO task_holds(task_id, user_id, depends_on_name, reason, start_ts) "
+            "VALUES (1, '7', 'Client Ravi', 'waiting for logo files', ?)", (T,))
+check("a second open hold on the same task is refused",
+      refused("INSERT INTO task_holds(task_id, user_id, depends_on_name, reason, start_ts) "
+              "VALUES (1, '7', 'Priya', 'x', ?)", (T,)))
+check("who the hold waits on can't be changed", refused("UPDATE task_holds SET depends_on_name='Someone else'"))
+check("a hold ends", not refused("UPDATE task_holds SET end_ts='2026-10-26T08:00:00+00:00'"))
+check("its end can't be moved", refused("UPDATE task_holds SET end_ts='2026-10-26T09:00:00+00:00'"))
+check("Jai approves it", not refused("UPDATE task_holds SET status='approved', decided_by='1', decided_at=?", (T,)))
+check("the decision can't be changed", refused("UPDATE task_holds SET status='rejected'"))
 store.write("INSERT INTO badges_awarded(user_id, code, ref, awarded_by, awarded_at) VALUES ('7', 'helper', 'task:1', '1', ?)", (T,))
 store.write("INSERT INTO employee_of_month(month, user_id, chosen_by, chosen_at) VALUES ('2026-10', '7', '1', ?)", (T,))
 check("every v2 table has a row to protect",

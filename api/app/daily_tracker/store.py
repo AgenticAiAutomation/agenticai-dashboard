@@ -325,7 +325,7 @@ ADD_COLUMNS = [
 # Names that would collide with T4/T7 tables get a new name:
 #   spec tasks -> work_tasks, leave_days -> leave_calendar,
 #   points_ledger -> work_points, work_settings is append-only (latest row wins).
-V3_TABLES = ["task_categories", "work_tasks", "task_events", "work_intervals", "work_slots",
+V3_TABLES = ["task_categories", "work_tasks", "task_events", "work_intervals", "work_slots", "task_holds",
              "time_corrections", "leave_calendar", "work_settings", "work_points", "badges",
              "badges_awarded", "employee_of_month"]
 
@@ -336,6 +336,12 @@ CREATE TABLE IF NOT EXISTS task_categories (
     role       TEXT NOT NULL DEFAULT '',
     active     INTEGER NOT NULL DEFAULT 1,
     sort_order INTEGER NOT NULL DEFAULT 0,
+    -- JSON list of what the person MUST fill in: [{"key","label","type":"text|choice","options":[..]}]
+    fields     TEXT NOT NULL DEFAULT '[]',
+    -- >0: due this many working days after the task is picked (approved holds add back)
+    deadline_workdays INTEGER NOT NULL DEFAULT 0,
+    -- 1: stopping the watch for a dependency waits for Jai's approval
+    hold_needs_approval INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL
 );
 
@@ -357,6 +363,7 @@ CREATE TABLE IF NOT EXISTS work_tasks (
     picked_at     TEXT,
     due_date      TEXT,
     evidence_url  TEXT NOT NULL DEFAULT '',
+    details       TEXT NOT NULL DEFAULT '{}',   -- the category's required fields, filled in
     points_value  REAL NOT NULL DEFAULT 0,
     created_by    TEXT NOT NULL,
     created_at    TEXT NOT NULL,
@@ -414,6 +421,25 @@ CREATE TABLE IF NOT EXISTS work_slots (
     server_ts    TEXT NOT NULL,
     UNIQUE (user_id, slot_start)
 );
+
+-- "Stop the watch: waiting on <person>". The watch stops at once; Jai approves
+-- or rejects. Rejected = that time counts as normal. depends_on_user_id is set
+-- for a teammate, empty for an outside person (then only the name).
+CREATE TABLE IF NOT EXISTS task_holds (
+    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+    task_id            INTEGER NOT NULL,
+    user_id            TEXT NOT NULL,
+    depends_on_user_id TEXT,
+    depends_on_name    TEXT NOT NULL,
+    reason             TEXT NOT NULL,
+    start_ts           TEXT NOT NULL,
+    end_ts             TEXT,
+    status             TEXT NOT NULL DEFAULT 'pending',
+    decided_by         TEXT,
+    decided_at         TEXT,
+    decision_note      TEXT NOT NULL DEFAULT ''
+);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_th_one_open ON task_holds(task_id) WHERE end_ts IS NULL;
 
 CREATE TABLE IF NOT EXISTS time_corrections (
     id             INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -528,18 +554,36 @@ WHEN OLD.cancelled_at IS NOT NULL OR NEW.cancelled_at IS NULL OR NEW.user_id IS 
   OR NEW.declared_by IS NOT OLD.declared_by OR NEW.declared_at IS NOT OLD.declared_at
 BEGIN SELECT RAISE(ABORT, 'tasks v2: leave can only be cancelled, once'); END;
 
+-- A hold can be ended once and decided once; who, why and when it started never change.
+CREATE TRIGGER IF NOT EXISTS g_task_holds_once BEFORE UPDATE ON task_holds
+WHEN NEW.task_id IS NOT OLD.task_id OR NEW.user_id IS NOT OLD.user_id OR NEW.start_ts IS NOT OLD.start_ts
+  OR NEW.depends_on_user_id IS NOT OLD.depends_on_user_id OR NEW.depends_on_name IS NOT OLD.depends_on_name
+  OR NEW.reason IS NOT OLD.reason
+  OR (OLD.end_ts IS NOT NULL AND NEW.end_ts IS NOT OLD.end_ts) OR NEW.end_ts < OLD.start_ts
+  OR (OLD.status <> 'pending' AND NEW.status IS NOT OLD.status)
+BEGIN SELECT RAISE(ABORT, 'tasks v2: a hold is ended once and decided once'); END;
+
 -- A task keeps who made it and when.
 CREATE TRIGGER IF NOT EXISTS g_work_tasks_origin BEFORE UPDATE ON work_tasks
 WHEN NEW.created_by IS NOT OLD.created_by OR NEW.created_at IS NOT OLD.created_at
 BEGIN SELECT RAISE(ABORT, 'tasks v2: who created a task never changes'); END;
 """
 
-# The 13 T4 work types + 9 for the other roles, "Other" last = 22, all editable by Jai.
-DEFAULT_CATEGORIES = [name for name, _m, kind in DEFAULT_WORK_TYPES if kind != "other"] + [
-    "Design (graphics, logo, banner)", "Development (website, code)", "Automation (time saved)",
-    "Research / analysis",
-    "SOP / documentation", "Office / admin", "Meeting / client call", "Learning / training",
-    "Other (must describe)"]
+# Jai's categories (26 Oct): each says what MUST be filled in. Jai edits or adds more later.
+_REASON = [{"key": "reason", "label": "Reason", "type": "text"}]
+DEFAULT_CATEGORIES = [
+    # (name, required fields, deadline in working days, dependency stop needs Jai)
+    ("Article writing", [{"key": "website", "label": "Website name", "type": "text"}], 0, 0),
+    ("Content writing", [{"key": "purpose", "label": "For", "type": "choice",
+                          "options": ["Social media", "Backlinks"]}], 0, 0),
+    ("Website development", [{"key": "page", "label": "Which page", "type": "text"},
+                             {"key": "updates", "label": "What updates", "type": "text"}], 0, 0),
+    ("New website development", [{"key": "website", "label": "Website / domain", "type": "text"}], 3, 1),
+    ("Calling", _REASON, 0, 0),
+    ("Follow-up", _REASON, 0, 0),
+    ("Meeting", _REASON, 0, 0),
+    ("Other (must describe)", [{"key": "description", "label": "What is it", "type": "text"}], 0, 0),
+]
 
 # Every number Jai can change from admin settings. A new setting = a new row.
 DEFAULT_WORK_SETTINGS = {
@@ -647,8 +691,10 @@ def _migrate_v3(conn):
     with conn:
         conn.executescript(SCHEMA_3)
         if conn.execute("SELECT COUNT(*) c FROM task_categories").fetchone()["c"] == 0:
-            conn.executemany("INSERT INTO task_categories(name, sort_order, created_at) VALUES (?,?,?)",
-                             [(n, (i + 1) * 10, now_iso()) for i, n in enumerate(DEFAULT_CATEGORIES)])
+            conn.executemany("INSERT INTO task_categories(name, fields, deadline_workdays, hold_needs_approval, "
+                             "sort_order, created_at) VALUES (?,?,?,?,?,?)",
+                             [(n, json.dumps(f), d, h, (i + 1) * 10, now_iso())
+                              for i, (n, f, d, h) in enumerate(DEFAULT_CATEGORIES)])
         if conn.execute("SELECT COUNT(*) c FROM work_settings").fetchone()["c"] == 0:
             conn.execute("INSERT INTO work_settings(value, set_by, set_at) VALUES (?,?,?)",
                          (json.dumps(DEFAULT_WORK_SETTINGS), "installer", now_iso()))

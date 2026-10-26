@@ -12,7 +12,7 @@ entries (nav + Workspace card) in the step that builds them.
 
 | Feature | State | Where |
 |---|---|---|
-| Tasks v2 schema 3: work tasks, timer intervals, 15-minute proof, events, corrections, leave calendar, settings history, points, badges, employee of the month | built 26 Oct 2026, **not deployed** | `api/app/daily_tracker/store.py` (`SCHEMA_3`, `_migrate_v3`) |
+| Tasks v2 schema 3: work tasks (8 categories with required fields), timer intervals, dependency holds (Jai approves), 15-minute proof, events, corrections, leave calendar, settings history, points, badges, employee of the month | built 26 Oct 2026, **not deployed** | `api/app/daily_tracker/store.py` (`SCHEMA_3`, `_migrate_v3`) |
 
 ## Users and roles
 
