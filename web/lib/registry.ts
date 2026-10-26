@@ -4,7 +4,7 @@ import data from './routes.json';
    Nav, SEO sub-tabs and the homepage grid all read it through these helpers. */
 
 export type Group = 'SEO' | 'Content' | 'Team' | 'Finance' | 'Admin';
-export type Flag = 'tracker' | 'ideas' | 'taskManager' | 'followups';
+export type Flag = 'tracker' | 'ideas' | 'taskManager' | 'tasksV2' | 'followups';
 
 export type RouteEntry = {
   slug: string;

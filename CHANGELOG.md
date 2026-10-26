@@ -2,6 +2,14 @@
 
 Newest first. Production state per feature lives in `docs/FEATURE_LOG.md`.
 
+## 2026-10-26 · Tasks v2, Step 2 task timer (branch `feat/tasks-v2`, flag `FEATURE_TASKS_V2`), not deployed
+
+- New "Timer" tab on `/tasks/`: add a task with its category's required fields, start / pause / switch (one running
+  task), proof every 15 minutes (link, domain, slug, image or logo name), hours left today, forgotten-timer fix,
+  road blocker that stops the watch and suggests the next task, Jai approves stops on New website development,
+  pick from the Task Pool. Tests: `tests/test_tasks_v2_timer.py` (48).
+- `daily-tracker-flags.sh v2` switches it on.
+
 ## 2026-10-26 · Tasks v2, Step 1 database foundation (branch `feat/tasks-v2`), not deployed
 
 - `daily_tracker.db` schema 3: 13 **new** tables (tasks, 15-minute proof, timer intervals, dependency holds, events, corrections,

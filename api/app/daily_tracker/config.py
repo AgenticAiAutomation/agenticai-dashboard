@@ -20,6 +20,8 @@ class Settings:
     IDEAS       = _b("FEATURE_IDEA_BOARD", "0")
     # T7: tasks (SMART), targets, Red/Amber/Green, Mirror, points and tiers.
     TASKS       = _b("FEATURE_TASK_MANAGER", "0")
+    # Tasks v2: task timer, 15-minute proof, road blockers, hours targets.
+    TASKS_V2    = _b("FEATURE_TASKS_V2", "0")
     # Working weekdays for target splits, Monday = 0. Default Monday-Saturday.
     WORKDAYS    = [int(x) for x in os.environ.get("TASK_MANAGER_WORKDAYS", "0,1,2,3,4,5").split(",") if x.strip()]
     READ_ONLY   = _b("DAILY_TRACKER_READ_ONLY", "0")     # BCP degrade: serve, refuse writes

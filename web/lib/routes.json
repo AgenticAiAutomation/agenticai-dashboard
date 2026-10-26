@@ -54,6 +54,8 @@
 
     { "slug": "/tasks/", "title": "Tasks & Daily Tracker", "icon": "list", "group": "Team", "roles": "all", "status": "live", "pin": 5, "nav": true, "navTitle": "Tasks",
       "purpose": "Your tasks, today's work log with proof, marks and streaks." },
+    { "slug": "/tasks/?tab=timer", "title": "Task timer", "icon": "clock", "group": "Team", "roles": "all", "status": "live", "requires": "tasksV2",
+      "purpose": "Start, pause or switch tasks, add proof every 15 minutes, flag a road blocker. Shows the hours left today." },
     { "slug": "/tasks/?tab=ideas", "title": "Idea Board", "icon": "bulb", "group": "Team", "roles": "all", "status": "live", "requires": "ideas",
       "purpose": "Submit an idea for your website; ideas that work win the bonus." },
     { "slug": "/tasks/?tab=mirror", "title": "Mirror", "icon": "user", "group": "Team", "roles": "all", "status": "live", "requires": "taskManager",

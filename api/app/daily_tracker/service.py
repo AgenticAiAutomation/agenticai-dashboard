@@ -227,7 +227,7 @@ def _range(kind, today):
 
 # ------------------------------------------------------------------ status + types
 def status(user):
-    if not (settings.TRACKER or settings.IDEAS or settings.TASKS):
+    if not (settings.TRACKER or settings.IDEAS or settings.TASKS or settings.TASKS_V2):
         return ERR_TRACKER_OFF
     if not user:
         return ERR_AUTH
@@ -238,6 +238,7 @@ def status(user):
     badges = store.rows("SELECT month, kind, idea_id FROM user_badges WHERE user_id=? "
                         "ORDER BY month DESC", (uid(user),))
     return 200, {"tracker": settings.TRACKER, "ideas": settings.IDEAS, "taskManager": settings.TASKS,
+                 "tasksV2": settings.TASKS_V2,
                  "isSuperuser": str(user.get("email") or "").strip().lower() in settings.SUPERUSERS,
                  "role": user.get("role"),
                  "version": settings.VERSION, "readOnly": settings.READ_ONLY,

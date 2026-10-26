@@ -8,7 +8,7 @@ import importlib
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, Response
 
-from . import service, taskmgr
+from . import service, taskmgr, worktime
 from .config import settings
 
 _hook = None
@@ -252,6 +252,47 @@ def build():
         return Response(out, media_type="text/csv; charset=utf-8", headers={
             "Content-Disposition": f'attachment; filename="rewards-{month or "month"}.csv"',
             "Cache-Control": "no-store"})
+
+    # ---------------------------------------------------- tasks v2: timer, proof, road blockers
+    @tasks.get("/v2/state")
+    async def v2_state(request: Request):
+        return _json(worktime.state(current_user(request)))
+
+    @tasks.post("/v2/tasks")
+    async def v2_create(request: Request):
+        return _json(worktime.create_task(current_user(request), await _body(request)))
+
+    @tasks.post("/v2/tasks/{task_id}/start")
+    async def v2_start(request: Request, task_id: int):
+        return _json(worktime.start(current_user(request), task_id))
+
+    @tasks.post("/v2/pause")
+    async def v2_pause(request: Request):
+        return _json(worktime.pause(current_user(request)))
+
+    @tasks.post("/v2/session/end")
+    async def v2_end_session(request: Request):
+        return _json(worktime.end_session(current_user(request), await _body(request)))
+
+    @tasks.post("/v2/tasks/{task_id}/complete")
+    async def v2_complete(request: Request, task_id: int):
+        return _json(worktime.complete(current_user(request), task_id, await _body(request)))
+
+    @tasks.post("/v2/tasks/{task_id}/block")
+    async def v2_block(request: Request, task_id: int):
+        return _json(worktime.block(current_user(request), task_id, await _body(request)))
+
+    @tasks.post("/v2/tasks/{task_id}/unblock")
+    async def v2_unblock(request: Request, task_id: int):
+        return _json(worktime.unblock(current_user(request), task_id))
+
+    @tasks.post("/v2/holds/{hold_id}/decide")
+    async def v2_decide(request: Request, hold_id: int):
+        return _json(worktime.decide_hold(current_user(request), hold_id, await _body(request)))
+
+    @tasks.post("/v2/proof")
+    async def v2_proof(request: Request):
+        return _json(worktime.add_proof(current_user(request), await _body(request)))
 
     @ideas.get("")
     async def list_ideas(request: Request, project_id: str = None, status: str = None,

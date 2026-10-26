@@ -30,8 +30,9 @@ def _log(app):
 def register(app, logger=None):
     global _registered
     log = logger or _log(app)
-    if not (settings.TRACKER or settings.IDEAS or settings.TASKS):
-        log.info("[%s] disabled (FEATURE_DAILY_TRACKER, FEATURE_IDEA_BOARD, FEATURE_TASK_MANAGER off) "
+    if not (settings.TRACKER or settings.IDEAS or settings.TASKS or settings.TASKS_V2):
+        log.info("[%s] disabled (FEATURE_DAILY_TRACKER, FEATURE_IDEA_BOARD, FEATURE_TASK_MANAGER, "
+                 "FEATURE_TASKS_V2 off) "
                  "— not mounted",
                  settings.LOG_PREFIX)
         return False
@@ -55,8 +56,9 @@ def register(app, logger=None):
         store.init_db()
         routes.mount(app)
         _registered = True
-        log.info("[%s] v%s mounted (tracker=%s ideas=%s tasks=%s) · db=%s", settings.LOG_PREFIX,
-                 settings.VERSION, settings.TRACKER, settings.IDEAS, settings.TASKS, store.db_path())
+        log.info("[%s] v%s mounted (tracker=%s ideas=%s tasks=%s v2=%s) · db=%s", settings.LOG_PREFIX,
+                 settings.VERSION, settings.TRACKER, settings.IDEAS, settings.TASKS, settings.TASKS_V2,
+                 store.db_path())
         return True
     except Exception as exc:  # noqa: BLE001 — a feature must not break the host
         try:

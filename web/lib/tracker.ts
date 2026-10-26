@@ -10,6 +10,7 @@ export type TrackerStatus = {
   tracker: boolean;
   ideas: boolean;
   taskManager?: boolean;
+  tasksV2?: boolean;
   isSuperuser?: boolean;
   role?: string;
   readOnly: boolean;

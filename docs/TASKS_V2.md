@@ -147,13 +147,34 @@ check 52 because Flask isn't installed on this laptop, and it does the same on t
 `instance/daily_tracker.db` (delete its `-wal` and `-shm` files first), check out the previous commit, and start it
 again. Or simply leave the tables: old code never reads them.
 
-## Step 2 — must also pass (added by Jai)
+## Step 2 — task timer, 15-minute proof, road blockers (done 26 Oct 2026, not deployed)
 
-- Stopping for a road blocker closes the running interval at once, opens a `task_holds` row, logs a `task_events`
-  row, and returns a `suggestions` list: the person's other open, unblocked tasks (priority, then due date), then
-  Pool tasks. Picking one starts its timer in the same request.
-- Test: with 3 own tasks (P1 due tomorrow, P2 due today, one on hold) and 1 pool task, a block on another task
-  suggests P1, then P2, then the pool task. The held task isn't suggested.
+Flag `FEATURE_TASKS_V2` (`bash /root/daily-tracker-flags.sh v2`). The page is `/tasks/?tab=timer` ("Timer" tab,
+registry entry "Task timer", so it shows on the homepage as a card). Code: `api/app/daily_tracker/worktime.py`, API
+`/api/tasks/v2/*`, screen `web/components/worktime/TimerPanel.tsx`.
+
+| Rule | How |
+|---|---|
+| Add a task | Title + category, plus that category's required fields (website, page + updates, reason, ...). It's your own task. An admin can give it to a person or post it to the Pool. New website development gets a due date 3 working days ahead. |
+| One running task | Start = close the open interval (the old task goes to *paused*, event `auto_pause`) + open a new one, all in one transaction. A unique index makes a second open interval impossible. |
+| Refresh / closed browser | The clock is drawn from the server's start time (corrected for the browser's clock). A refresh changes nothing. |
+| Forgotten timer | An interval still open from an earlier day blocks start, pause, complete and block until the person sets the stop time (same day, after the start, not in the future). Event `manual_end`. The server never invents it. |
+| Worked vs proven | Work intervals of the day are merged (an overlap never counts twice), then cut into 15-minute slots. A slot counts toward the 7 h only once it has proof: a note plus a link, image name or logo name. Domain and URL slug are read from the link. One proof per slot, never edited. |
+| Past days | Proof only for today's slots; earlier days answer "locked, ask Jai for a correction" (Step 10). |
+| Road blocker | Name a teammate or an outside person + the reason. The watch stops at once, the task goes to *blocked*, and a `task_holds` row is written: *pending* for New website development (Jai approves or rejects on the same tab), *noted* otherwise. The answer lists the next tasks: own unblocked tasks by priority, then due date, then the Pool (never the blocked one). One click starts one. Unblock ends the hold. |
+| Pool | Starting a Pool task picks it. Only one person can win a pick (the update re-checks the Pool state). |
+| Complete | Needs a proof link. Stops the timer. Status *submitted* (review and points come in Step 9). |
+| Roles | Viewers read only. Only the superuser decides holds. Flag off = every v2 route answers 404 and the tab is hidden. |
+
+Tests: `tests/test_tasks_v2_timer.py` (48). The work order's acceptance tests 1, 2, 7, 8, 9, 11 are in the master
+prompt, which we don't have, so these checks cover the Step 2 bullets instead: one active task, auto-pause, server
+truth on refresh, forgotten session, overlaps not double-counted, plus Jai's road-blocker order (P1 due tomorrow
+before P2 due today, the held task never suggested). `next build` passes.
+
+**Not in Step 2:** breaks, lunch and thinking buttons (Step 4); review, acceptance and points (Step 9); approved
+hold time added back to the deadline, and hours vs the monthly target (Step 6); correction requests (Step 10).
+
+**Rollback:** `daily-tracker-flags.sh off` (or leave `v2` out). The data stays. Code: check out the previous commit.
 
 ## Business continuity
 
