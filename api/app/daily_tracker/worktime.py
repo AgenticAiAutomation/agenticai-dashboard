@@ -11,6 +11,9 @@ writes a task_events row in one transaction; the browser only displays.
   * yesterday is locked: proof only for today's slots
   * road blocker: the watch stops at once, a task_holds row waits for Jai when
     the category says so, and the person gets their next task suggested
+  * v3 (FEATURE_TASKS_V3): "Start my day" clocks in (work_days); a task starts
+    only inside a started day; a day left open blocks the next one until the
+    person says when they stopped
 
 Times are stored UTC ISO; days and slots are IST (store.IST).
 """
@@ -24,6 +27,7 @@ from .config import settings
 
 IST = store.IST
 ERR_OFF = (404, {"error": "disabled", "message": "Tasks v2 is not switched on."})
+ERR_OFF_V3 = (404, {"error": "disabled", "message": "The Start my day flow is not switched on."})
 ERR_SUPER = (403, {"error": "forbidden", "message": "Only Jai can decide that."})
 WORKABLE = ("todo", "paused", "in_progress")
 DONE = ("submitted", "accepted", "cancelled")
@@ -129,6 +133,24 @@ def _public(t, cats=None):
             "pool": bool(t["pool"])}
 
 
+def _day(user_id, day):
+    return store.one("SELECT * FROM work_days WHERE user_id=? AND date=?", (user_id, day))
+
+
+def _unended(user_id, today):
+    """An earlier day the person never ended (the oldest first)."""
+    return store.one("SELECT * FROM work_days WHERE user_id=? AND date<? AND end_at IS NULL ORDER BY date LIMIT 1",
+                     (user_id, today))
+
+
+def _end_time(body):
+    """The person's own stop time, IST 'YYYY-MM-DDTHH:MM'; None if it doesn't parse."""
+    try:
+        return datetime.fromisoformat(str((body or {}).get("end"))).replace(tzinfo=IST)
+    except ValueError:
+        return None
+
+
 # ------------------------------------------------------------------ time math
 def _spans(user_id, day, now):
     """[(start, end, task_id)] of effective work on that IST day, clipped to the day."""
@@ -232,8 +254,10 @@ def state(user, now=None):
         "categories": [c for c in cats.values() if c["active"]],
         "people": store.rows("SELECT user_id, name FROM dt_people ORDER BY name"),
         "work": {**work, "targetMinutes": target, "leftMinutes": max(0.0, target - work["provenMinutes"])},
-        "settings": {"slotMinutes": cfg["slot_minutes"], "dailyTargetHours": cfg["daily_target_hours"]},
+        "settings": {"slotMinutes": cfg["slot_minutes"], "dailyTargetHours": cfg["daily_target_hours"],
+                     "dayLateAfter": cfg["day_late_after"]},
         "isSuperuser": taskmgr.is_super(user),
+        "dayFlow": settings.TASKS_V3, "day": _day(me, today), "openDay": _unended(me, today),
     }
 
 
@@ -304,6 +328,11 @@ def start(user, task_id, now=None):
         return 403, {"error": "forbidden", "message": "That task belongs to someone else."}
     if not picking and t["status"] not in WORKABLE:
         return 409, {"error": "not_workable", "message": f"This task is {t['status']}."}
+    if settings.TASKS_V3:
+        d = _day(me, now.astimezone(IST).date().isoformat())
+        if not d or d["end_at"]:
+            return 409, {"error": "day_not_started" if not d else "day_ended",
+                         "message": "Press Start my day first." if not d else "You ended your day already."}
     iv = _open(me)
     if _stale(iv, now):
         return 409, {"error": "open_session",
@@ -368,9 +397,8 @@ def end_session(user, body, now=None):
     iv = _open(me)
     if not iv:
         return state(user, now)
-    try:
-        end = datetime.fromisoformat(str((body or {}).get("end"))).replace(tzinfo=IST)
-    except ValueError:
+    end = _end_time(body)
+    if not end:
         return base._bad("Give the time you stopped, like 2026-10-25T18:30.")
     start_at = _ist(iv["start_ts"])
     if not start_at < end <= now or end.date() != start_at.date():
@@ -404,6 +432,86 @@ def complete(user, task_id, body, now=None):
             conn.execute("UPDATE work_intervals SET end_ts=? WHERE id=?", (_iso(now), iv["id"]))
         conn.execute("UPDATE work_tasks SET evidence_url=? WHERE id=?", (url, task_id))
         _set_status(conn, t, "submitted", me, "complete", now)
+    return state(user, now)
+
+
+# ------------------------------------------------------------------ v3: start / end my day
+def _guard_v3(user):
+    return _guard(user, write=True) or (None if settings.TASKS_V3 else ERR_OFF_V3)
+
+
+def start_day(user, now=None):
+    g = _guard_v3(user)
+    if g:
+        return g
+    now = _now(now)
+    me = base.uid(user)
+    today = now.astimezone(IST).date().isoformat()
+    if _unended(me, today):
+        return 409, {"error": "open_day", "message": "You didn't end an earlier day. Say when you stopped first."}
+    if not _day(me, today):
+        status = "late" if now.astimezone(IST).strftime("%H:%M") > str(work_settings()["day_late_after"]) \
+            else "on_time"
+        conn = store.connect()
+        try:
+            with conn:
+                conn.execute("INSERT INTO work_days(user_id, date, start_at, status) VALUES (?,?,?,?)",
+                             (me, today, _iso(now), status))
+                _event(conn, me, None, "day_start", now, "", status)
+        except sqlite3.IntegrityError:
+            pass  # a double click: the first press already started the day
+    return state(user, now)
+
+
+def end_day(user, now=None):
+    g = _guard_v3(user)
+    if g:
+        return g
+    now = _now(now)
+    me = base.uid(user)
+    d = _day(me, now.astimezone(IST).date().isoformat())
+    if not d:
+        return 409, {"error": "day_not_started", "message": "Your day hasn't started."}
+    if d["end_at"]:
+        return state(user, now)
+    iv = _open(me)
+    if _stale(iv, now):
+        return 409, {"error": "open_session", "message": "Set when you stopped that earlier timer first."}
+    conn = store.connect()
+    with conn:
+        if iv:
+            _close(conn, iv, now, me, "auto_pause", "day ended")
+        conn.execute("UPDATE work_days SET end_at=?, end_source='button' WHERE id=?", (_iso(now), d["id"]))
+        _event(conn, me, None, "day_end", now)
+    return state(user, now)
+
+
+def set_day_end(user, body, now=None):
+    """The forgotten End my day: the person says when they stopped (never guessed).
+    A timer left running that same day stops at the same time."""
+    g = _guard_v3(user)
+    if g:
+        return g
+    now = _now(now)
+    me = base.uid(user)
+    d = _unended(me, now.astimezone(IST).date().isoformat())
+    if not d:
+        return state(user, now)
+    end = _end_time(body)
+    if not end:
+        return base._bad("Give the time you stopped, like 2026-10-25T18:30.")
+    if not _ist(d["start_at"]) < end <= now or end.date().isoformat() != d["date"]:
+        return base._bad("The stop time must be on that day, after you started, and not in the future.")
+    iv = _open(me)
+    iv = iv if iv and _ist(iv["start_ts"]).date().isoformat() == d["date"] else None
+    if iv and end < _ist(iv["start_ts"]):
+        return base._bad(f"A timer ran from {_ist(iv['start_ts']):%H:%M} that day; the day can't end before it.")
+    conn = store.connect()
+    with conn:
+        if iv:
+            _close(conn, iv, end, me, "manual_end", "day end set by the person after a forgotten stop")
+        conn.execute("UPDATE work_days SET end_at=?, end_source='set_later' WHERE id=?", (_iso(end), d["id"]))
+        _event(conn, me, None, "day_end_set", now, reason=f"{d['date']} ended at {end:%H:%M}")
     return state(user, now)
 
 

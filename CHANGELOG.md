@@ -2,6 +2,15 @@
 
 Newest first. Production state per feature lives in `docs/FEATURE_LOG.md`.
 
+## 2026-10-26 · Tasks v3, Step 1 "Start my day" (branch `feat/tasks-v2`, flag `FEATURE_TASKS_V3`), not deployed
+
+- Timer tab opens on a big "Start my day" card (greeting + today's plan). Pressing it records the server time
+  ("Started 9:42 am"); after 10:30 (setting `day_late_after`) it's a late start, no penalty. End my day stops the
+  running task. A day never ended blocks the next one until the person says when they stopped.
+- New table `work_days` (no delete, ended once). Employees land on the Timer tab after login when v3 is on.
+- `daily-tracker-flags.sh v3` switches it on (with v2); `nov3` goes back to the v2 screens. Tests:
+  `tests/test_tasks_v3_day.py` (28).
+
 ## 2026-10-26 · Tasks v2, Step 2 task timer (branch `feat/tasks-v2`, flag `FEATURE_TASKS_V2`), not deployed
 
 - New "Timer" tab on `/tasks/`: add a task with its category's required fields, start / pause / switch (one running

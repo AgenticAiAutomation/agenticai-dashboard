@@ -3,7 +3,7 @@
 import { FormEvent, useCallback, useEffect, useState } from 'react';
 import { Card, EmptyState, ErrorBanner } from '@/components/ui';
 import { TrackerStatus, msg } from '@/lib/tracker';
-import { Category, WState, WTask, hm, slotLabel, wtApi } from '@/lib/worktime';
+import { Category, WState, WTask, clock, hm, slotLabel, wtApi } from '@/lib/worktime';
 
 const STATUS: Record<string, string> = {
   todo: 'To do', in_progress: 'Running', paused: 'Paused', blocked: 'Blocked', pool: 'In the Pool',
@@ -103,6 +103,45 @@ function AddTask({ s, isAdmin, onDone }: { s: WState; isAdmin: boolean; onDone: 
   );
 }
 
+/* v3 "Start my day": the first screen of the day, with today's plan. */
+function StartDay({ s, name, onStart }: { s: WState; name: string; onStart: () => void }) {
+  const h = Number(new Date(s.now).toLocaleString('en-GB', { hour: 'numeric', hourCycle: 'h23', timeZone: 'Asia/Kolkata' }));
+  const plan = s.tasks.filter((t) => t.status !== 'blocked');
+  return (
+    <div className="mx-auto max-w-xl rounded-2xl border border-line bg-raised p-6 text-center sm:p-10">
+      <p className="text-2xl font-semibold text-white">{h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening'}, {name}</p>
+      <p className="mt-1 text-sm text-muted">
+        {plan.length ? `${plan.length} task${plan.length > 1 ? 's' : ''} planned for today` : 'Nothing planned yet: Jai will add your tasks.'}
+      </p>
+      {plan.length > 0 && (
+        <ul className="mt-4 space-y-1 text-left text-sm text-slate-200">
+          {plan.slice(0, 5).map((t) => <li key={t.id} className="truncate rounded-md bg-bg px-3 py-2">{t.title}</li>)}
+          {plan.length > 5 && <li className="px-3 text-xs text-muted">and {plan.length - 5} more</li>}
+        </ul>
+      )}
+      <button className="btn-primary mt-6 w-full py-4 text-lg" onClick={onStart}>Start my day</button>
+      <p className="mt-2 text-xs text-muted">Your day starts when you press it. After {s.settings.dayLateAfter} it counts as a late start.</p>
+    </div>
+  );
+}
+
+/* v3: the day was never ended. The person says when they stopped; the server never guesses. */
+function SetDayEnd({ day, onSave }: { day: { date: string; start_at: string }; onSave: (end: string) => void }) {
+  const [time, setTime] = useState('');
+  return (
+    <Card title="You didn't end your day">
+      <p className="text-sm text-slate-200">
+        {new Date(`${day.date}T12:00`).toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'short' })}: you started
+        at {clock(day.start_at)} and never pressed End my day. When did you stop? Today starts once you say.
+      </p>
+      <form className="mt-3 flex flex-wrap gap-2" onSubmit={(e) => { e.preventDefault(); onSave(`${day.date}T${time}`); }}>
+        <input aria-label="Stopped at" type="time" required className="input-field w-auto" value={time} onChange={(e) => setTime(e.target.value)} />
+        <button className="btn-primary" type="submit">Save</button>
+      </form>
+    </Card>
+  );
+}
+
 function ProofForm({ slot, minutes, onSave }: { slot: string; minutes: number; onSave: (b: Record<string, string>) => Promise<void> }) {
   const [f, setF] = useState({ url: '', image_name: '', logo_name: '', note: '' });
   const set = (k: keyof typeof f) => (e: { target: { value: string } }) => setF({ ...f, [k]: e.target.value });
@@ -131,7 +170,7 @@ export default function TimerPanel({ status }: { status: TrackerStatus }) {
   const [stopAt, setStopAt] = useState('');
   const [adding, setAdding] = useState(false);
   const [suggest, setSuggest] = useState<{ list: WTask[]; approval: boolean } | null>(null);
-  const readOnly = status.role === 'viewer' || status.readOnly;
+  const viewer = status.role === 'viewer' || status.readOnly;
 
   const take = (st: WState) => { setS(st); setSkew(new Date(st.now).getTime() - Date.now()); };
   const load = useCallback(async () => {
@@ -146,6 +185,18 @@ export default function TimerPanel({ status }: { status: TrackerStatus }) {
 
   if (!s) return <><ErrorBanner message={error} />{!error && <p className="text-sm text-muted">Loading…</p>}</>;
 
+  // v3: nothing starts before Start my day or after End my day (the server refuses too).
+  const readOnly = viewer || (s.dayFlow && !!s.day?.end_at);
+  if (s.dayFlow && !viewer && (s.openDay || !s.day)) {
+    return (
+      <div className="space-y-5">
+        <ErrorBanner message={error} />
+        {s.openDay ? <SetDayEnd day={s.openDay} onSave={(end) => act(() => wtApi.setDayEnd(end), 'Saved. Now start today.')} />
+                   : <StartDay s={s} name={(status.me.name || '').split(' ')[0]} onStart={() => act(wtApi.startDay)} />}
+      </div>
+    );
+  }
+
   const run = s.running;
   const pct = Math.min(100, (s.work.provenMinutes / s.work.targetMinutes) * 100);
   const due = s.work.needProof;
@@ -156,6 +207,21 @@ export default function TimerPanel({ status }: { status: TrackerStatus }) {
     <div className="space-y-5">
       <ErrorBanner message={error} />
       {notice && <p className="rounded-md border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-200">{notice}</p>}
+
+      {s.dayFlow && s.day && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-line bg-raised px-4 py-3 text-sm">
+          <span className="text-slate-200">
+            Started <b className="text-white">{clock(s.day.start_at)}</b>
+            {s.day.status === 'late' && <span className="ml-2 rounded-full bg-amber-500/15 px-2 py-0.5 text-xs text-amber-200">late start</span>}
+            {s.day.end_at && <> · ended <b className="text-white">{clock(s.day.end_at)}</b></>}
+          </span>
+          {!s.day.end_at && !viewer && (
+            <button className="btn-secondary" onClick={() => {
+              if (window.confirm('End your day now? The running task stops, and nothing more can start today.')) act(wtApi.endDay, 'Day ended. See you tomorrow.');
+            }}>End my day</button>
+          )}
+        </div>
+      )}
 
       {run?.stale && (
         <Card title="You left a timer running">

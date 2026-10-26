@@ -274,6 +274,18 @@ def build():
     async def v2_end_session(request: Request):
         return _json(worktime.end_session(current_user(request), await _body(request)))
 
+    @tasks.post("/v2/day/start")
+    async def v3_day_start(request: Request):
+        return _json(worktime.start_day(current_user(request)))
+
+    @tasks.post("/v2/day/end")
+    async def v3_day_end(request: Request):
+        return _json(worktime.end_day(current_user(request)))
+
+    @tasks.post("/v2/day/set-end")
+    async def v3_day_set_end(request: Request):
+        return _json(worktime.set_day_end(current_user(request), await _body(request)))
+
     @tasks.post("/v2/tasks/{task_id}/complete")
     async def v2_complete(request: Request, task_id: int):
         return _json(worktime.complete(current_user(request), task_id, await _body(request)))

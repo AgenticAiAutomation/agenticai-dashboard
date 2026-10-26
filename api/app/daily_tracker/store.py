@@ -327,7 +327,7 @@ ADD_COLUMNS = [
 #   points_ledger -> work_points, work_settings is append-only (latest row wins).
 V3_TABLES = ["task_categories", "work_tasks", "task_events", "work_intervals", "work_slots", "task_holds",
              "time_corrections", "leave_calendar", "work_settings", "work_points", "badges",
-             "badges_awarded", "employee_of_month"]
+             "badges_awarded", "employee_of_month", "work_days"]
 
 SCHEMA_3 = """
 CREATE TABLE IF NOT EXISTS task_categories (
@@ -522,6 +522,19 @@ CREATE TABLE IF NOT EXISTS employee_of_month (
     chosen_at  TEXT NOT NULL
 );
 
+-- Tasks v3 "Start my day": login = clock-in. status on_time | late (fixed at the
+-- press). end_source button | set_later (the person said it the next login).
+CREATE TABLE IF NOT EXISTS work_days (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id    TEXT NOT NULL,
+    date       TEXT NOT NULL,
+    start_at   TEXT NOT NULL,
+    end_at     TEXT,
+    status     TEXT NOT NULL DEFAULT 'on_time',
+    end_source TEXT NOT NULL DEFAULT '',
+    UNIQUE (user_id, date)
+);
+
 -- ---- guardrails: nothing in v2 is ever deleted
 """ + "".join(
     f"CREATE TRIGGER IF NOT EXISTS g_{t}_nodelete BEFORE DELETE ON {t} "
@@ -563,6 +576,13 @@ WHEN NEW.task_id IS NOT OLD.task_id OR NEW.user_id IS NOT OLD.user_id OR NEW.sta
   OR (OLD.status <> 'pending' AND NEW.status IS NOT OLD.status)
 BEGIN SELECT RAISE(ABORT, 'tasks v2: a hold is ended once and decided once'); END;
 
+-- A day is ended once; who, which day, when it started and late/on time never change.
+CREATE TRIGGER IF NOT EXISTS g_work_days_end BEFORE UPDATE ON work_days
+WHEN OLD.end_at IS NOT NULL OR NEW.end_at IS NULL OR NEW.end_at < OLD.start_at
+  OR NEW.user_id IS NOT OLD.user_id OR NEW.date IS NOT OLD.date OR NEW.start_at IS NOT OLD.start_at
+  OR NEW.status IS NOT OLD.status
+BEGIN SELECT RAISE(ABORT, 'tasks v3: a day is ended once'); END;
+
 -- A task keeps who made it and when.
 CREATE TRIGGER IF NOT EXISTS g_work_tasks_origin BEFORE UPDATE ON work_tasks
 WHEN NEW.created_by IS NOT OLD.created_by OR NEW.created_at IS NOT OLD.created_at
@@ -602,6 +622,7 @@ DEFAULT_WORK_SETTINGS = {
     "levels": [["Starter", 0], ["Consistent Contributor", 200], ["Skilled Specialist", 500],
                ["Problem Solver", 900], ["Automation Champion", 1400]],
     "leaderboard_visible": False,
+    "day_late_after": "10:30",                    # v3: "Start my day" after this (IST) = late start, no penalty
 }
 
 DEFAULT_BADGES = [

@@ -166,6 +166,7 @@ check("Jai approves it", not refused("UPDATE task_holds SET status='approved', d
 check("the decision can't be changed", refused("UPDATE task_holds SET status='rejected'"))
 store.write("INSERT INTO badges_awarded(user_id, code, ref, awarded_by, awarded_at) VALUES ('7', 'helper', 'task:1', '1', ?)", (T,))
 store.write("INSERT INTO employee_of_month(month, user_id, chosen_by, chosen_at) VALUES ('2026-10', '7', '1', ?)", (T,))
+store.write("INSERT INTO work_days(user_id, date, start_at) VALUES ('7', '2026-10-26', ?)", (T,))
 check("every v2 table has a row to protect",
       all(store.one(f"SELECT COUNT(*) c FROM {t}")["c"] for t in store.V3_TABLES))
 for t in store.V3_TABLES:

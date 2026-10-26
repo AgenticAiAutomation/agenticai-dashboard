@@ -18,6 +18,9 @@ export type Hold = {
   start_ts: string; end_ts: string | null; status: string; title?: string;
 };
 
+/* v3: one row per person per day. status on_time | late; end_at null while the day runs. */
+export type WorkDay = { date: string; start_at: string; end_at: string | null; status: string; end_source: string };
+
 export type WState = {
   now: string; today: string;
   running: { interval: Interval; task: WTask | null; stale: boolean } | null;
@@ -27,8 +30,9 @@ export type WState = {
     workedMinutes: number; provenMinutes: number; targetMinutes: number; leftMinutes: number;
     needProof: { slot: string; minutes: number; taskId: number | null }[];
   };
-  settings: { slotMinutes: number; dailyTargetHours: number };
+  settings: { slotMinutes: number; dailyTargetHours: number; dayLateAfter: string };
   isSuperuser: boolean;
+  dayFlow: boolean; day: WorkDay | null; openDay: WorkDay | null;
   suggestions?: WTask[]; needsApproval?: boolean;
 };
 
@@ -45,6 +49,9 @@ export const wtApi = {
   unblock: (id: number) => api.post<WState>(`${V}/tasks/${id}/unblock`),
   decide: (id: number, approve: boolean, note = '') => api.post<WState>(`${V}/holds/${id}/decide`, { approve, note }),
   proof: (body: Record<string, string>) => api.post<WState>(`${V}/proof`, body),
+  startDay: () => api.post<WState>(`${V}/day/start`),
+  endDay: () => api.post<WState>(`${V}/day/end`),
+  setDayEnd: (end: string) => api.post<WState>(`${V}/day/set-end`, { end }),
 };
 
 /** "2026-10-26T10:15" (IST slot) → "10:15–10:30" */
@@ -53,5 +60,9 @@ export const slotLabel = (slot: string, minutes = 15) => {
   const end = h * 60 + m + minutes;
   return `${slot.slice(11, 16)}–${String(Math.floor(end / 60) % 24).padStart(2, '0')}:${String(end % 60).padStart(2, '0')}`;
 };
+
+/** ISO time → "9:42 am" in IST */
+export const clock = (iso: string) =>
+  new Date(iso).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', timeZone: 'Asia/Kolkata' });
 
 export const hm = (min: number) => `${Math.floor(min / 60)}h ${String(Math.round(min % 60)).padStart(2, '0')}m`;

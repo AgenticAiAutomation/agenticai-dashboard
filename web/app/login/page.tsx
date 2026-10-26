@@ -4,6 +4,17 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import api from '@/lib/api';
 import { apiError } from '@/lib/seo';
+import { trackerApi } from '@/lib/tracker';
+
+/* Tasks v3: with "Start my day" on, the team lands on their work screen. */
+async function landing() {
+  try {
+    const s = (await trackerApi.status()).data;
+    return s.tasksV3 && !s.isSuperuser ? '/tasks/?tab=timer' : '/dashboard';
+  } catch {
+    return '/dashboard'; // tracker off (404) or down: the usual home
+  }
+}
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -24,7 +35,7 @@ export default function LoginPage() {
       localStorage.setItem('role', data.role ?? '');
 
       // The API flags accounts provisioned with a generated password.
-      router.push(data.must_change_password ? '/account/password' : '/dashboard');
+      router.push(data.must_change_password ? '/account/password' : await landing());
     } catch (err) {
       setError(apiError(err, 'Login failed'));
     } finally {

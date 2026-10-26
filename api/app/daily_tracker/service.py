@@ -238,7 +238,7 @@ def status(user):
     badges = store.rows("SELECT month, kind, idea_id FROM user_badges WHERE user_id=? "
                         "ORDER BY month DESC", (uid(user),))
     return 200, {"tracker": settings.TRACKER, "ideas": settings.IDEAS, "taskManager": settings.TASKS,
-                 "tasksV2": settings.TASKS_V2,
+                 "tasksV2": settings.TASKS_V2, "tasksV3": settings.TASKS_V2 and settings.TASKS_V3,
                  "isSuperuser": str(user.get("email") or "").strip().lower() in settings.SUPERUSERS,
                  "role": user.get("role"),
                  "version": settings.VERSION, "readOnly": settings.READ_ONLY,
