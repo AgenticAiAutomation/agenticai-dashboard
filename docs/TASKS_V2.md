@@ -116,6 +116,7 @@ The flags are switched with `/root/daily-tracker-flags.sh` (systemd drop-in `das
 | Points | A separate v2 ledger (`work_points`), because existing tables don't change. Tiers are linked up in Step 9. |
 | Master prompt | Not available. Go ahead without it, with tests written from this work order. |
 | Categories (26 Oct) | Replace the starter list. **Article writing** (website name required), **Content writing** (for: Social media / Backlinks), **Website development** (which page + what updates), **New website development** (website; due 3 working days after it's picked; stopping the watch for a dependency names a teammate or outside person + reason, and waits for Jai's approval, then approved hold time is added back to the deadline and rejected hold time counts as normal), **Calling**, **Follow-up**, **Meeting** (reason required), **Other** (must describe). Jai can add more in settings. |
+| Road blocker (26 Oct) | The watch stops the moment they name the blocker (any category; for New website development it also goes to Jai). The same screen then **suggests their next task**, so they stay on track: first their own open tasks that aren't blocked (highest priority, then the earliest due), then tasks from the Pool if they have none. One click starts it, so no time is lost between tasks. |
 
 Still open: which flags are on in production (`cat /etc/systemd/system/dashboard-api.service.d/daily-tracker.conf`).
 
@@ -145,6 +146,14 @@ check 52 because Flask isn't installed on this laptop, and it does the same on t
 **Rollback (Step 1):** stop the API, copy `backups/daily_tracker/daily_tracker-*-pre-v3.db` over
 `instance/daily_tracker.db` (delete its `-wal` and `-shm` files first), check out the previous commit, and start it
 again. Or simply leave the tables: old code never reads them.
+
+## Step 2 — must also pass (added by Jai)
+
+- Stopping for a road blocker closes the running interval at once, opens a `task_holds` row, logs a `task_events`
+  row, and returns a `suggestions` list: the person's other open, unblocked tasks (priority, then due date), then
+  Pool tasks. Picking one starts its timer in the same request.
+- Test: with 3 own tasks (P1 due tomorrow, P2 due today, one on hold) and 1 pool task, a block on another task
+  suggests P1, then P2, then the pool task. The held task isn't suggested.
 
 ## Business continuity
 
