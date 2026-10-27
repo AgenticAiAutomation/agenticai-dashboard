@@ -126,9 +126,47 @@ def main():
     check("the timer left running stops at the same time", iv["end_ts"] == "2026-10-27T12:45:00+00:00")
     check("then today starts normally", wt.start_day(A, at(9, 5, day=28))[1]["day"]["date"] == "2026-10-28")
 
+    print("\n--- no proof in v3 (Jai, 27 Oct) ---")
+    wt.start(A, t1, at(10, day=28))
+    s = wt.state(A, at(10, 30, day=28))[1]
+    check("timer time counts as it runs, nothing asks for proof",
+          s["work"]["provenMinutes"] == s["work"]["workedMinutes"] == 30 and s["work"]["needProof"] == [])
+    check("Done needs no link", wt.complete(A, t1, {}, at(10, 30, day=28))[0] == 200
+          and store.one("SELECT status FROM work_tasks WHERE id=?", (t1,))["status"] == "submitted")
+    check("a link given must still be a link", wt.complete(A, t2, {"evidence_url": "nope"}, at(10, 31, day=28))[0] == 400)
+
+    print("\n--- dependency stop: reasons + Jai's daily tasks ---")
+    J = USERS["jai"]
+    daily = {"title": "Reply to client emails", "category_id": cat, "details": {"reason": "inbox"}}
+    check("only Jai sets daily tasks", wt.create_routine(A, daily)[0] == 403)
+    check("a daily task needs its category's fields",
+          wt.create_routine(J, {**daily, "details": {}})[0] == 400)
+    wt.create_routine(J, daily)
+    wt.create_routine(J, {**daily, "title": "Priya's social posts", "user_id": "8"})
+    r_all, r_priya = [r["id"] for r in store.rows("SELECT id FROM daily_routines ORDER BY id")]
+    wt.start(A, t2, at(11, day=28))
+    block = {"depends_on_name": "Client", "reason": "Lunch"}
+    check("the reason must be one of the options", wt.block(A, t2, block, at(11, 10, day=28))[0] == 400)
+    code, s = wt.block(A, t2, {**block, "reason": "Credentials expired", "detail": "WordPress login"}, at(11, 10, day=28))
+    check("Credentials expired stops the watch, no proof asked", code == 200 and s["running"] is None
+          and store.one("SELECT reason FROM task_holds WHERE task_id=?", (t2,))["reason"]
+          == "Credentials expired: WordPress login")
+    check("the answer offers everyone's daily tasks, not Priya's own", [r["id"] for r in s["routines"]] == [r_all])
+    check("Akash can't jump to Priya's daily task", wt.start_routine(A, r_priya, at(11, 11, day=28))[0] == 404)
+    code, s = wt.start_routine(A, r_all, at(11, 11, day=28))
+    first = s["running"]["task"]
+    check("one tap: the daily task becomes his and starts",
+          code == 200 and first["title"] == "Reply to client emails" and first["details"]["routine_id"] == r_all)
+    wt.pause(A, at(11, 30, day=28))
+    check("jumping again carries on the same task, no copy",
+          wt.start_routine(A, r_all, at(12, day=28))[1]["running"]["task"]["id"] == first["id"])
+    wt.set_routine_active(J, r_all, {"active": False})
+    check("Jai switches it off: no longer offered, kept for him",
+          wt.routines("7") == [] and len(wt.state(J, at(12, day=28))[1]["routinesAll"]) == 2)
+
     print("\n--- guardrails ---")
     conn = store.connect()
-    for sql in ("DELETE FROM work_days", "UPDATE work_days SET end_at='2026-10-26T14:00:00+00:00' WHERE date='2026-10-26'",
+    for sql in ("DELETE FROM work_days", "DELETE FROM daily_routines", "UPDATE work_days SET end_at='2026-10-26T14:00:00+00:00' WHERE date='2026-10-26'",
                 "UPDATE work_days SET start_at='2026-10-28T03:00:00+00:00' WHERE date='2026-10-28'",
                 "UPDATE work_days SET status='on_time', end_at='2026-10-26T13:00:00+00:00' WHERE user_id='8'",
                 "INSERT OR REPLACE INTO work_days(user_id, date, start_at) VALUES ('7', '2026-10-26', 'x')"):

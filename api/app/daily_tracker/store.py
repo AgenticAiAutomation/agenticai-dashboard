@@ -327,7 +327,7 @@ ADD_COLUMNS = [
 #   points_ledger -> work_points, work_settings is append-only (latest row wins).
 V3_TABLES = ["task_categories", "work_tasks", "task_events", "work_intervals", "work_slots", "task_holds",
              "time_corrections", "leave_calendar", "work_settings", "work_points", "badges",
-             "badges_awarded", "employee_of_month", "work_days"]
+             "badges_awarded", "employee_of_month", "work_days", "daily_routines"]
 
 SCHEMA_3 = """
 CREATE TABLE IF NOT EXISTS task_categories (
@@ -535,6 +535,21 @@ CREATE TABLE IF NOT EXISTS work_days (
     UNIQUE (user_id, date)
 );
 
+-- Tasks v3: Jai's predefined daily tasks. A blocked person jumps to one; it becomes
+-- their own work_tasks row (details.routine_id). user_id '*' = everyone. Switched
+-- off with active = 0, never deleted.
+CREATE TABLE IF NOT EXISTS daily_routines (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    title       TEXT NOT NULL,
+    category_id INTEGER REFERENCES task_categories(id),
+    details     TEXT NOT NULL DEFAULT '{}',
+    priority    TEXT NOT NULL DEFAULT 'P2',
+    user_id     TEXT NOT NULL DEFAULT '*',
+    active      INTEGER NOT NULL DEFAULT 1,
+    created_by  TEXT NOT NULL,
+    created_at  TEXT NOT NULL
+);
+
 -- ---- guardrails: nothing in v2 is ever deleted
 """ + "".join(
     f"CREATE TRIGGER IF NOT EXISTS g_{t}_nodelete BEFORE DELETE ON {t} "
@@ -622,7 +637,9 @@ DEFAULT_WORK_SETTINGS = {
     "levels": [["Starter", 0], ["Consistent Contributor", 200], ["Skilled Specialist", 500],
                ["Problem Solver", 900], ["Automation Champion", 1400]],
     "leaderboard_visible": False,
-    "day_late_after": "10:30",                    # v3: "Start my day" after this (IST) = late start, no penalty
+    "day_late_after": "10:30",                    # v3: "Start my day" after this (IST) = late start, never a penalty
+    # v3: why the watch stopped for a dependency (Jai, 27 Oct). No proof is asked in v3.
+    "block_reasons": ["Credentials expired", "Document required", "Information required"],
 }
 
 DEFAULT_BADGES = [

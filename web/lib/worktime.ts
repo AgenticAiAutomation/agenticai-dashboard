@@ -21,6 +21,12 @@ export type Hold = {
 /* v3: one row per person per day. status on_time | late; end_at null while the day runs. */
 export type WorkDay = { date: string; start_at: string; end_at: string | null; status: string; end_source: string };
 
+/* v3: Jai's predefined daily tasks; user_id '*' = everyone. */
+export type Routine = {
+  id: number; title: string; category: string; category_id: number; details: Record<string, string>;
+  priority: string; user_id: string; active: number;
+};
+
 export type WState = {
   now: string; today: string;
   running: { interval: Interval; task: WTask | null; stale: boolean } | null;
@@ -33,6 +39,7 @@ export type WState = {
   settings: { slotMinutes: number; dailyTargetHours: number; dayLateAfter: string };
   isSuperuser: boolean;
   dayFlow: boolean; day: WorkDay | null; openDay: WorkDay | null;
+  blockReasons: string[]; routines: Routine[]; routinesAll: Routine[];
   suggestions?: WTask[]; needsApproval?: boolean;
 };
 
@@ -44,7 +51,7 @@ export const wtApi = {
   pause: () => api.post<WState>(`${V}/pause`),
   endSession: (end: string) => api.post<WState>(`${V}/session/end`, { end }),
   complete: (id: number, evidence_url: string) => api.post<WState>(`${V}/tasks/${id}/complete`, { evidence_url }),
-  block: (id: number, body: { depends_on_user_id?: string; depends_on_name?: string; reason: string }) =>
+  block: (id: number, body: { depends_on_user_id?: string; depends_on_name?: string; reason: string; detail?: string }) =>
     api.post<WState>(`${V}/tasks/${id}/block`, body),
   unblock: (id: number) => api.post<WState>(`${V}/tasks/${id}/unblock`),
   decide: (id: number, approve: boolean, note = '') => api.post<WState>(`${V}/holds/${id}/decide`, { approve, note }),
@@ -52,6 +59,9 @@ export const wtApi = {
   startDay: () => api.post<WState>(`${V}/day/start`),
   endDay: () => api.post<WState>(`${V}/day/end`),
   setDayEnd: (end: string) => api.post<WState>(`${V}/day/set-end`, { end }),
+  createRoutine: (body: Record<string, unknown>) => api.post<WState>(`${V}/routines`, body),
+  routineActive: (id: number, active: boolean) => api.post<WState>(`${V}/routines/${id}/active`, { active }),
+  startRoutine: (id: number) => api.post<WState>(`${V}/routines/${id}/start`),
 };
 
 /** "2026-10-26T10:15" (IST slot) → "10:15–10:30" */

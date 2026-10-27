@@ -3,14 +3,14 @@
 import { FormEvent, useCallback, useEffect, useState } from 'react';
 import { Card, EmptyState, ErrorBanner } from '@/components/ui';
 import { TrackerStatus, msg } from '@/lib/tracker';
-import { Category, WState, WTask, clock, hm, slotLabel, wtApi } from '@/lib/worktime';
+import { Category, Routine, WState, WTask, clock, hm, slotLabel, wtApi } from '@/lib/worktime';
 
 const STATUS: Record<string, string> = {
   todo: 'To do', in_progress: 'Running', paused: 'Paused', blocked: 'Blocked', pool: 'In the Pool',
 };
 
 function Details({ t }: { t: WTask }) {
-  const parts = Object.values(t.details).filter(Boolean);
+  const parts = Object.entries(t.details).filter(([k, v]) => v && k !== 'routine_id').map(([, v]) => v);
   return (
     <p className="mt-1 text-xs text-muted">
       {t.category}{parts.length ? ` · ${parts.join(' · ')}` : ''} · {t.priority}{t.due_date ? ` · due ${t.due_date}` : ''}
@@ -26,7 +26,7 @@ function Elapsed({ start, skew }: { start: string; skew: number }) {
   return <span className="font-mono text-2xl text-white">{hm(s / 60)} {String(s % 60).padStart(2, '0')}s</span>;
 }
 
-function AddTask({ s, isAdmin, onDone }: { s: WState; isAdmin: boolean; onDone: (m: string) => void }) {
+function AddTask({ s, isAdmin, onDone, routine = false }: { s: WState; isAdmin: boolean; onDone: (m: string) => void; routine?: boolean }) {
   const [catId, setCatId] = useState<number>(s.categories[0]?.id ?? 0);
   const [f, setF] = useState({ title: '', priority: 'P2', due_date: '', estimate_min: '', assign_to: '' });
   const [details, setDetails] = useState<Record<string, string>>({});
@@ -35,10 +35,11 @@ function AddTask({ s, isAdmin, onDone }: { s: WState; isAdmin: boolean; onDone: 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     try {
-      await wtApi.create({ ...f, category_id: catId, details, estimate_min: Number(f.estimate_min) || 0,
-                           assign_to: f.assign_to || undefined, due_date: f.due_date || undefined });
+      if (routine) await wtApi.createRoutine({ title: f.title, category_id: catId, details, priority: f.priority, user_id: f.assign_to || '*' });
+      else await wtApi.create({ ...f, category_id: catId, details, estimate_min: Number(f.estimate_min) || 0,
+                                assign_to: f.assign_to || undefined, due_date: f.due_date || undefined });
       setF({ ...f, title: '' }); setDetails({}); setError(null);
-      onDone('Task added.');
+      onDone(routine ? 'Daily task added.' : 'Task added.');
     } catch (err) { setError(msg(err, 'Could not add the task.')); }
   };
   return (
@@ -77,28 +78,30 @@ function AddTask({ s, isAdmin, onDone }: { s: WState; isAdmin: boolean; onDone: 
           <option value="P1">P1 — urgent</option><option value="P2">P2 — normal</option><option value="P3">P3 — when free</option>
         </select>
       </div>
-      {!cat?.deadline_workdays && (
+      {!routine && !cat?.deadline_workdays && (
         <div>
           <label className="label" htmlFor="w-due">Due (optional)</label>
           <input id="w-due" type="date" className="input-field" value={f.due_date} onChange={(e) => setF({ ...f, due_date: e.target.value })} />
         </div>
       )}
-      <div>
-        <label className="label" htmlFor="w-est">Estimate, minutes (optional)</label>
-        <input id="w-est" type="number" min={0} className="input-field" value={f.estimate_min}
-               onChange={(e) => setF({ ...f, estimate_min: e.target.value })} />
-      </div>
-      {isAdmin && (
+      {!routine && (
+        <div>
+          <label className="label" htmlFor="w-est">Estimate, minutes (optional)</label>
+          <input id="w-est" type="number" min={0} className="input-field" value={f.estimate_min}
+                 onChange={(e) => setF({ ...f, estimate_min: e.target.value })} />
+        </div>
+      )}
+      {(isAdmin || routine) && (
         <div>
           <label className="label" htmlFor="w-who">For</label>
           <select id="w-who" className="input-field" value={f.assign_to} onChange={(e) => setF({ ...f, assign_to: e.target.value })}>
-            <option value="">Me</option>
-            <option value="pool">The Task Pool (anyone can pick it)</option>
+            <option value="">{routine ? 'Everyone' : 'Me'}</option>
+            {!routine && <option value="pool">The Task Pool (anyone can pick it)</option>}
             {s.people.map((p) => <option key={p.user_id} value={p.user_id}>{p.name}</option>)}
           </select>
         </div>
       )}
-      <div className="sm:col-span-2"><button className="btn-primary" type="submit">Add task</button></div>
+      <div className="sm:col-span-2"><button className="btn-primary" type="submit">{routine ? 'Add daily task' : 'Add task'}</button></div>
     </form>
   );
 }
@@ -164,12 +167,13 @@ export default function TimerPanel({ status }: { status: TrackerStatus }) {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [blocking, setBlocking] = useState<WTask | null>(null);
-  const [block, setBlock] = useState({ who: '', name: '', reason: '' });
+  const [block, setBlock] = useState({ who: '', name: '', reason: '', detail: '' });
   const [completing, setCompleting] = useState<WTask | null>(null);
   const [evidence, setEvidence] = useState('');
   const [stopAt, setStopAt] = useState('');
   const [adding, setAdding] = useState(false);
-  const [suggest, setSuggest] = useState<{ list: WTask[]; approval: boolean } | null>(null);
+  const [suggest, setSuggest] = useState<{ list: WTask[]; approval: boolean; routines: Routine[] } | null>(null);
+  const [addingDaily, setAddingDaily] = useState(false);
   const viewer = status.role === 'viewer' || status.readOnly;
 
   const take = (st: WState) => { setS(st); setSkew(new Date(st.now).getTime() - Date.now()); };
@@ -246,8 +250,14 @@ export default function TimerPanel({ status }: { status: TrackerStatus }) {
               {!readOnly && run.task && (
                 <div className="mt-3 flex flex-wrap gap-2">
                   <button className="btn-secondary" onClick={() => act(wtApi.pause, 'Paused.')}>Pause</button>
-                  <button className="btn-primary" onClick={() => { setCompleting(run.task); setEvidence(''); }}>Complete</button>
-                  <button className="btn-danger" onClick={() => { setBlocking(run.task); setBlock({ who: '', name: '', reason: '' }); }}>Road blocker</button>
+                  <button className="btn-primary" onClick={() => {
+                    const t = run.task!;
+                    if (s.dayFlow) act(() => wtApi.complete(t.id, ''), 'Done.');
+                    else { setCompleting(t); setEvidence(''); }
+                  }}>{s.dayFlow ? 'Done' : 'Complete'}</button>
+                  <button className="btn-danger" onClick={() => { setBlocking(run.task); setBlock({ who: '', name: '', reason: '', detail: '' }); }}>
+                    {s.dayFlow ? 'Dependency' : 'Road blocker'}
+                  </button>
                 </div>
               )}
             </div>
@@ -255,15 +265,17 @@ export default function TimerPanel({ status }: { status: TrackerStatus }) {
         </Card>
         <Card title="Today">
           <p className="text-sm text-slate-200">
-            <b className="text-white">{hm(s.work.provenMinutes)}</b> proven of {s.settings.dailyTargetHours}h ·{' '}
+            <b className="text-white">{hm(s.work.provenMinutes)}</b> {s.dayFlow ? 'worked' : 'proven'} of {s.settings.dailyTargetHours}h ·{' '}
             <b className="text-white">{hm(s.work.leftMinutes)}</b> left
           </p>
           <div className="mt-2 h-2 overflow-hidden rounded-full bg-bg" role="progressbar" aria-valuenow={Math.round(pct)} aria-valuemin={0} aria-valuemax={100}>
             <div className="h-full bg-primary" style={{ width: `${pct}%` }} />
           </div>
-          <p className="mt-2 text-xs text-muted">
-            On the timer: {hm(s.work.workedMinutes)}. A {s.settings.slotMinutes}-minute block counts once it has proof.
-          </p>
+          {!s.dayFlow && (
+            <p className="mt-2 text-xs text-muted">
+              On the timer: {hm(s.work.workedMinutes)}. A {s.settings.slotMinutes}-minute block counts once it has proof.
+            </p>
+          )}
         </Card>
       </div>
 
@@ -283,9 +295,10 @@ export default function TimerPanel({ status }: { status: TrackerStatus }) {
             e.preventDefault();
             try {
               const r = (await wtApi.block(blocking.id, { depends_on_user_id: block.who || undefined,
-                                                          depends_on_name: block.who ? undefined : block.name, reason: block.reason })).data;
+                                                          depends_on_name: block.who ? undefined : block.name,
+                                                          reason: block.reason, detail: block.detail || undefined })).data;
               take(r); setBlocking(null); setError(null);
-              setSuggest({ list: r.suggestions ?? [], approval: !!r.needsApproval });
+              setSuggest({ list: r.suggestions ?? [], approval: !!r.needsApproval, routines: r.routines ?? [] });
             } catch (err) { setError(msg(err, 'Could not stop the watch.')); }
           }}>
             <select aria-label="Waiting on" className="input-field" value={block.who} onChange={(e) => setBlock({ ...block, who: e.target.value })}>
@@ -293,7 +306,17 @@ export default function TimerPanel({ status }: { status: TrackerStatus }) {
               {s.people.filter((p) => p.user_id !== status.me.id).map((p) => <option key={p.user_id} value={p.user_id}>{p.name}</option>)}
             </select>
             {!block.who && <input aria-label="Their name" required className="input-field" placeholder="Their name (e.g. the client)" value={block.name} onChange={(e) => setBlock({ ...block, name: e.target.value })} />}
-            <input aria-label="Reason" required className="input-field sm:col-span-2" placeholder="What are you waiting for?" value={block.reason} onChange={(e) => setBlock({ ...block, reason: e.target.value })} />
+            {s.dayFlow ? (
+              <>
+                <select aria-label="Why" required className="input-field" value={block.reason} onChange={(e) => setBlock({ ...block, reason: e.target.value })}>
+                  <option value="" disabled>Why are you stopped?</option>
+                  {s.blockReasons.map((r) => <option key={r} value={r}>{r}</option>)}
+                </select>
+                <input aria-label="Detail" className="input-field" placeholder="Which one (optional, e.g. WordPress login)" value={block.detail} onChange={(e) => setBlock({ ...block, detail: e.target.value })} />
+              </>
+            ) : (
+              <input aria-label="Reason" required className="input-field sm:col-span-2" placeholder="What are you waiting for?" value={block.reason} onChange={(e) => setBlock({ ...block, reason: e.target.value })} />
+            )}
             <div className="flex gap-2 sm:col-span-2">
               <button className="btn-danger" type="submit">Stop the watch</button>
               <button className="btn-secondary" type="button" onClick={() => setBlocking(null)}>Cancel</button>
@@ -305,6 +328,20 @@ export default function TimerPanel({ status }: { status: TrackerStatus }) {
       {suggest && (
         <Card title="Watch stopped. Stay on track: pick your next task">
           {suggest.approval && <p className="mb-2 text-sm text-amber-200">This stop goes to Jai for approval.</p>}
+          {suggest.routines.length > 0 && (
+            <>
+              <p className="label">Jump on a daily task</p>
+              <ul className="mb-4 space-y-2">
+                {suggest.routines.map((r) => (
+                  <li key={r.id} className="flex items-center justify-between gap-2 rounded-lg border border-line bg-raised p-3">
+                    <span className="min-w-0"><span className="block truncate text-sm text-white">{r.title}</span><span className="text-xs text-muted">{r.category}</span></span>
+                    <button className="btn-primary shrink-0" onClick={() => act(() => wtApi.startRoutine(r.id), 'Started.').then(() => setSuggest(null))}>Start</button>
+                  </li>
+                ))}
+              </ul>
+              {suggest.list.length > 0 && <p className="label">Or one of your tasks</p>}
+            </>
+          )}
           {suggest.list.length ? (
             <ul className="space-y-2">
               {suggest.list.map((t) => (
@@ -316,7 +353,7 @@ export default function TimerPanel({ status }: { status: TrackerStatus }) {
                 </li>
               ))}
             </ul>
-          ) : <p className="text-sm text-muted">Nothing else in your list or the Pool. Add a task below.</p>}
+          ) : !suggest.routines.length && <p className="text-sm text-muted">Nothing else in your list or the Pool. Add a task below.</p>}
           <button className="btn-secondary mt-3" onClick={() => setSuggest(null)}>Close</button>
         </Card>
       )}
@@ -345,6 +382,25 @@ export default function TimerPanel({ status }: { status: TrackerStatus }) {
               </li>
             ))}
           </ul>
+        </Card>
+      )}
+
+      {s.dayFlow && s.isSuperuser && (
+        <Card title="Daily tasks (offered when someone is stopped by a dependency)">
+          {s.routinesAll.length > 0 && (
+            <ul className="mb-3 space-y-2">
+              {s.routinesAll.map((r) => (
+                <li key={r.id} className="flex items-center justify-between gap-2 rounded-lg border border-line bg-raised p-3">
+                  <span className={`min-w-0 text-sm ${r.active ? 'text-white' : 'text-muted line-through'}`}>
+                    {r.title} <span className="text-xs text-muted">· {r.category} · {r.user_id === '*' ? 'everyone' : s.people.find((p) => p.user_id === r.user_id)?.name ?? r.user_id}</span>
+                  </span>
+                  <button className="btn-secondary shrink-0" onClick={() => act(() => wtApi.routineActive(r.id, !r.active))}>{r.active ? 'Switch off' : 'Switch on'}</button>
+                </li>
+              ))}
+            </ul>
+          )}
+          {addingDaily ? <AddTask s={s} isAdmin routine onDone={(m) => { setNotice(m); setAddingDaily(false); load(); }} />
+                       : <button className="btn-secondary" onClick={() => setAddingDaily(true)}>+ Add a daily task</button>}
         </Card>
       )}
 

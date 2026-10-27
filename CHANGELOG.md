@@ -2,6 +2,13 @@
 
 Newest first. Production state per feature lives in `docs/FEATURE_LOG.md`.
 
+## 2026-10-27 · Tasks v3, Jai's changes: no proof, dependency reasons, daily tasks (flag `FEATURE_TASKS_V3`), not deployed
+
+- With v3 on, no proof is asked: timer time counts as it runs, Done is one tap. Late start is never a penalty.
+- Dependency stop: pick Credentials expired / Document required / Information required, then jump to one of
+  Jai's daily tasks in one tap. Jai manages daily tasks on the Timer tab (new table `daily_routines`, never deleted).
+  Tests: `tests/test_tasks_v3_day.py` (41).
+
 ## 2026-10-26 · Tasks v3, Step 1 "Start my day" (branch `feat/tasks-v2`, flag `FEATURE_TASKS_V3`), not deployed
 
 - Timer tab opens on a big "Start my day" card (greeting + today's plan). Pressing it records the server time

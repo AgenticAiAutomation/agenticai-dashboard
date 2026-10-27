@@ -13,7 +13,9 @@ writes a task_events row in one transaction; the browser only displays.
     the category says so, and the person gets their next task suggested
   * v3 (FEATURE_TASKS_V3): "Start my day" clocks in (work_days); a task starts
     only inside a started day; a day left open blocks the next one until the
-    person says when they stopped
+    person says when they stopped. No proof at all (Jai, 27 Oct): timer time
+    counts as it runs, Done needs no link. A dependency stop picks a reason
+    from block_reasons and offers Jai's daily tasks (daily_routines) to jump to
 
 Times are stored UTC ISO; days and slots are IST (store.IST).
 """
@@ -207,7 +209,7 @@ def day_work(user_id, day, now=None):
     """Worked minutes (all), proven minutes (count toward targets) and the slots still needing proof."""
     now = _now(now)
     slots = day_slots(user_id, day, now)
-    proven = {r["slot_start"] for r in store.rows(
+    proven = set(slots) if settings.TASKS_V3 else {r["slot_start"] for r in store.rows(
         "SELECT slot_start FROM work_slots WHERE user_id=? AND slot_start LIKE ?", (user_id, day + "%"))}
     return {"workedMinutes": round(sum(s["minutes"] for s in slots.values()), 1),
             "provenMinutes": round(sum(s["minutes"] for k, s in slots.items() if k in proven), 1),
@@ -258,11 +260,29 @@ def state(user, now=None):
                      "dayLateAfter": cfg["day_late_after"]},
         "isSuperuser": taskmgr.is_super(user),
         "dayFlow": settings.TASKS_V3, "day": _day(me, today), "openDay": _unended(me, today),
+        "blockReasons": cfg["block_reasons"], "routines": routines(me),
+        "routinesAll": _routines_public(store.rows("SELECT * FROM daily_routines ORDER BY active DESC, id"))
+        if taskmgr.is_super(user) else [],
     }
 
 
 # ------------------------------------------------------------------ tasks
-def create_task(user, body, now=None):
+def _details(b):
+    """(category, its required fields filled in) or (None, error answer)."""
+    cat = next((c for c in _categories() if c["id"] == b.get("category_id")), None)
+    if not cat:
+        return None, base._bad("Pick a category.")
+    given = b.get("details") or {}
+    details = {}
+    for f in cat["fields"]:
+        v = str(given.get(f["key"]) or "").strip()
+        if not v or (f["type"] == "choice" and v not in f["options"]):
+            return None, base._bad(f"{cat['name']}: fill in “{f['label']}”.")
+        details[f["key"]] = v[:NOTE_MAX]
+    return cat, details
+
+
+def create_task(user, body, now=None, routine_id=None):
     g = _guard(user, write=True)
     if g:
         return g
@@ -272,16 +292,11 @@ def create_task(user, body, now=None):
     title = str(b.get("title") or "").strip()
     if not 3 <= len(title) <= 200:
         return base._bad("Give the task a title (3 to 200 characters).")
-    cat = next((c for c in _categories() if c["id"] == b.get("category_id")), None)
+    cat, details = _details(b)
     if not cat:
-        return base._bad("Pick a category.")
-    given = b.get("details") or {}
-    details = {}
-    for f in cat["fields"]:
-        v = str(given.get(f["key"]) or "").strip()
-        if not v or (f["type"] == "choice" and v not in f["options"]):
-            return base._bad(f"{cat['name']}: fill in “{f['label']}”.")
-        details[f["key"]] = v[:NOTE_MAX]
+        return details
+    if routine_id:
+        details["routine_id"] = routine_id
     prio = b.get("priority") or "P2"
     if prio not in PRIO:
         return base._bad("Priority is P1, P2 or P3.")
@@ -421,7 +436,7 @@ def complete(user, task_id, body, now=None):
     if t["status"] not in WORKABLE:
         return 409, {"error": "not_workable", "message": f"This task is {t['status']}."}
     url = str((body or {}).get("evidence_url") or "").strip()
-    if not base._valid_url(url):
+    if (url or not settings.TASKS_V3) and not base._valid_url(url):
         return base._bad("Add the proof link (http or https) before you complete it.")
     iv = _open(me)
     if _stale(iv, now):
@@ -515,6 +530,72 @@ def set_day_end(user, body, now=None):
     return state(user, now)
 
 
+# ------------------------------------------------------------------ v3: Jai's daily tasks
+def _routines_public(rs):
+    cats = {c["id"]: c["name"] for c in _categories(False)}
+    return [{**r, "details": json.loads(r["details"] or "{}"), "category": cats.get(r["category_id"], "")}
+            for r in rs]
+
+
+def routines(user_id):
+    """The daily tasks this person can jump to (theirs and everyone's)."""
+    return _routines_public(store.rows("SELECT * FROM daily_routines WHERE active=1 AND user_id IN ('*', ?) "
+                                       "ORDER BY id", (user_id,)))
+
+
+def create_routine(user, body, now=None):
+    g = _guard(user, write=True, superuser=True)
+    if g:
+        return g
+    b = body or {}
+    title = str(b.get("title") or "").strip()
+    if not 3 <= len(title) <= 200:
+        return base._bad("Give the daily task a title (3 to 200 characters).")
+    cat, details = _details(b)
+    if not cat:
+        return details
+    prio = b.get("priority") or "P2"
+    who = str(b.get("user_id") or "*")
+    if prio not in PRIO or (who != "*" and not store.one("SELECT 1 x FROM dt_people WHERE user_id=?", (who,))):
+        return base._bad("Pick a priority and everyone or one person.")
+    store.write("INSERT INTO daily_routines(title, category_id, details, priority, user_id, created_by, created_at) "
+                "VALUES (?,?,?,?,?,?,?)", (title, cat["id"], json.dumps(details), prio, who, base.uid(user),
+                                           _iso(_now(now))))
+    return state(user, now)
+
+
+def set_routine_active(user, routine_id, body, now=None):
+    g = _guard(user, write=True, superuser=True)
+    if g:
+        return g
+    if store.write("UPDATE daily_routines SET active=? WHERE id=?",
+                   (int(bool((body or {}).get("active"))), routine_id)).rowcount != 1:
+        return 404, {"error": "not_found", "message": "No such daily task."}
+    return state(user, now)
+
+
+def start_routine(user, routine_id, now=None):
+    """Jump to a daily task: carry on today's copy if there is one, else make it, then start it."""
+    g = _guard(user, write=True)
+    if g:
+        return g
+    now = _now(now)
+    me = base.uid(user)
+    r = store.one("SELECT * FROM daily_routines WHERE id=? AND active=1 AND user_id IN ('*', ?)", (routine_id, me))
+    if not r:
+        return 404, {"error": "not_found", "message": "No such daily task."}
+    t = store.one("SELECT id FROM work_tasks WHERE assigned_to=? AND status IN (?,?,?) "
+                  "AND json_extract(details, '$.routine_id')=? ORDER BY id DESC", (me, *WORKABLE, routine_id))
+    if not t:
+        code, out = create_task(user, {"title": r["title"], "category_id": r["category_id"],
+                                       "details": json.loads(r["details"]), "priority": r["priority"]},
+                                 now, routine_id)
+        if code != 201:
+            return code, out
+        t = out["task"]
+    return start(user, t["id"], now)
+
+
 # ------------------------------------------------------------------ road blockers
 def block(user, task_id, body, now=None):
     g = _guard(user, write=True)
@@ -529,6 +610,11 @@ def block(user, task_id, body, now=None):
     if t["status"] not in WORKABLE:
         return 409, {"error": "not_workable", "message": f"This task is {t['status']}."}
     reason = str(b.get("reason") or "").strip()
+    if settings.TASKS_V3:
+        if reason not in work_settings()["block_reasons"]:
+            return base._bad("Pick why you are stopped.")
+        extra = str(b.get("detail") or "").strip()
+        reason = f"{reason}: {extra}" if extra else reason
     who_id = str(b.get("depends_on_user_id") or "")
     who = store.one("SELECT name FROM dt_people WHERE user_id=?", (who_id,)) if who_id else None
     name = who["name"] if who else str(b.get("depends_on_name") or "").strip()
@@ -549,7 +635,8 @@ def block(user, task_id, body, now=None):
                       "pending" if needs else "noted"))
         _set_status(conn, t, "blocked", me, "block", now, f"waiting on {name}: {reason}")
     code, out = state(user, now)
-    return code, {**out, "suggestions": suggestions(me, exclude=task_id), "needsApproval": bool(needs)}
+    return code, {**out, "suggestions": suggestions(me, exclude=task_id), "needsApproval": bool(needs),
+                  "routines": routines(me)}
 
 
 def unblock(user, task_id, now=None):
