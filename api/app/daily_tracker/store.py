@@ -327,7 +327,7 @@ ADD_COLUMNS = [
 #   points_ledger -> work_points, work_settings is append-only (latest row wins).
 V3_TABLES = ["task_categories", "work_tasks", "task_events", "work_intervals", "work_slots", "task_holds",
              "time_corrections", "leave_calendar", "work_settings", "work_points", "badges",
-             "badges_awarded", "employee_of_month", "work_days", "daily_routines"]
+             "badges_awarded", "employee_of_month", "work_days", "daily_routines", "day_hours"]
 
 SCHEMA_3 = """
 CREATE TABLE IF NOT EXISTS task_categories (
@@ -550,6 +550,18 @@ CREATE TABLE IF NOT EXISTS daily_routines (
     created_at  TEXT NOT NULL
 );
 
+-- Tasks v3: Jai's hours for one date (everyone). Latest row per date wins; hours
+-- NULL = back to the weekly hours. Written once, never changed.
+CREATE TABLE IF NOT EXISTS day_hours (
+    id     INTEGER PRIMARY KEY AUTOINCREMENT,
+    date   TEXT NOT NULL,
+    hours  REAL,
+    note   TEXT NOT NULL DEFAULT '',
+    set_by TEXT NOT NULL,
+    set_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ix_dh_date ON day_hours(date, id);
+
 -- ---- guardrails: nothing in v2 is ever deleted
 """ + "".join(
     f"CREATE TRIGGER IF NOT EXISTS g_{t}_nodelete BEFORE DELETE ON {t} "
@@ -558,7 +570,8 @@ CREATE TABLE IF NOT EXISTS daily_routines (
     # Written once, never changed: the trail, the proof, points, settings history, awards.
     f"CREATE TRIGGER IF NOT EXISTS g_{t}_noupdate BEFORE UPDATE ON {t} "
     f"BEGIN SELECT RAISE(ABORT, 'tasks v2: {t} rows are never changed'); END;\n"
-    for t in ("task_events", "work_slots", "work_settings", "work_points", "badges_awarded", "employee_of_month")
+    for t in ("task_events", "work_slots", "work_settings", "work_points", "badges_awarded", "employee_of_month",
+              "day_hours")
 ) + """
 -- An interval can only be CLOSED (end_ts set once, after start); never reopened or moved.
 CREATE TRIGGER IF NOT EXISTS g_work_intervals_close BEFORE UPDATE ON work_intervals
@@ -624,6 +637,7 @@ DEFAULT_CATEGORIES = [
 DEFAULT_WORK_SETTINGS = {
     "timezone": "Asia/Kolkata",
     "daily_target_hours": 7,
+    "week_hours": [7, 7, 7, 7, 7, 7, 0],          # v3: target per weekday, Monday first; Jai sets it, a date can override
     "working_days": [0, 1, 2, 3, 4, 5],          # Monday = 0; Sunday off
     "sunday_counts": True,                        # Sunday hours count toward the month
     "slot_minutes": 15,                           # proof every 15 minutes

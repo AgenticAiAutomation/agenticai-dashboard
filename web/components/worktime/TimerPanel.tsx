@@ -145,6 +145,74 @@ function SetDayEnd({ day, onSave }: { day: { date: string; start_at: string }; o
   );
 }
 
+/* v3 daily ring: task time only (breaks never count), fills to today's hours. */
+function Ring({ s }: { s: WState }) {
+  const target = s.work.targetMinutes;
+  const pct = target ? Math.min(100, (s.work.provenMinutes / target) * 100) : 0;
+  const tone = pct >= s.settings.greenMin ? 'stroke-emerald-400' : pct >= s.settings.amberMin ? 'stroke-amber-400' : 'stroke-primary';
+  const C = 2 * Math.PI * 52;
+  return (
+    <div className="flex flex-col items-center gap-3 sm:flex-row sm:gap-6">
+      <svg viewBox="0 0 120 120" className="h-40 w-40 shrink-0 -rotate-90" role="img"
+           aria-label={target ? `${Math.round(pct)}% of today's ${hm(target)}` : 'Day off'}>
+        <circle cx="60" cy="60" r="52" fill="none" strokeWidth="10" className="stroke-bg" />
+        <circle cx="60" cy="60" r="52" fill="none" strokeWidth="10" strokeLinecap="round" className={`${tone} transition-all duration-700`}
+                strokeDasharray={C} strokeDashoffset={C * (1 - pct / 100)} />
+        <text x="60" y="60" transform="rotate(90 60 60)" textAnchor="middle" dominantBaseline="central" className="fill-white text-[18px] font-semibold">
+          {target ? `${Math.round(pct)}%` : 'Off'}
+        </text>
+      </svg>
+      <div className="text-center sm:text-left">
+        {!target ? <p className="text-sm text-slate-200">No hours set for today.</p>
+          : pct >= 100 ? <p className="text-lg font-semibold text-emerald-300">🎉 Day complete</p>
+          : <p className="text-sm text-slate-200"><b className="text-white">{hm(s.work.provenMinutes)}</b> of {hm(target)} · <b className="text-white">{hm(s.work.leftMinutes)}</b> to go</p>}
+        <p className="mt-2"><span className="rounded-full bg-bg px-3 py-1 text-xs text-slate-200">Tasks done: {s.tasksDone}</span></p>
+      </div>
+    </div>
+  );
+}
+
+const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+/* Jai: the same hours for every week, and any one date different. */
+function HoursCard({ s, act }: { s: WState; act: (fn: () => Promise<{ data: WState }>, ok?: string) => Promise<void> }) {
+  const [week, setWeek] = useState(() => s.hours!.week.map(String));
+  const [day, setDay] = useState({ date: '', hours: '', note: '' });
+  return (
+    <Card title="Working hours">
+      <form className="flex flex-wrap items-end gap-2" onSubmit={(e) => { e.preventDefault(); act(() => wtApi.weekHours(week.map(Number)), 'Weekly hours saved.'); }}>
+        {DAYS.map((d, i) => (
+          <label key={d} className="w-16 text-xs text-muted">{d}
+            <input type="number" min={0} max={16} step={0.5} required className="input-field mt-1" value={week[i]}
+                   onChange={(e) => setWeek(week.map((v, j) => (j === i ? e.target.value : v)))} />
+          </label>
+        ))}
+        <button className="btn-primary" type="submit">Save for every week</button>
+      </form>
+      <form className="mt-4 flex flex-wrap items-end gap-2" onSubmit={(e) => { e.preventDefault(); act(() => wtApi.dayHours(day.date, Number(day.hours), day.note), 'Saved for that day.').then(() => setDay({ date: '', hours: '', note: '' })); }}>
+        <label className="text-xs text-muted">One day different
+          <input type="date" required className="input-field mt-1" value={day.date} onChange={(e) => setDay({ ...day, date: e.target.value })} />
+        </label>
+        <label className="w-20 text-xs text-muted">Hours
+          <input type="number" min={0} max={16} step={0.5} required className="input-field mt-1" value={day.hours} onChange={(e) => setDay({ ...day, hours: e.target.value })} />
+        </label>
+        <input aria-label="Why" className="input-field w-auto flex-1" placeholder="Why (optional, e.g. Diwali)" value={day.note} onChange={(e) => setDay({ ...day, note: e.target.value })} />
+        <button className="btn-secondary" type="submit">Set day</button>
+      </form>
+      {s.hours!.days.length > 0 && (
+        <ul className="mt-3 space-y-1 text-sm">
+          {s.hours!.days.map((d) => (
+            <li key={d.date} className="flex items-center justify-between gap-2 rounded-md bg-bg px-3 py-2 text-slate-200">
+              <span>{new Date(`${d.date}T12:00`).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })}: <b className="text-white">{d.hours} h</b>{d.note ? ` · ${d.note}` : ''}</span>
+              <button className="text-xs text-muted hover:text-white" onClick={() => act(() => wtApi.dayHours(d.date, null), 'Back to the weekly hours.')}>Clear</button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Card>
+  );
+}
+
 function ProofForm({ slot, minutes, onSave }: { slot: string; minutes: number; onSave: (b: Record<string, string>) => Promise<void> }) {
   const [f, setF] = useState({ url: '', image_name: '', logo_name: '', note: '' });
   const set = (k: keyof typeof f) => (e: { target: { value: string } }) => setF({ ...f, [k]: e.target.value });
@@ -263,20 +331,20 @@ export default function TimerPanel({ status }: { status: TrackerStatus }) {
             </div>
           ) : !run && <p className="text-sm text-muted">No timer running. Start a task below. Only timer time with proof counts.</p>}
         </Card>
+        {s.dayFlow ? <Card title="Today"><Ring s={s} /></Card> : (
         <Card title="Today">
           <p className="text-sm text-slate-200">
-            <b className="text-white">{hm(s.work.provenMinutes)}</b> {s.dayFlow ? 'worked' : 'proven'} of {s.settings.dailyTargetHours}h ·{' '}
+            <b className="text-white">{hm(s.work.provenMinutes)}</b> proven of {s.settings.dailyTargetHours}h ·{' '}
             <b className="text-white">{hm(s.work.leftMinutes)}</b> left
           </p>
           <div className="mt-2 h-2 overflow-hidden rounded-full bg-bg" role="progressbar" aria-valuenow={Math.round(pct)} aria-valuemin={0} aria-valuemax={100}>
             <div className="h-full bg-primary" style={{ width: `${pct}%` }} />
           </div>
-          {!s.dayFlow && (
-            <p className="mt-2 text-xs text-muted">
-              On the timer: {hm(s.work.workedMinutes)}. A {s.settings.slotMinutes}-minute block counts once it has proof.
-            </p>
-          )}
+          <p className="mt-2 text-xs text-muted">
+            On the timer: {hm(s.work.workedMinutes)}. A {s.settings.slotMinutes}-minute block counts once it has proof.
+          </p>
         </Card>
+        )}
       </div>
 
       {completing && (
@@ -384,6 +452,8 @@ export default function TimerPanel({ status }: { status: TrackerStatus }) {
           </ul>
         </Card>
       )}
+
+      {s.dayFlow && s.hours && <HoursCard s={s} act={act} />}
 
       {s.dayFlow && s.isSuperuser && (
         <Card title="Daily tasks (offered when someone is stopped by a dependency)">

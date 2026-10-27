@@ -286,6 +286,14 @@ def build():
     async def v3_day_set_end(request: Request):
         return _json(worktime.set_day_end(current_user(request), await _body(request)))
 
+    @tasks.post("/v2/hours/week")
+    async def v3_week_hours(request: Request):
+        return _json(worktime.set_week_hours(current_user(request), await _body(request)))
+
+    @tasks.post("/v2/hours/day")
+    async def v3_day_hours(request: Request):
+        return _json(worktime.set_day_hours(current_user(request), await _body(request)))
+
     @tasks.post("/v2/routines")
     async def v3_routine_create(request: Request):
         return _json(worktime.create_routine(current_user(request), await _body(request)))

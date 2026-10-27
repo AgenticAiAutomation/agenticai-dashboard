@@ -164,9 +164,31 @@ def main():
     check("Jai switches it off: no longer offered, kept for him",
           wt.routines("7") == [] and len(wt.state(J, at(12, day=28))[1]["routinesAll"]) == 2)
 
+    print("\n--- working hours: weekly, and per date (Jai) ---")
+    check("default: 7 h Mon-Sat, Sunday off",
+          wt.target_hours("2026-10-28") == 7 and wt.target_hours("2026-11-01") == 0)
+    check("only Jai sets hours", wt.set_week_hours(A, {"week": [8] * 7})[0] == 403
+          and wt.set_day_hours(A, {"date": "2026-10-31", "hours": 4})[0] == 403)
+    check("the week needs 7 numbers of 0-16", wt.set_week_hours(J, {"week": [8] * 6})[0] == 400
+          and wt.set_week_hours(J, {"week": [8, 8, 8, 8, 8, 20, 0]})[0] == 400)
+    code, s = wt.set_week_hours(J, {"week": [8, 8, 8, 8, 8, 5, 0]}, at(12, day=28))
+    check("Jai sets the same hours for every week (Sat 5 h)", code == 200 and s["hours"]["week"][5] == 5
+          and wt.target_hours("2026-10-28") == 8 and wt.target_hours("2026-11-07") == 5)
+    code, s = wt.set_day_hours(J, {"date": "2026-10-30", "hours": 4, "note": "Diwali prep"}, at(12, day=28))
+    check("one date can differ (Fri 30 Oct: 4 h), the next Friday doesn't",
+          wt.target_hours("2026-10-30") == 4 and wt.target_hours("2026-11-06") == 8
+          and s["hours"]["days"] == [{"date": "2026-10-30", "hours": 4, "note": "Diwali prep"}])
+    wt.set_day_hours(J, {"date": "2026-10-30", "hours": None}, at(12, day=28))
+    check("clearing a date goes back to the week, and the history stays",
+          wt.target_hours("2026-10-30") == 8 and store.one("SELECT COUNT(*) c FROM day_hours")["c"] == 2)
+    s = wt.state(A, at(12, 30, day=28))[1]
+    check("the ring's target follows today's hours, and done tasks are counted",
+          s["work"]["targetMinutes"] == 480 and s["tasksDone"] == 1 and s["hours"] is None
+          and s["settings"]["greenMin"] == 95)
+
     print("\n--- guardrails ---")
     conn = store.connect()
-    for sql in ("DELETE FROM work_days", "DELETE FROM daily_routines", "UPDATE work_days SET end_at='2026-10-26T14:00:00+00:00' WHERE date='2026-10-26'",
+    for sql in ("DELETE FROM work_days", "DELETE FROM daily_routines", "UPDATE day_hours SET hours=9", "UPDATE work_days SET end_at='2026-10-26T14:00:00+00:00' WHERE date='2026-10-26'",
                 "UPDATE work_days SET start_at='2026-10-28T03:00:00+00:00' WHERE date='2026-10-28'",
                 "UPDATE work_days SET status='on_time', end_at='2026-10-26T13:00:00+00:00' WHERE user_id='8'",
                 "INSERT OR REPLACE INTO work_days(user_id, date, start_at) VALUES ('7', '2026-10-26', 'x')"):

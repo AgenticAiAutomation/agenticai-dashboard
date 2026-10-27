@@ -168,6 +168,7 @@ store.write("INSERT INTO badges_awarded(user_id, code, ref, awarded_by, awarded_
 store.write("INSERT INTO employee_of_month(month, user_id, chosen_by, chosen_at) VALUES ('2026-10', '7', '1', ?)", (T,))
 store.write("INSERT INTO work_days(user_id, date, start_at) VALUES ('7', '2026-10-26', ?)", (T,))
 store.write("INSERT INTO daily_routines(title, created_by, created_at) VALUES ('Check inbox', '1', ?)", (T,))
+store.write("INSERT INTO day_hours(date, hours, set_by, set_at) VALUES ('2026-10-31', 4, '1', ?)", (T,))
 check("every v2 table has a row to protect",
       all(store.one(f"SELECT COUNT(*) c FROM {t}")["c"] for t in store.V3_TABLES))
 for t in store.V3_TABLES:

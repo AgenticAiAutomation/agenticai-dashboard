@@ -38,3 +38,20 @@ API (27 Oct): `POST /v2/routines` (Jai), `/v2/routines/{id}/active {active}` (Ja
 `routines`, `routinesAll` (Jai only). Tests now 41.
 
 **Rollback:** `bash /root/daily-tracker-flags.sh nov3`. Data stays.
+
+## Step 2 — daily ring + working hours (done 27 Oct 2026, not deployed)
+
+| Rule | How |
+|---|---|
+| Ring | Replaces the bar in "Today" when v3 is on. Fills from 0 to today's target with task time only (breaks, lunch and waiting never count). Colour: green ≥ 95 %, amber ≥ 80 % (work setting `signal`). Closed = "🎉 Day complete". Chip: tasks done today. |
+| Weekly hours | Jai sets hours per weekday once (default Mon–Sat 7 h, Sunday 0) and it applies to every week: work setting `week_hours`, a new settings row each save (history kept). |
+| One day different | Jai sets hours for any date, for everyone, with an optional reason (table `day_hours`, latest row per date wins, rows never changed or deleted). Clear = back to the weekly hours. |
+| Target 0 | The ring shows "Off". |
+
+API: `POST /v2/hours/week {week: [Mon..Sun]}` and `/v2/hours/day {date, hours|null, note}` (Jai only, 0–16 h);
+state adds `tasksDone`, `hours` (Jai only), `settings.greenMin/amberMin`; `targetMinutes` follows today's hours (v2 too).
+Tests now 49.
+
+**Not yet:** confetti and the streak (+1 when the ring closes) come with the streak engine in Step 6; Break and
+Lunch chips come with the break buttons in Step 3. Changing the weekly hours also changes past days' targets
+(no report reads them yet).

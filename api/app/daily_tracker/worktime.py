@@ -80,6 +80,15 @@ def work_settings():
     return out
 
 
+def target_hours(day):
+    """The day's target: Jai's hours for that date if set, else the weekly hours for its weekday.
+    shortcut: changing the weekly hours also changes past days' targets; keep history if reports need it."""
+    o = store.one("SELECT hours FROM day_hours WHERE date=? ORDER BY id DESC LIMIT 1", (day,))
+    if o and o["hours"] is not None:
+        return float(o["hours"])
+    return float(work_settings()["week_hours"][_date.fromisoformat(day).weekday()])
+
+
 def _event(conn, user_id, task_id, kind, now, prev="", new="", reason="", actor=""):
     conn.execute("INSERT INTO task_events(user_id, task_id, event_type, server_ts, prev_state, new_state, "
                  "reason, source, actor_id) VALUES (?,?,?,?,?,?,?,?,?)",
@@ -246,7 +255,8 @@ def state(user, now=None):
     approve = (store.rows("SELECT h.*, t.title FROM task_holds h JOIN work_tasks t ON t.id=h.task_id "
                           "WHERE h.status='pending' ORDER BY h.id") if taskmgr.is_super(user) else [])
     work = day_work(me, today, now)
-    target = float(cfg["daily_target_hours"]) * 60
+    target = target_hours(today) * 60
+    signal = cfg["signal"]
     return 200, {
         "now": _iso(now), "today": today,
         "running": iv and {"interval": iv, "task": iv["task_id"] and _public(_task(iv["task_id"]), cats),
@@ -256,8 +266,14 @@ def state(user, now=None):
         "categories": [c for c in cats.values() if c["active"]],
         "people": store.rows("SELECT user_id, name FROM dt_people ORDER BY name"),
         "work": {**work, "targetMinutes": target, "leftMinutes": max(0.0, target - work["provenMinutes"])},
-        "settings": {"slotMinutes": cfg["slot_minutes"], "dailyTargetHours": cfg["daily_target_hours"],
-                     "dayLateAfter": cfg["day_late_after"]},
+        "settings": {"slotMinutes": cfg["slot_minutes"], "dailyTargetHours": target / 60,
+                     "dayLateAfter": cfg["day_late_after"], "greenMin": signal["green_min"],
+                     "amberMin": signal["amber_min"]},
+        "tasksDone": store.one("SELECT COUNT(*) c FROM task_events WHERE user_id=? AND event_type='complete' "
+                               "AND server_ts >= ?", (me, _iso(datetime.fromisoformat(today).replace(tzinfo=IST))))["c"],
+        "hours": {"week": cfg["week_hours"], "days": store.rows(
+            "SELECT date, hours, note FROM day_hours d WHERE id=(SELECT MAX(id) FROM day_hours WHERE date=d.date) "
+            "AND date>=? AND hours IS NOT NULL ORDER BY date LIMIT 60", (today,))} if taskmgr.is_super(user) else None,
         "isSuperuser": taskmgr.is_super(user),
         "dayFlow": settings.TASKS_V3, "day": _day(me, today), "openDay": _unended(me, today),
         "blockReasons": cfg["block_reasons"], "routines": routines(me),
@@ -527,6 +543,47 @@ def set_day_end(user, body, now=None):
             _close(conn, iv, end, me, "manual_end", "day end set by the person after a forgotten stop")
         conn.execute("UPDATE work_days SET end_at=?, end_source='set_later' WHERE id=?", (_iso(end), d["id"]))
         _event(conn, me, None, "day_end_set", now, reason=f"{d['date']} ended at {end:%H:%M}")
+    return state(user, now)
+
+
+# ------------------------------------------------------------------ v3: working hours (Jai)
+def _hours(v):
+    try:
+        h = float(v)
+    except (TypeError, ValueError):
+        return None
+    return h if 0 <= h <= 16 else None
+
+
+def set_week_hours(user, body, now=None):
+    """Same hours for every week: a new settings row (the history stays)."""
+    g = _guard(user, write=True, superuser=True)
+    if g:
+        return g
+    week = [_hours(v) for v in ((body or {}).get("week") or [])]
+    if len(week) != 7 or None in week:
+        return base._bad("Give 7 numbers, Monday to Sunday, each 0 to 16 hours.")
+    cfg = {**work_settings(), "week_hours": week}
+    store.write("INSERT INTO work_settings(value, set_by, set_at) VALUES (?,?,?)",
+                (json.dumps(cfg), base.uid(user), _iso(_now(now))))
+    return state(user, now)
+
+
+def set_day_hours(user, body, now=None):
+    """Hours for one date, for everyone. hours null = back to the weekly hours."""
+    g = _guard(user, write=True, superuser=True)
+    if g:
+        return g
+    b = body or {}
+    try:
+        day = _date.fromisoformat(str(b.get("date"))).isoformat()
+    except ValueError:
+        return base._bad("Pick a date.")
+    hours = None if b.get("hours") is None else _hours(b.get("hours"))
+    if b.get("hours") is not None and hours is None:
+        return base._bad("Hours must be 0 to 16.")
+    store.write("INSERT INTO day_hours(date, hours, note, set_by, set_at) VALUES (?,?,?,?,?)",
+                (day, hours, str(b.get("note") or "")[:NOTE_MAX], base.uid(user), _iso(_now(now))))
     return state(user, now)
 
 

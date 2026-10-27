@@ -36,7 +36,9 @@ export type WState = {
     workedMinutes: number; provenMinutes: number; targetMinutes: number; leftMinutes: number;
     needProof: { slot: string; minutes: number; taskId: number | null }[];
   };
-  settings: { slotMinutes: number; dailyTargetHours: number; dayLateAfter: string };
+  settings: { slotMinutes: number; dailyTargetHours: number; dayLateAfter: string; greenMin: number; amberMin: number };
+  tasksDone: number;
+  hours: { week: number[]; days: { date: string; hours: number; note: string }[] } | null;
   isSuperuser: boolean;
   dayFlow: boolean; day: WorkDay | null; openDay: WorkDay | null;
   blockReasons: string[]; routines: Routine[]; routinesAll: Routine[];
@@ -59,6 +61,8 @@ export const wtApi = {
   startDay: () => api.post<WState>(`${V}/day/start`),
   endDay: () => api.post<WState>(`${V}/day/end`),
   setDayEnd: (end: string) => api.post<WState>(`${V}/day/set-end`, { end }),
+  weekHours: (week: number[]) => api.post<WState>(`${V}/hours/week`, { week }),
+  dayHours: (date: string, hours: number | null, note = '') => api.post<WState>(`${V}/hours/day`, { date, hours, note }),
   createRoutine: (body: Record<string, unknown>) => api.post<WState>(`${V}/routines`, body),
   routineActive: (id: number, active: boolean) => api.post<WState>(`${V}/routines/${id}/active`, { active }),
   startRoutine: (id: number) => api.post<WState>(`${V}/routines/${id}/start`),

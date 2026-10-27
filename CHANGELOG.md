@@ -2,6 +2,13 @@
 
 Newest first. Production state per feature lives in `docs/FEATURE_LOG.md`.
 
+## 2026-10-27 · Tasks v3, Step 2 daily ring + working hours (flag `FEATURE_TASKS_V3`), not deployed
+
+- "Today" is now a ring that fills to today's target (task time only), green at 95 %, amber at 80 %, "Day complete"
+  when closed, plus a tasks-done chip.
+- Jai sets working hours for every week (per weekday) and can make any date different (new table `day_hours`,
+  never changed or deleted). Tests: `tests/test_tasks_v3_day.py` (49).
+
 ## 2026-10-27 · Tasks v3, Jai's changes: no proof, dependency reasons, daily tasks (flag `FEATURE_TASKS_V3`), not deployed
 
 - With v3 on, no proof is asked: timer time counts as it runs, Done is one tap. Late start is never a penalty.
