@@ -1,3 +1,5 @@
+import os
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -61,8 +63,26 @@ register_backlink_ops(app)
 #     Off unless WA_LEADS_ENABLED=1. Returns False and logs if the funnel's
 #     database is unreachable; never raises. Remove these two lines to
 #     uninstall. See docs/WA_LEADS.md.
+# Leads belong to the owner and the marketing team, whatever the dashboard role (Jai, 31 Oct 2026):
+# the desk itself lets every role read, and the gate below decides, by the Follow-ups team list.
+for _k in ("WA_LEADS_READ_ROLES", "WA_LEADS_WRITE_ROLES"):
+    os.environ.setdefault(_k, "owner,admin,seo,seo_lead,writer,viewer")
 from app.wa_leads import register as register_wa_leads  # noqa: E402
 register_wa_leads(app)
+
+
+@app.middleware("http")
+async def _leads_gate(request, call_next):
+    if request.url.path.startswith("/api/wa-leads") and request.method != "OPTIONS":
+        try:
+            from app.followups.routes import can_use
+            ok = can_use(request)
+        except Exception:
+            ok = False
+        if not ok:
+            from fastapi.responses import JSONResponse
+            return JSONResponse({"detail": "Leads are for the owner and the marketing team."}, status_code=403)
+    return await call_next(request)
 
 # --- Invoice Desk (client fill links → review queue → PDF). Additive,
 #     feature-flagged (INVOICE_DESK_ENABLED), own SQLite file, never raises.

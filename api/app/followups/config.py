@@ -15,11 +15,12 @@ class Settings:
     READ_ONLY  = _b("FOLLOWUPS_READ_ONLY", "0")
     API_PREFIX = "/api/followups"
     DB_PATH    = os.environ.get("FOLLOWUPS_DB", "instance/followups.db")
-    # Who may use it: these emails, plus these dashboard roles.
+    # Who may use it: these emails, plus the marketing team the owner lists (fu_access).
+    # A dashboard role alone gives no access since 31 Oct 2026 (SEO and writers don't need it).
     SUPERUSERS = _csv("FOLLOWUPS_SUPERUSERS",
                       os.environ.get("BACKLINK_OPS_SUPERUSERS",
                                      "contact@agenticaiautomation.co,jai.prajapati91@gmail.com"))
-    ROLES      = _csv("FOLLOWUPS_ROLES", "owner,admin")
+    ROLES      = _csv("FOLLOWUPS_ROLES", "")
     USER_HOOK  = os.environ.get("FOLLOWUPS_USER_HOOK", "app.backlink_ops_hook:get_user_or_none")
     # The four follow-ups Jai listed on 22 Oct 2026 are loaded once into an
     # empty database. 0 = start empty.

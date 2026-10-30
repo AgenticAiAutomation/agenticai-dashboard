@@ -4,7 +4,7 @@
   * "to do" = overdue first, then today by priority; upcoming; done newest first
   * every item carries contact details (tel / WhatsApp links) and the last log
   * done needs an outcome and can book the next step; snooze moves it a day
-  * only owner/admin (or a superuser email) can use it; flag off = not mounted
+  * only a superuser email or the owner's marketing team can use it (no role does); flag off = not mounted
 
 Run:  PYTHONPATH="api;." python tests/test_followups.py
 """
@@ -77,7 +77,25 @@ def main():
 
     print("\n--- access ---")
     check("an associate can't open it", c.get("/api/followups/board", headers=H("akash")).status_code == 403)
-    check("an admin can", c.get("/api/followups/board", headers=H("boss")).status_code == 200)
+    check("an admin role alone no longer opens it (31 Oct)", c.get("/api/followups/board", headers=H("boss")).status_code == 403)
+    check("only the owner manages the marketing team",
+          c.post("/api/followups/team", headers=H("boss"), json={"email": "u@example.com"}).status_code == 403)
+    check("a bad email is refused", c.post("/api/followups/team", headers=H("jai"), json={"email": "nope"}).status_code == 400)
+    r = c.post("/api/followups/team", headers=H("jai"), json={"email": "U@example.com", "name": "Updesh"})
+    check("the owner adds him to the marketing team", r.status_code == 200
+          and [m["email"] for m in r.json()["team"]] == ["u@example.com"])
+    check("now he can", c.get("/api/followups/board", headers=H("boss")).status_code == 200
+          and c.get("/api/followups/status", headers=H("boss")).json()["allowed"] is True)
+    c.post("/api/followups/team/remove", headers=H("jai"), json={"email": "u@example.com"})
+    check("removed: he can't", c.get("/api/followups/board", headers=H("boss")).status_code == 403)
+    c.post("/api/followups/team", headers=H("jai"), json={"email": "u@example.com", "name": "Updesh"})
+    check("added again: he can", c.get("/api/followups/board", headers=H("boss")).status_code == 200)
+    # The Leads gate in main.py asks routes.can_use: the same people as Follow-ups.
+    from starlette.requests import Request
+    can_use = importlib.import_module("app.followups.routes").can_use
+    req = lambda w: Request({"type": "http", "headers": [(b"x-user", w.encode())]})  # noqa: E731
+    check("Leads gate: owner and marketing team yes, SEO no", can_use(req("jai")) and can_use(req("boss"))
+          and not can_use(req("akash")))
     check("signed out → 401", c.get("/api/followups/board").status_code == 401)
 
     print("\n--- to do order, contact details, logs ---")
@@ -97,7 +115,8 @@ def main():
                 "title": "Confirm slot", "due_at": F(now.replace(hour=23, minute=30)), "priority": "P1"}).json()["followup"]
     b = c.get("/api/followups/board", headers=H("jai")).json()
     ids = [x["id"] for x in b["todo"]]
-    check("overdue comes first", ids[0] == ravi["id"] and b["overdue"] >= 1)
+    # the seeded follow-ups (22-24 Oct 2026) are overdue too and older, so they may come before Ravi
+    check("overdue comes first", ids.index(ravi["id"]) < min(ids.index(t1["id"]), ids.index(t2["id"])) and b["overdue"] >= 1)
     check("today is ordered by priority (P1 before P2)", ids.index(t2["id"]) < ids.index(t1["id"]))
     check("missing outcome refused", c.post(f"/api/followups/items/{ravi['id']}/done", headers=H("jai"),
                                             json={}).status_code == 400)

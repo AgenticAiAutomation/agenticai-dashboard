@@ -148,13 +148,15 @@ export default function FollowupBoard({ compact = false }: { compact?: boolean }
   const [error, setError] = useState<string | null>(null);
 
   const first = useRef(true);
-  const load = useCallback(() => {
+  const load = useCallback(async () => {
+    // On the Dashboard (compact) only the owner sees it: it's the owner's own to-do list.
+    if (compact && !(await fuApi.status().then((r) => r.data.superuser).catch(() => false))) { setHidden(true); return; }
     fuApi.board().then((r) => {
       setB(r.data);
       // Open on what matters: To do if anything is due, else Upcoming.
       if (first.current) { first.current = false; if (!r.data.todo.length && r.data.upcoming.length) setTab('upcoming'); }
     }).catch(() => setHidden(true));
-  }, []);
+  }, [compact]);
   useEffect(() => { load(); }, [load]);
 
   if (hidden || !b) return null;

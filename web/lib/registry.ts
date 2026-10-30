@@ -4,7 +4,8 @@ import data from './routes.json';
    Nav, SEO sub-tabs and the homepage grid all read it through these helpers. */
 
 export type Group = 'SEO' | 'Content' | 'Team' | 'Finance' | 'Admin';
-export type Flag = 'tracker' | 'ideas' | 'taskManager' | 'tasksV2' | 'followups';
+// followups / leads = this person may use them (owner + marketing team), from /api/followups/status.
+export type Flag = 'tracker' | 'ideas' | 'taskManager' | 'tasksV2' | 'followups' | 'leads';
 
 export type RouteEntry = {
   slug: string;
@@ -57,8 +58,8 @@ export function pinnedRoutes(role: string | null | undefined, flags: Flags) {
     .sort((a, b) => (a.pin ?? 0) - (b.pin ?? 0));
 }
 
-export function navRoutes(role: string | null | undefined) {
-  return ROUTES.filter((r) => r.nav && r.status === 'live' && allowed(r, role));
+export function navRoutes(role: string | null | undefined, flags: Flags) {
+  return ROUTES.filter((r) => r.nav && r.status === 'live' && allowed(r, role) && flagOk(r, flags));
 }
 
 export function seoTabs(role: string | null | undefined) {

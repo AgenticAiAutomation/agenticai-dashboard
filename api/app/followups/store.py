@@ -68,6 +68,19 @@ CREATE TABLE IF NOT EXISTS crm_projects (
     updated_at  TEXT NOT NULL
 );
 
+-- The marketing team: who besides the superusers may use Follow-ups and Leads.
+-- Removing someone sets removed_at; adding them again makes a new row.
+CREATE TABLE IF NOT EXISTS fu_access (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    email      TEXT NOT NULL,
+    name       TEXT NOT NULL DEFAULT '',
+    added_by   TEXT NOT NULL,
+    added_at   TEXT NOT NULL,
+    removed_by TEXT,
+    removed_at TEXT
+);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_fu_access_active ON fu_access(email) WHERE removed_at IS NULL;
+
 CREATE TABLE IF NOT EXISTS crm_notes (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
     contact_id INTEGER NOT NULL REFERENCES crm_contacts(id),

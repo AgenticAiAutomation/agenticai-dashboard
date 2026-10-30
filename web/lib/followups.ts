@@ -43,6 +43,10 @@ export const when = (s: string, allDay?: number) => {
 };
 
 export const fuApi = {
+  status: () => api.get<{ allowed: boolean; superuser: boolean }>('/api/followups/status'),
+  team: () => api.get<{ team: { email: string; name: string; added_at: string }[] }>('/api/followups/team'),
+  teamAdd: (email: string, name: string) => api.post<{ team: { email: string; name: string; added_at: string }[] }>('/api/followups/team', { email, name }),
+  teamRemove: (email: string) => api.post<{ team: { email: string; name: string; added_at: string }[] }>('/api/followups/team/remove', { email }),
   board: () => api.get<Board>('/api/followups/board'),
   calendar: (start?: string, end?: string) =>
     api.get<{ from: string; to: string; items: Followup[] }>('/api/followups/calendar', { params: { start, end } }),

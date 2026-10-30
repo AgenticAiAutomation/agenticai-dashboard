@@ -106,6 +106,41 @@ function ContactPanel({ id, onClose }: { id: number; onClose: () => void }) {
   );
 }
 
+/* Owner only: who besides the owner may use Follow-ups and Leads. A role alone gives no access. */
+function MarketingTeam() {
+  const [team, setTeam] = useState<{ email: string; name: string; added_at: string }[] | null>(null);
+  const [f, setF] = useState({ email: '', name: '' });
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => { fuApi.team().then((r) => setTeam(r.data.team)).catch(() => setTeam(null)); }, []);
+  if (!team) return null;
+  const run = (p: Promise<{ data: { team: { email: string; name: string; added_at: string }[] } }>) =>
+    p.then((r) => { setTeam(r.data.team); setError(null); setF({ email: '', name: '' }); }).catch((e) => setError(msg(e)));
+  return (
+    <Card title={`Marketing team · ${team.length}`}>
+      <p className="mb-3 text-sm text-slate-300">Only you and these people see Follow-ups and Leads. SEO and writers don&apos;t, whatever their role.</p>
+      <ErrorBanner message={error} />
+      <form className="mb-3 flex flex-wrap gap-2" onSubmit={(e) => { e.preventDefault(); run(fuApi.teamAdd(f.email, f.name)); }}>
+        <input aria-label="Login email" type="email" required className="input-field w-64" placeholder="Their dashboard login email"
+               value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} />
+        <input aria-label="Name" className="input-field w-48" placeholder="Name (optional)" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} />
+        <button className="btn-secondary" type="submit">Add</button>
+      </form>
+      {team.length === 0 ? <p className="text-sm text-muted">Nobody yet: only you have access.</p> : (
+        <ul className="space-y-1 text-sm">
+          {team.map((m) => (
+            <li key={m.email} className="flex items-center justify-between gap-2 rounded-md bg-raised px-3 py-2 text-slate-200">
+              <span>{m.name ? <><b className="text-white">{m.name}</b> · </> : null}{m.email}</span>
+              <button className="text-xs text-muted hover:text-white" onClick={() => {
+                if (window.confirm(`Remove ${m.name || m.email}? They lose Follow-ups and Leads.`)) run(fuApi.teamRemove(m.email));
+              }}>Remove</button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Card>
+  );
+}
+
 export default function FollowupsPage() {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [q, setQ] = useState('');
@@ -127,11 +162,12 @@ export default function FollowupsPage() {
     <Shell title="Follow-ups" subtitle="Who to call or meet, when, and about what — with their details and what happened last time."
            actions={<Link href="/dashboard/leads/" className="btn-secondary">WhatsApp leads →</Link>}>
       {denied ? (
-        <ErrorBanner message="Follow-ups are for the owner and admins (or the feature is not switched on yet)." />
+        <ErrorBanner message="Follow-ups are for the owner and the marketing team (or the feature is not switched on yet)." />
       ) : (
         <div className="space-y-6">
           <FollowupBoard key={key} />
           <ProjectsBilling onChanged={() => setKey((k) => k + 1)} />
+          <MarketingTeam />
           <MonthCalendar onOpen={setOpen} />
           <Card title={`Contacts · ${contacts.length}`} action={
             <input aria-label="Search contacts" className="input-field w-56 py-1" placeholder="Search name, company, phone" value={q} onChange={(e) => setQ(e.target.value)} />

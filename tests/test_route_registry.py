@@ -81,7 +81,7 @@ def test_removed_and_planned_never_listed():
 
 
 def test_roles():
-    flags = {"tracker": True, "ideas": True, "taskManager": True, "tasksV2": True, "followups": True}
+    flags = {"tracker": True, "ideas": True, "taskManager": True, "tasksV2": True, "followups": True, "leads": True}
     admin, lead, viewer, jai = (home(x, flags) for x in ("admin", "seo_lead", "viewer", "owner"))
     assert "/invoices/" in admin and "/settings/users/" in admin
     assert "/invoices/" not in lead and "/settings/users/" not in lead
@@ -91,6 +91,11 @@ def test_roles():
     assert len(jai) == len([r for r in ROUTES if r["status"] == "live"]), "Jai sees everything live"
     off = home("seo_lead", {})
     assert "/tasks/?tab=ideas" not in off and "/tasks/" in off, "flagged pages hide when the flag is off"
+    # Follow-ups and Leads go by person (owner + marketing team), whatever the role (31 Oct 2026)
+    seo = home("seo_lead", {**flags, "followups": False, "leads": False})
+    assert "/followups/" not in seo and "/dashboard/leads/" not in seo
+    mkt = home("seo_lead", flags)
+    assert "/followups/" in mkt and "/dashboard/leads/" in mkt
 
 
 def test_nav_and_tabs_come_from_registry():

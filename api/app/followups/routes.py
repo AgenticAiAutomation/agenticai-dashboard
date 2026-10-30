@@ -51,6 +51,18 @@ def build():
     async def status(request: Request):
         return _json(service.status(current_user(request)))
 
+    @r.get("/team")
+    async def team(request: Request):
+        return _json(service.team(current_user(request)))
+
+    @r.post("/team")
+    async def team_add(request: Request):
+        return _json(service.team_add(current_user(request), await _body(request)))
+
+    @r.post("/team/remove")
+    async def team_remove(request: Request):
+        return _json(service.team_remove(current_user(request), await _body(request)))
+
     @r.get("/board")
     async def board(request: Request, days: int = 14):
         return _json(service.board(current_user(request), days))
@@ -108,6 +120,11 @@ def build():
         return _json(service.add_note(current_user(request), cid, await _body(request)))
 
     return r
+
+
+def can_use(request: Request):
+    """For the Leads gate in main.py: the same people as Follow-ups."""
+    return service.allowed(current_user(request))
 
 
 def mount(app):

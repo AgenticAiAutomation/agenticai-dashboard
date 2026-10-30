@@ -65,10 +65,10 @@
     { "slug": "/account/password/", "title": "My account", "icon": "lock", "group": "Team", "roles": "all", "status": "live",
       "purpose": "Change your password and two-factor sign-in." },
 
-    { "slug": "/followups/", "title": "Follow-ups", "icon": "phone", "group": "Finance", "roles": ["owner", "admin"], "status": "live", "nav": true, "pin": 1, "requires": "followups",
+    { "slug": "/followups/", "title": "Follow-ups", "icon": "phone", "group": "Finance", "roles": "all", "status": "live", "nav": true, "pin": 1, "requires": "followups",
       "purpose": "Who to call or meet, when and about what: urgent list, calendar, contacts and the log of every meeting." },
-    { "slug": "/dashboard/leads/", "title": "WhatsApp Leads (CRM)", "icon": "chat", "group": "Finance", "roles": ["owner"], "status": "live", "pin": 2, "nav": true, "navTitle": "Leads",
-      "purpose": "Every lead from the WhatsApp funnel: fit score, status, follow-up. Owner only." },
+    { "slug": "/dashboard/leads/", "title": "WhatsApp Leads (CRM)", "icon": "chat", "group": "Finance", "roles": "all", "status": "live", "pin": 2, "nav": true, "navTitle": "Leads", "requires": "leads",
+      "purpose": "Every lead from the WhatsApp funnel: fit score, status, follow-up. Owner and marketing team only." },
     { "slug": "/invoices/", "title": "Invoices", "icon": "receipt", "group": "Finance", "roles": ["owner", "admin"], "status": "live", "pin": 3, "nav": true, "server": true,
       "purpose": "Client fill links, review queue and GST PDF invoices." },
 

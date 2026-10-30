@@ -19,7 +19,7 @@ KINDS = {"call": "Call", "meeting": "Meet", "payment": "Collect payment from", "
 PRIORITIES = ("P1", "P2", "P3")
 
 ERR_AUTH = (401, {"error": "not_authenticated", "message": "Sign in to the dashboard first."})
-ERR_FORBID = (403, {"error": "forbidden", "message": "Follow-ups are for Jai and admins."})
+ERR_FORBID = (403, {"error": "forbidden", "message": "Follow-ups are for the owner and the marketing team."})
 ERR_FROZEN = (503, {"error": "read_only", "message": "Follow-ups are read-only for maintenance."})
 
 
@@ -27,10 +27,24 @@ def _bad(msg):
     return 400, {"error": "invalid", "message": msg}
 
 
+def _email(user):
+    return str((user or {}).get("email") or "").strip().lower()
+
+
+def on_team(user):
+    """On the owner's marketing list (fu_access)."""
+    try:
+        return bool(_email(user)) and bool(store.one(
+            "SELECT 1 x FROM fu_access WHERE email=? AND removed_at IS NULL", (_email(user),)))
+    except Exception:  # store not ready: only the superusers get in
+        return False
+
+
 def allowed(user):
+    """Follow-ups and Leads: the superusers and the marketing team, whatever their dashboard role."""
     if not user:
         return False
-    return (str(user.get("email") or "").strip().lower() in settings.SUPERUSERS
+    return (_email(user) in settings.SUPERUSERS or on_team(user)
             or str(user.get("role") or "").lower() in settings.ROLES)
 
 
@@ -364,6 +378,37 @@ def status(user):
         return ERR_AUTH
     return 200, {"enabled": True, "allowed": allowed(user), "superuser": is_super(user),
                  "version": settings.VERSION}
+
+
+# ------------------------------------------------------------------ marketing team (owner only)
+def team(user):
+    if not is_super(user):
+        return 403, {"error": "forbidden", "message": "Only the owner manages the marketing team."}
+    return 200, {"team": store.rows("SELECT email, name, added_at FROM fu_access WHERE removed_at IS NULL "
+                                    "ORDER BY name, email")}
+
+
+def team_add(user, body):
+    if not is_super(user):
+        return 403, {"error": "forbidden", "message": "Only the owner manages the marketing team."}
+    email = str((body or {}).get("email") or "").strip().lower()
+    if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email):
+        return _bad("Give their dashboard login email.")
+    if email in settings.SUPERUSERS:
+        return _bad("The owner always has access.")
+    if not store.one("SELECT 1 x FROM fu_access WHERE email=? AND removed_at IS NULL", (email,)):
+        store.write("INSERT INTO fu_access(email, name, added_by, added_at) VALUES (?,?,?,?)",
+                    (email, str((body or {}).get("name") or "").strip()[:120], _email(user), store.now_iso()))
+    return team(user)
+
+
+def team_remove(user, body):
+    if not is_super(user):
+        return 403, {"error": "forbidden", "message": "Only the owner manages the marketing team."}
+    email = str((body or {}).get("email") or "").strip().lower()
+    store.write("UPDATE fu_access SET removed_by=?, removed_at=? WHERE email=? AND removed_at IS NULL",
+                (_email(user), store.now_iso(), email))
+    return team(user)
 
 
 # ------------------------------------------------------------------ projects + billing (Jai only)

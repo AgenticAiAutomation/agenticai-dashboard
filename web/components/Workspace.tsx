@@ -172,8 +172,8 @@ function useRegistryContext() {
     setRole(localStorage.getItem('role'));
     const fu = api.get<{ allowed: boolean }>('/api/followups/status').then((r) => !!r.data.allowed).catch(() => false);
     trackerApi.status()
-      .then(async (r) => setFlags({ tracker: r.data.tracker, ideas: r.data.ideas, taskManager: !!r.data.taskManager, followups: await fu }))
-      .catch(async () => setFlags({ followups: await fu }));
+      .then(async (r) => { const f = await fu; setFlags({ tracker: r.data.tracker, ideas: r.data.ideas, taskManager: !!r.data.taskManager, followups: f, leads: f }); })
+      .catch(async () => { const f = await fu; setFlags({ followups: f, leads: f }); });
   }, []);
   return { role, flags };
 }

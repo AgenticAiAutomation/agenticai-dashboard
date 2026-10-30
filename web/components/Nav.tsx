@@ -5,7 +5,8 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 
 import LeadBell from '@/components/LeadBell';
-import { navRoutes, pathOf, seoTabs } from '@/lib/registry';
+import api from '@/lib/api';
+import { Flags, navRoutes, pathOf, seoTabs } from '@/lib/registry';
 
 // Every link here comes from the route registry (web/lib/routes.json):
 // `nav` entries for the top bar, `tab` entries for the SEO sub-tabs.
@@ -16,9 +17,14 @@ export default function Nav() {
   const router = useRouter();
   const pathname = usePathname();
   const [role, setRole] = useState<string | null>(null);
+  const [flags, setFlags] = useState<Flags>(null);
 
   useEffect(() => {
     setRole(localStorage.getItem('role'));
+    // Follow-ups and Leads go by person (owner + marketing team), not by role.
+    api.get<{ allowed: boolean }>('/api/followups/status')
+      .then((r) => setFlags({ followups: !!r.data.allowed, leads: !!r.data.allowed }))
+      .catch(() => setFlags({}));
   }, []);
 
   const logout = () => {
@@ -29,7 +35,7 @@ export default function Nav() {
   };
 
   const inSeo = pathname?.startsWith('/dashboard/seo');
-  const items: Item[] = navRoutes(role).map((r) => ({
+  const items: Item[] = navRoutes(role, flags).map((r) => ({
     href: r.server ? r.slug : pathOf(r.slug), label: r.navTitle ?? r.title, external: r.server }));
   const tabs = seoTabs(role).map((r) => ({ href: r.slug.replace(/\/(#|$)/, '$1'), label: r.tabTitle ?? r.title }));
 
@@ -59,9 +65,9 @@ export default function Nav() {
           <div className="hidden items-center gap-1 md:flex">{links}</div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          {/* The leads desk (CRM) is owner-only, so only the owner gets the
+          {/* The leads desk (CRM) is for the owner and the marketing team, so only they get the
               new-lead bell; it hides itself on a 404 as well. */}
-          {role === 'owner' && <LeadBell />}
+          {flags?.leads && <LeadBell />}
           <button onClick={logout} className="text-sm text-muted hover:text-white">
             Log out
           </button>
