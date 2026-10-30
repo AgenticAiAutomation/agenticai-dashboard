@@ -191,7 +191,7 @@ def main():
           sheet["7"]["ideaGiven"] and sheet["7"]["winsApproved"] == 1 and sheet["7"]["eligible"])
     check("Priya: 6 ideas, one worked = eligible and nominated", sheet["8"]["eligible"] and sheet["8"]["nominated"]
           and sheet["8"]["ideasWorked"] == 1)
-    check("Jai with no idea isn't eligible", not sheet["1"]["eligible"])
+    check("Jai (the owner) isn't on his own bonus sheet", "1" not in sheet)
     r = c.get("/api/tasks/v2/bonus.csv?month=2026-11", headers={"x-user": "jai"})
     check("Jai downloads the sheet as CSV", r.status_code == 200 and r.text.startswith("Work month,Name")
           and "Akash Yadav" in r.text)

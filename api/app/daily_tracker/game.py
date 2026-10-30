@@ -145,7 +145,7 @@ def leaderboard(now=None):
     start = _week_start(now)
     since = wt._iso(wt._day_start(start))
     out = []
-    for p in store.rows("SELECT user_id, name FROM dt_people ORDER BY name"):
+    for p in wt.team():
         pts = store.one("SELECT COALESCE(SUM(points),0) p FROM work_points WHERE user_id=? AND created_at>=?",
                         (p["user_id"], since))["p"]
         rings, d = 0, start

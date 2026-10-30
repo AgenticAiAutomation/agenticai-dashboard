@@ -131,7 +131,7 @@ function StartDay({ s, name, onStart }: { s: WState; name: string; onStart: () =
     <div className="mx-auto max-w-xl rounded-2xl border border-line bg-raised p-6 text-center sm:p-10">
       <p className="text-2xl font-semibold text-white">{h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening'}, {name}</p>
       <p className="mt-1 text-sm text-muted">
-        {plan.length ? `${plan.length} task${plan.length > 1 ? 's' : ''} planned for today` : 'Nothing planned yet: Jai will add your tasks.'}
+        {plan.length ? `${plan.length} task${plan.length > 1 ? 's' : ''} planned for today` : s.isSuperuser ? 'Your tasks show below.' : 'Nothing planned yet: Jai will add your tasks.'}
       </p>
       {plan.length > 0 && (
         <ul className="mt-4 space-y-1 text-left text-sm text-slate-200">
@@ -480,7 +480,8 @@ export default function TimerPanel({ status }: { status: TrackerStatus }) {
 
   // v3: nothing starts before Start my day or after End my day (the server refuses too).
   const readOnly = viewer || (s.dayFlow && !!s.day?.end_at);
-  if (s.dayFlow && !viewer && !s.day) {
+  // Jai keeps his whole tab (team, queues, settings) before he clocks in; the Start card sits on top.
+  if (s.dayFlow && !viewer && !s.day && !s.isSuperuser) {
     return (
       <div className="space-y-5">
         <ErrorBanner message={error} />
@@ -500,6 +501,7 @@ export default function TimerPanel({ status }: { status: TrackerStatus }) {
   return (
     <div className="space-y-5">
       <ErrorBanner message={error} />
+      {s.dayFlow && !viewer && !s.day && <StartDay s={s} name={(status.me.name || '').split(' ')[0]} onStart={() => act(wtApi.startDay)} />}
       {notice && <p className="rounded-md border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-200">{notice}</p>}
 
       {s.dayFlow && s.day && (
@@ -719,6 +721,26 @@ export default function TimerPanel({ status }: { status: TrackerStatus }) {
         </Card>
       )}
 
+      {s.dayFlow && s.isSuperuser && s.toReview && s.toReview.length > 0 && (
+        <Card title="Done, waiting for you">
+          <ul className="space-y-2 text-sm">
+            {s.toReview.map((t) => (
+              <li key={t.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-line bg-raised p-3">
+                <span className="text-slate-200"><b className="text-white">{t.title}</b> · {t.name} · {chunkLabel(t.estimate_min || 0)}
+                  {t.complexity && ` · ${t.complexity}`} · <b className="text-white">{t.points}</b> points</span>
+                <span className="flex gap-2">
+                  <button className="btn-primary" onClick={() => act(() => wtApi.reviewTask(t.id, true), `Accepted: ${t.points} points to ${t.name}.`)}>Accept</button>
+                  <button className="btn-secondary" onClick={() => {
+                    const note = window.prompt('What needs fixing?');
+                    if (note) act(() => wtApi.reviewTask(t.id, false, note), 'Sent back.');
+                  }}>Send back</button>
+                </span>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
+
       {s.dayFlow && s.game && (
         <div className="grid gap-4 md:grid-cols-2">
           <GameCard s={s} fx={fx} setFx={setFx} />
@@ -746,25 +768,6 @@ export default function TimerPanel({ status }: { status: TrackerStatus }) {
 
       {s.dayFlow && s.isSuperuser && s.teamCredits.length > 0 && <CreditsCard s={s} act={act} />}
 
-      {s.dayFlow && s.isSuperuser && s.toReview && s.toReview.length > 0 && (
-        <Card title="Done, waiting for you">
-          <ul className="space-y-2 text-sm">
-            {s.toReview.map((t) => (
-              <li key={t.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-line bg-raised p-3">
-                <span className="text-slate-200"><b className="text-white">{t.title}</b> · {t.name} · {chunkLabel(t.estimate_min || 0)}
-                  {t.complexity && ` · ${t.complexity}`} · <b className="text-white">{t.points}</b> points</span>
-                <span className="flex gap-2">
-                  <button className="btn-primary" onClick={() => act(() => wtApi.reviewTask(t.id, true), `Accepted: ${t.points} points to ${t.name}.`)}>Accept</button>
-                  <button className="btn-secondary" onClick={() => {
-                    const note = window.prompt('What needs fixing?');
-                    if (note) act(() => wtApi.reviewTask(t.id, false, note), 'Sent back.');
-                  }}>Send back</button>
-                </span>
-              </li>
-            ))}
-          </ul>
-        </Card>
-      )}
 
       {s.dayFlow && s.isSuperuser && (
         <Card title="Daily tasks (offered when someone is stopped by a dependency)">
@@ -790,7 +793,7 @@ export default function TimerPanel({ status }: { status: TrackerStatus }) {
           <ul className="space-y-2">
             {workable.map((t) => (
               <li key={t.id} className="flex items-center justify-between gap-2 rounded-lg border border-line bg-raised p-3">
-                <span className="min-w-0"><span className="block truncate text-sm text-white">{t.title} <span className="text-xs text-muted">· {STATUS[t.status] ?? t.status}{s.dayFlow && t.estimate_min > 0 && ` · ${pointsFor(s, t)} pts`}</span></span><Details t={t} /></span>
+                <span className="min-w-0"><span className="block break-words text-sm text-white">{t.title} <span className="text-xs text-muted">· {STATUS[t.status] ?? t.status}{s.dayFlow && t.estimate_min > 0 && ` · ${pointsFor(s, t)} pts`}</span></span><Details t={t} /></span>
                 {!readOnly && t.status !== 'in_progress' && (
                   <button className="btn-secondary shrink-0" onClick={() => act(() => wtApi.start(t.id))}>Start</button>
                 )}

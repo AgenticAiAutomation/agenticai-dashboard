@@ -45,7 +45,7 @@ def inbox(user, now=None):
         out["people"] = [{**p, "tasks": store.rows(
             "SELECT id, title FROM work_tasks WHERE assigned_to=? AND status NOT IN ('accepted','cancelled') "
             "ORDER BY id DESC LIMIT 50", (p["user_id"],))}
-            for p in store.rows("SELECT user_id, name FROM dt_people ORDER BY name")]
+            for p in wt.team()]
     return 200, out
 
 

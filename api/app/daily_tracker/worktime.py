@@ -192,6 +192,12 @@ def _close(conn, iv, now, user_id, kind="pause", reason=""):
         _set_status(conn, t, "paused", user_id, kind, now, reason)
 
 
+def team():
+    """The people Jai manages: everyone in the tracker except the superusers themselves."""
+    return [p for p in store.rows("SELECT user_id, name, email FROM dt_people ORDER BY name")
+            if p["email"].strip().lower() not in settings.SUPERUSERS]
+
+
 def _add_workdays(day, n, workdays):
     while n > 0:
         day += timedelta(days=1)
@@ -355,7 +361,7 @@ def state(user, now=None):
         "credit": month_credit(me, cycle_of(work_date(now)), now) if settings.TASKS_V3 else None,
         "teamCredits": [{**p, **month_credit(p["user_id"], cycle_of(work_date(now)), now),
                          "allowanceHours": allowance_hours(p["user_id"])}
-                        for p in store.rows("SELECT user_id, name FROM dt_people ORDER BY name")]
+                        for p in team()]
         if settings.TASKS_V3 and taskmgr.is_super(user) else [],
         "allowanceAll": allowance_hours("*"),
         **(_game(me, user, now, today) if settings.TASKS_V3 else {}),
@@ -562,10 +568,9 @@ def _game(me, user, now, today):
     idea = store.one("SELECT COUNT(*) c FROM big_ideas WHERE user_id=? AND month=? AND status!='repeat'",
                      (me, cycle))["c"] >= cfg["ideas_required"]
     from . import leave
-    names = {p["user_id"]: p["name"] for p in store.rows("SELECT user_id, name FROM dt_people")}
     return {"game": game.summary(me, now), "leaderboard": game.leaderboard(now),
             "leave": leave.summary(me, cycle),
-            "teamLeave": [{"user_id": u, "name": n, **leave.summary(u, cycle)} for u, n in sorted(names.items(), key=lambda x: x[1])]
+            "teamLeave": [{"user_id": p["user_id"], "name": p["name"], **leave.summary(p["user_id"], cycle)} for p in team()]
             if taskmgr.is_super(user) else [],
             "leaveAll": leave.policy("*"),
             "toReview": game.to_review() if taskmgr.is_super(user) else [],

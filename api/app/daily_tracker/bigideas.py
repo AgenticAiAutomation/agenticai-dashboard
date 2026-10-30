@@ -39,7 +39,7 @@ def board(user, now=None):
         i["name"] = names.get(i["user_id"], i["user_id"])
         i["assignedName"] = names.get(i["assigned_to"] or "", "")
     people = []
-    for uid, name in sorted(names.items(), key=lambda x: x[1]):
+    for uid, name in ((p["user_id"], p["name"]) for p in wt.team()):
         mine = [i for i in ideas if i["user_id"] == uid and i["month"] == month and i["status"] != "repeat"]
         people.append({"user_id": uid, "name": name, "counted": len(mine),
                        "worked": sum(i["status"] == "worked" for i in mine),
@@ -205,7 +205,7 @@ def bonus_sheet(month, now=None):
     """One row per person for a work month. Jai decides amounts outside the system."""
     cfg = wt.work_settings()
     rows = []
-    for p in store.rows("SELECT user_id, name FROM dt_people ORDER BY name"):
+    for p in wt.team():
         ideas = store.rows("SELECT status FROM big_ideas WHERE user_id=? AND month=? AND status!='repeat'",
                            (p["user_id"], month))
         worked = sum(i["status"] == "worked" for i in ideas)
