@@ -16,7 +16,7 @@ const TONE: Record<string, string> = {
   not_applied: 'bg-bg text-muted', repeat: 'bg-danger/15 text-red-300',
 };
 
-const WIN_LABEL: Record<Win['status'], string> = { pending: 'Waiting for Jai', approved: 'Approved', rejected: 'Rejected', more: 'Jai asks for more' };
+const WIN_LABEL: Record<Win['status'], string> = { pending: 'Waiting for the owner', approved: 'Approved', rejected: 'Rejected', more: 'Owner asks for more' };
 const WIN_TONE: Record<Win['status'], string> = {
   pending: 'bg-bg text-slate-200', approved: 'bg-emerald-500/20 text-emerald-300', rejected: 'bg-danger/15 text-red-300', more: 'bg-amber-500/20 text-amber-300',
 };
@@ -104,7 +104,7 @@ export default function BigIdeasPanel() {
         </p>
         <p className="mt-2 text-sm text-slate-200">
           {b.required} idea a month is required. {b.forNomination} counted ideas in a month nominate you for Employee of the Month;
-          the most proven and applied ideas decide it. An idea anyone gave before (Jai too) doesn&apos;t count, so search the board first.
+          the most proven and applied ideas decide it. An idea anyone gave before (the owner too) doesn&apos;t count, so search the board first.
         </p>
         <p className="mt-2 text-xs text-muted">Leaves and hours don&apos;t decide pay, growth or your future here. Smart, quality delivery does.</p>
         {me && (
@@ -122,7 +122,7 @@ export default function BigIdeasPanel() {
       <Card title="Give an idea">
         <form className="grid gap-2 sm:grid-cols-2" onSubmit={(e) => {
           e.preventDefault();
-          done(wtApi.submitIdea(form), 'Idea added. Jai will review it.').then((ok) => ok && setForm({ title: '', channel: '', idea: '' }));
+          done(wtApi.submitIdea(form), 'Idea added. The owner will review it.').then((ok) => ok && setForm({ title: '', channel: '', idea: '' }));
         }}>
           <input aria-label="Title" required minLength={4} maxLength={140} className="input-field" placeholder="Short title"
                  value={form.title} onChange={(e) => { setForm({ ...form, title: e.target.value }); setFilter(e.target.value); }} />
@@ -156,8 +156,8 @@ export default function BigIdeasPanel() {
       )}
 
       <Card title="Wins">
-        <p className="mb-3 text-sm text-slate-200">Something you achieved for the company or a client this work month. Jai approves it; approved Wins count toward the bonus.</p>
-        <WinForm init={EMPTY_WIN} label="Add Win" onSave={(f) => save(wtApi.submitWin(f), 'Win added. Jai will review it.')} />
+        <p className="mb-3 text-sm text-slate-200">Something you achieved for the company or a client this work month. The owner approves it; approved Wins count toward the bonus.</p>
+        <WinForm init={EMPTY_WIN} label="Add Win" onSave={(f) => save(wtApi.submitWin(f), 'Win added. The owner will review it.')} />
         {b.wins.length > 0 && (
           <ul className="mt-4 space-y-2">
             {b.wins.map((w) => (
@@ -169,10 +169,10 @@ export default function BigIdeasPanel() {
                 <p className="mt-1 text-xs text-muted">{w.name} · {w.month} · for {w.for_whom}</p>
                 <p className="mt-1 text-slate-200">Result: {w.result}
                   {w.proof_url && <> · <a className="text-blue-300 underline" href={w.proof_url} target="_blank" rel="noreferrer">proof</a></>}</p>
-                {w.note && <p className="mt-1 text-xs text-amber-200">Jai: {w.note}</p>}
+                {w.note && <p className="mt-1 text-xs text-amber-200">Owner: {w.note}</p>}
                 {w.status === 'more' && w.user_id === b.me && (
                   <div className="mt-3"><WinForm init={{ what: w.what, for_whom: w.for_whom, result: w.result, proof_url: w.proof_url }}
-                    label="Send back to Jai" onSave={(f) => save(wtApi.editWin(w.id, f), 'Sent back to Jai.')} /></div>
+                    label="Send back to the owner" onSave={(f) => save(wtApi.editWin(w.id, f), 'Sent back to the owner.')} /></div>
                 )}
                 {b.isSuperuser && (w.status === 'pending' || w.status === 'more') && (
                   <div className="mt-3 flex flex-wrap gap-2">
@@ -237,7 +237,7 @@ export default function BigIdeasPanel() {
                 <p className="mt-1 text-xs text-muted">{i.name} · {i.month} · {i.channel}
                   {i.assignedName && ` · applying: ${i.assignedName} on ${i.project}`}</p>
                 <p className="mt-2 whitespace-pre-line text-slate-200">{i.idea}</p>
-                {i.note && <p className="mt-1 text-xs text-slate-300">Jai: {i.note}</p>}
+                {i.note && <p className="mt-1 text-xs text-slate-300">Owner: {i.note}</p>}
                 {b.isSuperuser && <Decide i={i} b={b} done={done} />}
               </li>
             ))}

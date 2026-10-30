@@ -19,9 +19,9 @@ function Thread({ q, me, isSuper, onReply, onDone, onReopen }: {
   return (
     <li className={`rounded-lg border p-3 text-sm ${mine ? 'border-red-500/60 bg-red-500/10' : 'border-line bg-raised'}`}>
       <p className="text-xs text-muted">
-        {isSuper ? <>To <b className="text-white">{q.to_name ?? q.to_user}</b></> : 'Jai asks'}
+        {isSuper ? <>To <b className="text-white">{q.to_name ?? q.to_user}</b></> : 'Owner asks'}
         {q.task_title && <> · about “{q.task_title}”</>} · {when(q.created_at)}
-        {q.status === 'answered' && !isSuper && ' · sent, waiting for Jai'}
+        {q.status === 'answered' && !isSuper && ' · sent, waiting for the owner'}
         {q.status === 'open' && isSuper && ' · waiting for their answer'}
       </p>
       <ul className="mt-2 space-y-1">
@@ -69,12 +69,12 @@ export default function QuestionsBar() {
   const person = b.people?.find((p) => p.user_id === ask.to_user);
 
   return (
-    <section className="mb-6 space-y-3" aria-label="Questions from Jai">
+    <section className="mb-6 space-y-3" aria-label="Questions from the owner">
       <ErrorBanner message={error} />
       {waiting.length > 0 && (
         <div className="rounded-xl border border-red-500/60 bg-red-500/5 p-4">
           <h2 className="mb-2 text-sm font-semibold text-red-300">
-            {b.isSuperuser ? `${waiting.length} answer${waiting.length > 1 ? 's' : ''} to review` : `Jai is asking (${waiting.length}) · please answer`}
+            {b.isSuperuser ? `${waiting.length} answer${waiting.length > 1 ? 's' : ''} to review` : `Owner is asking (${waiting.length}) · please answer`}
           </h2>
           <ul className="space-y-2">
             {waiting.map((q) => (
@@ -88,7 +88,7 @@ export default function QuestionsBar() {
       {other.length > 0 && (
         <details className="rounded-xl border border-line bg-surface p-4">
           <summary className="cursor-pointer text-sm text-slate-200">
-            {b.isSuperuser ? `Waiting for their answer (${other.length})` : `Sent, waiting for Jai (${other.length})`}
+            {b.isSuperuser ? `Waiting for their answer (${other.length})` : `Sent, waiting for the owner (${other.length})`}
           </summary>
           <ul className="mt-2 space-y-2">
             {other.map((q) => (

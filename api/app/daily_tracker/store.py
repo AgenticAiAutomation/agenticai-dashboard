@@ -790,7 +790,7 @@ DEFAULT_BADGES = [
     ("on_time_10", "Always on time", "10 tasks accepted on time in a month"),
     ("helper", "Unblocker", "Helped a teammate get unblocked"),
     ("automation", "Automation Champion", "An automation with measured time saved"),
-    ("employee_of_month", "Employee of the Month", "Chosen by Jai"),
+    ("employee_of_month", "Employee of the Month", "Chosen by the owner"),
     # v3 Step 6 starter set
     ("early_bird", "Early Bird", "Started the day on time"),
     ("ring_closer", "Ring Closer", "Met the day's hours"),
@@ -799,7 +799,7 @@ DEFAULT_BADGES = [
     ("hard_mode", "Hard Mode", "5 Hard tasks accepted in a week"),
     ("blocker_buster", "Blocker Buster", "Started the next task within 2 minutes of a block"),
     ("idea_maker", "Idea Maker", "Gave the month's Big Idea"),
-    ("achiever", "Achiever", "A Win approved by Jai"),
+    ("achiever", "Achiever", "A Win approved by the owner"),
 ]
 
 DEFAULT_TIERS = [("Bronze", 300), ("Silver", 600), ("Gold", 1000), ("Platinum", 1500)]

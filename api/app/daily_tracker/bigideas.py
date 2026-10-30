@@ -33,7 +33,7 @@ def board(user, now=None):
     now = now or datetime.now(timezone.utc)
     month = _month(now)
     cfg = wt.work_settings()
-    names = {p["user_id"]: p["name"] for p in store.rows("SELECT user_id, name FROM dt_people")}
+    names = wt.names_for(user)
     ideas = store.rows("SELECT * FROM big_ideas ORDER BY id DESC LIMIT 500")
     for i in ideas:
         i["name"] = names.get(i["user_id"], i["user_id"])

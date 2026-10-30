@@ -36,7 +36,7 @@ BACKDATE_DAYS = 7
 NOTE_MAX = 300
 
 ERR_AUTH = (401, {"error": "not_authenticated", "message": "Sign in to the dashboard first."})
-ERR_ADMIN = (403, {"error": "forbidden", "message": "Only Jai or an admin can do that."})
+ERR_ADMIN = (403, {"error": "forbidden", "message": "Only the owner or an admin can do that."})
 ERR_FROZEN = (503, {"error": "read_only",
                     "message": "The tracker is read-only while maintenance runs. Try again shortly."})
 ERR_TRACKER_OFF = (404, {"error": "disabled", "message": "The Daily Tracker is not switched on."})
@@ -292,7 +292,7 @@ def _check_log(user, body, cfg, exclude_id=None):
     known, allowed = sites(user)
     project = str(body.get("project_id") or body.get("project") or "").strip()
     if project not in allowed:
-        return _bad("Pick one of your sites. If yours is missing, ask Jai to put you on it "
+        return _bad("Pick one of your sites. If yours is missing, ask the owner to put you on it "
                     "in Backlink Ops → Difficulty & team."), None
     try:
         wt = store.one("SELECT * FROM work_types WHERE id=? AND active=1",
@@ -326,7 +326,7 @@ def _check_log(user, body, cfg, exclude_id=None):
     if d > _date.fromisoformat(today):
         return _bad("You can't log work for a future day."), None
     if (_date.fromisoformat(today) - d).days > BACKDATE_DAYS:
-        return _bad(f"Logs older than {BACKDATE_DAYS} days need Jai — ask him to add it."), None
+        return _bad(f"Logs older than {BACKDATE_DAYS} days need the owner — ask them to add it."), None
 
     key = proof_key(url)
     dup = store.one("SELECT id, user_name, log_date FROM daily_logs WHERE proof_key=? "
@@ -364,7 +364,7 @@ def create_log(user, body):
     return 201, {"log": _public_log(r, _types(), known),
                  "late": bool(f["late"]),
                  "message": ("Logged. It was submitted after the day, so it earns half marks once approved."
-                             if f["late"] else "Logged — it counts once Jai approves it.")}
+                             if f["late"] else "Logged — it counts once the owner approves it.")}
 
 
 def update_log(user, log_id, body):

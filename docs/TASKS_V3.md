@@ -143,3 +143,9 @@ last 12 months; Jai can reopen one. Tables `questions` (never deleted; who/what/
 `question_messages` (written once). The bar refreshes every minute.
 API: `GET /v2/questions`, `GET /v2/questions/history?q=&who=`, `POST /v2/questions {to_user, task_id?, question}`,
 `/v2/questions/{id}/reply {body}`, `/done`, `/reopen`. Tests: `tests/test_tasks_v3_qa.py` (23).
+
+## Owner tag (Jai, 30 Oct 2026)
+
+Employees never see the owner's name. Every screen says "Owner" / "the owner" instead of "Jai"; the API masks
+superusers' names as "Owner" for anyone who isn't a superuser (`worktime.names_for`): Q&A messages, ideas the
+owner gives, the people list (and a "waiting on" the owner is saved as "Owner"). Jai still sees real names.

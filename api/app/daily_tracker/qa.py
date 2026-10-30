@@ -23,11 +23,11 @@ def _visible(user):
     return ("1=1", ()) if taskmgr.is_super(user) else ("q.to_user=?", (base.uid(user),))
 
 
-def _threads(where, args):
+def _threads(where, args, user):
     qs = store.rows("SELECT q.*, t.title task_title, p.name to_name FROM questions q "
                     "LEFT JOIN work_tasks t ON t.id=q.task_id LEFT JOIN dt_people p ON p.user_id=q.to_user "
                     f"WHERE {where} ORDER BY q.id DESC LIMIT 300", args)
-    names = {p["user_id"]: p["name"] for p in store.rows("SELECT user_id, name FROM dt_people")}
+    names = wt.names_for(user)
     for q in qs:
         q["messages"] = [{**m, "name": names.get(m["user_id"], m["user_id"])} for m in store.rows(
             "SELECT * FROM question_messages WHERE question_id=? ORDER BY id", (q["id"],))]
@@ -39,7 +39,7 @@ def inbox(user, now=None):
     if g:
         return g
     where, args = _visible(user)
-    out = {"threads": _threads(f"{where} AND q.status!='done'", args), "isSuperuser": taskmgr.is_super(user),
+    out = {"threads": _threads(f"{where} AND q.status!='done'", args, user), "isSuperuser": taskmgr.is_super(user),
            "me": base.uid(user)}
     if taskmgr.is_super(user):
         out["people"] = [{**p, "tasks": store.rows(
@@ -62,7 +62,7 @@ def history(user, q="", who="", now=None):
     if q:
         where += " AND (t.title LIKE ? OR EXISTS (SELECT 1 FROM question_messages m WHERE m.question_id=q.id AND m.body LIKE ?))"
         args += (f"%{q}%", f"%{q}%")
-    return 200, {"threads": _threads(where, args)}
+    return 200, {"threads": _threads(where, args, user)}
 
 
 def _say(conn, qid, user_id, body, now):

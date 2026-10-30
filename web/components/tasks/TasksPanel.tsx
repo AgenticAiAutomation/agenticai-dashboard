@@ -140,7 +140,7 @@ export default function TasksPanel({ status }: { status: TrackerStatus }) {
       )}
 
       {tasks.length === 0 ? (
-        <EmptyState title="No tasks here" description={isAdmin ? 'Create a SMART task with “New task”.' : 'Tasks Jai assigns to you show up here.'} />
+        <EmptyState title="No tasks here" description={isAdmin ? 'Create a SMART task with “New task”.' : 'Tasks the owner assigns to you show up here.'} />
       ) : view === 'list' ? (
         isAdmin && scope === 'all' ? (
           <div className="overflow-x-auto">

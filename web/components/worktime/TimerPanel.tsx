@@ -97,7 +97,7 @@ function AddTask({ s, isAdmin, onDone, routine = false }: { s: WState; isAdmin: 
             <select id="w-cx" className="input-field" value={f.complexity} onChange={(e) => setF({ ...f, complexity: e.target.value })}>
               {Object.keys(s.complexity ?? { Easy: 1, Medium: 1.5, Hard: 2 }).map((k) => <option key={k} value={k}>{k}</option>)}
             </select>
-            <p className="mt-1 text-xs text-muted">Earns {pointsFor(s, { estimate_min: Number(f.estimate_min), details: { complexity: f.complexity } })} points when Jai accepts it.</p>
+            <p className="mt-1 text-xs text-muted">Earns {pointsFor(s, { estimate_min: Number(f.estimate_min), details: { complexity: f.complexity } })} points when it's accepted.</p>
           </div>
         </>
       )}
@@ -131,7 +131,7 @@ function StartDay({ s, name, onStart }: { s: WState; name: string; onStart: () =
     <div className="mx-auto max-w-xl rounded-2xl border border-line bg-raised p-6 text-center sm:p-10">
       <p className="text-2xl font-semibold text-white">{h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening'}, {name}</p>
       <p className="mt-1 text-sm text-muted">
-        {plan.length ? `${plan.length} task${plan.length > 1 ? 's' : ''} planned for today` : s.isSuperuser ? 'Your tasks show below.' : 'Nothing planned yet: Jai will add your tasks.'}
+        {plan.length ? `${plan.length} task${plan.length > 1 ? 's' : ''} planned for today` : s.isSuperuser ? 'Your tasks show below.' : 'Nothing planned yet: the owner will add your tasks.'}
       </p>
       {plan.length > 0 && (
         <ul className="mt-4 space-y-1 text-left text-sm text-slate-200">
@@ -219,7 +219,7 @@ function Ring({ s, fx }: { s: WState; fx: boolean }) {
           {done && <span className="ml-2 text-emerald-300">🎉 day&apos;s hours done</span>}</p>
         {s.game && (
           <p className="mt-1 text-sm text-slate-200">🔥 <b className="text-white">{s.game.streak}</b>-day streak · <b className="text-white">{s.game.points}</b> points
-            {s.game.pending > 0 && <span className="text-muted"> (+{s.game.pending} waiting for Jai)</span>}</p>
+            {s.game.pending > 0 && <span className="text-muted"> (+{s.game.pending} waiting for the owner)</span>}</p>
         )}
         <p className="mt-2 flex flex-wrap justify-center gap-2 sm:justify-start">
           {(['break', 'lunch'] as const).map((k) => {
@@ -373,7 +373,7 @@ function GameCard({ s, fx, setFx }: { s: WState; fx: boolean; setFx: (v: boolean
     <Card title="Points & badges">
       <p className="text-sm text-slate-200"><b className="text-white">{g.points}</b> points · level <b className="text-white">{g.level}</b>
         {g.nextLevel && <span className="text-muted"> · {g.nextLevel.at - g.points} to {g.nextLevel.name}</span>}</p>
-      <p className="mt-1 text-xs text-muted">A task earns its points when Jai accepts it. Worked ideas and approved Wins add more.</p>
+      <p className="mt-1 text-xs text-muted">A task earns its points when the owner accepts it. Worked ideas and approved Wins add more.</p>
       {g.badges.length > 0 ? (
         <p className="mt-3 flex flex-wrap gap-2">
           {g.badges.map((b) => <span key={b.code} className="rounded-full bg-bg px-3 py-1 text-xs text-slate-200">🏅 {b.name}{b.count > 1 && ` ×${b.count}`}</span>)}
@@ -642,7 +642,7 @@ export default function TimerPanel({ status }: { status: TrackerStatus }) {
 
       {suggest && (
         <Card title="Watch stopped. Stay on track: pick your next task">
-          {suggest.approval && <p className="mb-2 text-sm text-amber-200">This stop goes to Jai for approval.</p>}
+          {suggest.approval && <p className="mb-2 text-sm text-amber-200">This stop goes to the owner for approval.</p>}
           {s.dayFlow && <p className="mb-2 text-sm text-amber-200">Start one within 60 seconds, or the idle time counts against your hours.</p>}
           {suggest.routines.length > 0 && (
             <>
@@ -809,7 +809,7 @@ export default function TimerPanel({ status }: { status: TrackerStatus }) {
                 const h = s.holds.find((x) => x.task_id === t.id && !x.end_ts);
                 return (
                   <li key={t.id} className="flex items-center justify-between gap-2 rounded-lg border border-line bg-raised p-3">
-                    <span className="min-w-0 text-sm text-slate-200">{t.title}{h && <span className="block text-xs text-muted">Waiting on {h.depends_on_name}: {h.reason}{h.status === 'pending' ? ' · Jai to approve' : ''}</span>}</span>
+                    <span className="min-w-0 text-sm text-slate-200">{t.title}{h && <span className="block text-xs text-muted">Waiting on {h.depends_on_name}: {h.reason}{h.status === 'pending' ? ' · owner to approve' : ''}</span>}</span>
                     {!readOnly && <button className="btn-secondary shrink-0" onClick={() => act(() => wtApi.unblock(t.id), 'Unblocked.')}>Unblock</button>}
                   </li>
                 );

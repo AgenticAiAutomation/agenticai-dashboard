@@ -80,7 +80,7 @@ export default function IdeasPanel({ status }: { status: TrackerStatus }) {
         )}
       >
         <p className="text-sm text-muted">
-          Suggest something new for your website. Jai picks ideas to trial; any idea marked <b className="text-success">Worked</b> that
+          Suggest something new for your website. The owner picks ideas to trial; any idea marked <b className="text-success">Worked</b> that
           month earns its author the winner badge and the monthly bonus (handled offline).
         </p>
         {winners.length > 0 && (

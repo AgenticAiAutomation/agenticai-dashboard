@@ -127,7 +127,7 @@ export default function FollowupsPage() {
     <Shell title="Follow-ups" subtitle="Who to call or meet, when, and about what — with their details and what happened last time."
            actions={<Link href="/dashboard/leads/" className="btn-secondary">WhatsApp leads →</Link>}>
       {denied ? (
-        <ErrorBanner message="Follow-ups are for Jai and admins (or the feature is not switched on yet)." />
+        <ErrorBanner message="Follow-ups are for the owner and admins (or the feature is not switched on yet)." />
       ) : (
         <div className="space-y-6">
           <FollowupBoard key={key} />

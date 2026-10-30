@@ -232,7 +232,7 @@ def main():
     code, s = wt.reopen_day(J, {"user_id": "8"}, at(15, 10, day=28))
     check("Jai resumes it; the old end stays in the log", code == 200
           and store.one("SELECT reason FROM task_events WHERE event_type='day_reopen'")["reason"]
-          == "ended 15:00, reopened by Jai")
+          == "ended 15:00, reopened by the owner")
     tp = task(P, "Call after reopen")
     check("Priya can start tasks again", wt.start(P, tp, at(15, 20, day=28))[0] == 200)
     check("and end her day again", wt.end_day(P, at(16, day=28))[0] == 200

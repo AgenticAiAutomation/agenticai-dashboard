@@ -103,7 +103,7 @@ export default function TodayPanel({ status, types }: { status: TrackerStatus; t
     return (
       <EmptyState
         title="You are not on any website yet"
-        description="Ask Jai to add you, with your dashboard login email, in Backlink Ops → Difficulty & team. Your sites then appear here."
+        description="Ask the owner to add you, with your dashboard login email, in Backlink Ops → Difficulty & team. Your sites then appear here."
       />
     );
   }

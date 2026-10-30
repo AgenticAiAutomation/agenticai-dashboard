@@ -113,7 +113,7 @@ def cancel(user, leave_id, now=None):
     if not r or not (mine or taskmgr.is_super(user)):
         return 404, {"error": "not_found", "message": "No such leave."}
     if mine and not taskmgr.is_super(user) and r["date"] < wt.work_date(now).isoformat():
-        return base._bad("That day has passed; ask Jai.")
+        return base._bad("That day has passed; ask the owner.")
     store.write("UPDATE leave_calendar SET cancelled_by=?, cancelled_at=? WHERE id=?", (base.uid(user), wt._iso(now), leave_id))
     return wt.state(user, now)
 

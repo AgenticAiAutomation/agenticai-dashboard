@@ -38,7 +38,7 @@ LOAD_LIMIT = 40
 DAY_START, DAY_END = 9, 19          # working hours (IST) for "expected by now" today
 
 ERR_OFF = (404, {"error": "disabled", "message": "The task manager is not switched on."})
-ERR_SUPER = (403, {"error": "forbidden", "message": "Only Jai can change that."})
+ERR_SUPER = (403, {"error": "forbidden", "message": "Only the owner can change that."})
 ERR_VIEWER = (403, {"error": "read_only_user", "message": "Your account can read tasks but not change them."})
 
 

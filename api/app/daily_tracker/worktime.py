@@ -31,7 +31,7 @@ from .config import settings
 IST = store.IST
 ERR_OFF = (404, {"error": "disabled", "message": "Tasks v2 is not switched on."})
 ERR_OFF_V3 = (404, {"error": "disabled", "message": "The Start my day flow is not switched on."})
-ERR_SUPER = (403, {"error": "forbidden", "message": "Only Jai can decide that."})
+ERR_SUPER = (403, {"error": "forbidden", "message": "Only the owner can decide that."})
 WORKABLE = ("todo", "paused", "in_progress")
 DONE = ("submitted", "accepted", "cancelled")
 PRIO = {"P1": 1, "P2": 2, "P3": 3}
@@ -192,6 +192,21 @@ def _close(conn, iv, now, user_id, kind="pause", reason=""):
         _set_status(conn, t, "paused", user_id, kind, now, reason)
 
 
+OWNER = "Owner"   # what employees see instead of a superuser's name (Jai, 30 Oct)
+
+
+def owner_ids():
+    return {p["user_id"] for p in store.rows("SELECT user_id, email FROM dt_people")
+            if p["email"].strip().lower() in settings.SUPERUSERS}
+
+
+def names_for(viewer):
+    """{user_id: name} as this viewer may see them: superusers show as 'Owner' to everyone else."""
+    owners = set() if taskmgr.is_super(viewer) else owner_ids()
+    return {p["user_id"]: (OWNER if p["user_id"] in owners else p["name"])
+            for p in store.rows("SELECT user_id, name FROM dt_people")}
+
+
 def team():
     """The people Jai manages: everyone in the tracker except the superusers themselves."""
     return [p for p in store.rows("SELECT user_id, name, email FROM dt_people ORDER BY name")
@@ -345,7 +360,7 @@ def state(user, now=None):
         "tasks": [_public(t, cats) for t in mine], "pool": [_public(t, cats) for t in pool],
         "holds": holds, "approve": approve,
         "categories": [c for c in cats.values() if c["active"]],
-        "people": store.rows("SELECT user_id, name FROM dt_people ORDER BY name"),
+        "people": sorted(({"user_id": k, "name": v} for k, v in names_for(user).items()), key=lambda p: p["name"]),
         "work": {**work, "targetMinutes": target, "leftMinutes": max(0.0, target - work["provenMinutes"])},
         "settings": {"slotMinutes": cfg["slot_minutes"], "dailyTargetHours": target / 60,
                      "dayLateAfter": cfg["day_late_after"], "greenMin": signal["green_min"],
@@ -706,7 +721,7 @@ def reopen_day(user, body, now=None):
     with conn:
         conn.execute("UPDATE work_days SET end_at=NULL, end_source='reopened' WHERE id=?", (d["id"],))
         _event(conn, who, None, "day_reopen", now, "ended", "open",
-               f"ended {_ist(d['end_at']):%H:%M}, reopened by " + ("the person" if who == me else "Jai"), actor=me)
+               f"ended {_ist(d['end_at']):%H:%M}, reopened by " + ("the person" if who == me else "the owner"), actor=me)
     return state(user, now)
 
 
@@ -930,7 +945,7 @@ def block(user, task_id, body, now=None):
         reason = f"{reason}: {extra}" if extra else reason
     who_id = str(b.get("depends_on_user_id") or "")
     who = store.one("SELECT name FROM dt_people WHERE user_id=?", (who_id,)) if who_id else None
-    name = who["name"] if who else str(b.get("depends_on_name") or "").strip()
+    name = (OWNER if who_id in owner_ids() else who["name"]) if who else str(b.get("depends_on_name") or "").strip()
     if (who_id and not who) or not name or not reason:
         return base._bad("Say who you are waiting on and why.")
     iv = _open(me)
@@ -999,7 +1014,7 @@ def add_proof(user, body, now=None):
     today = work_date(now).isoformat()
     if not slot.startswith(today):
         return 409, {"error": "locked", "message": "Only today's time can get proof. Earlier days are locked; "
-                                                    "ask Jai for a correction."}
+                                                    "ask the owner for a correction."}
     worked = day_slots(me, today, now)
     if slot not in worked:
         return base._bad("There is no timer time in that 15 minutes.")

@@ -107,6 +107,24 @@ def main():
     check("Jai reopens it: back on top for Akash", qa.close(J, q1, False, at(13))[0] == 200
           and qa.inbox(A, at(13))[1]["threads"][0]["id"] == q1)
 
+    print("\n--- employees see 'Owner', never the owner's name ---")
+    th = qa.inbox(A, at(13))[1]["threads"][0]
+    check("in the thread Akash sees Owner", {m["name"] for m in th["messages"] if m["user_id"] == "1"} == {"Owner"})
+    tj = next(x for x in qa.inbox(J, at(13))[1]["threads"] if x["id"] == q1)
+    check("Jai sees names as they are", {m["name"] for m in tj["messages"]} == {"Jai", "Akash Yadav"})
+    wt.start_day(A, at(9, day=27))
+    s = wt.state(A, at(9, day=27))[1]
+    check("the people list on an employee's screen", "Jai" not in {p["name"] for p in s["people"]}
+          and "Owner" in {p["name"] for p in s["people"]} and "Jai" in {p["name"] for p in wt.state(J, at(9, day=27))[1]["people"]})
+    wt.start(A, t, at(9, day=27))
+    wt.block(A, t, {"depends_on_user_id": "1", "reason": "Information required"}, at(9, 30, day=27))
+    check("waiting on the owner is saved as Owner", store.one("SELECT depends_on_name n FROM task_holds")["n"] == "Owner")
+    bi = importlib.import_module("app.daily_tracker.bigideas")
+    bi.submit(J, {"title": "Owner's own idea", "channel": "ChatGPT", "idea": "An idea the owner gave, visible on the open board."}, at(10, day=27))
+    check("an idea the owner gave shows as Owner to employees, Jai to Jai",
+          bi.board(A, at(10, day=27))[1]["ideas"][0]["name"] == "Owner" and bi.board(J, at(10, day=27))[1]["ideas"][0]["name"] == "Jai")
+    check("messages say 'the owner'", wt.ERR_SUPER[1]["message"] == "Only the owner can decide that.")
+
     print("\n--- guardrails ---")
     conn = store.connect()
     for sql in ("DELETE FROM questions", "DELETE FROM question_messages", "UPDATE question_messages SET body='edited'",
