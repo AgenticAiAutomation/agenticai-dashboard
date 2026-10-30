@@ -39,7 +39,7 @@ class Settings:
     # Reviewers: these emails, plus dashboard roles owner/admin.
     SUPERUSERS  = _csv("DAILY_TRACKER_SUPERUSERS",
                        os.environ.get("BACKLINK_OPS_SUPERUSERS",
-                                      "contact@agenticaiautomation.co,jai.prajapati91@gmail.com"))
+                                      "contact@agenticaiautomation.co"))
     ADMIN_ROLES = _csv("DAILY_TRACKER_ADMIN_ROLES", "owner,admin")
     # Same non-raising identity wrapper Invoice Desk uses.
     USER_HOOK   = os.environ.get("DAILY_TRACKER_USER_HOOK",

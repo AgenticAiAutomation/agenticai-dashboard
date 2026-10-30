@@ -29,7 +29,7 @@ class Settings:
 
     # --- identity / roles ----------------------------------------------
     # Superusers are matched on email (preferred) or username, case-insensitive.
-    SUPERUSERS     = _csv("BACKLINK_OPS_SUPERUSERS", "jai.prajapati91@gmail.com")
+    SUPERUSERS     = _csv("BACKLINK_OPS_SUPERUSERS", "contact@agenticaiautomation.co")
     # Host roles mapped onto desk roles. See identity.py for the full policy.
     SUPERUSER_ROLES = _csv("BACKLINK_OPS_SUPERUSER_ROLES", "")
     ADMIN_ROLES     = _csv("BACKLINK_OPS_ADMIN_ROLES", "admin,seo_lead,editor,member")

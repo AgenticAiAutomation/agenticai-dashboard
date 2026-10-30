@@ -19,7 +19,7 @@ class Settings:
     # A dashboard role alone gives no access since 31 Oct 2026 (SEO and writers don't need it).
     SUPERUSERS = _csv("FOLLOWUPS_SUPERUSERS",
                       os.environ.get("BACKLINK_OPS_SUPERUSERS",
-                                     "contact@agenticaiautomation.co,jai.prajapati91@gmail.com"))
+                                     "contact@agenticaiautomation.co"))
     ROLES      = _csv("FOLLOWUPS_ROLES", "")
     USER_HOOK  = os.environ.get("FOLLOWUPS_USER_HOOK", "app.backlink_ops_hook:get_user_or_none")
     # The four follow-ups Jai listed on 22 Oct 2026 are loaded once into an

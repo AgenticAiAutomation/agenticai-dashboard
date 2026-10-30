@@ -36,7 +36,7 @@ class Settings:
     # --- identity --------------------------------------------------------
     # Money is superuser-only: only these emails can see, edit or issue.
     SUPERUSERS  = _csv("INVOICE_DESK_SUPERUSERS",
-                       "contact@agenticaiautomation.co,jai.prajapati91@gmail.com")
+                       "contact@agenticaiautomation.co")
     # "module:callable(request) -> dict|None", must never raise. Defaults to
     # the same non-raising wrapper Backlink Ops uses (a host file, not part of
     # that module — it keeps working if Backlink Ops is switched off).
