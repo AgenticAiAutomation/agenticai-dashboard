@@ -3,7 +3,7 @@
 import { FormEvent, useCallback, useEffect, useState } from 'react';
 import { Card, EmptyState, ErrorBanner } from '@/components/ui';
 import { TrackerStatus, msg } from '@/lib/tracker';
-import { Category, Routine, WState, WTask, clock, hm, slotLabel, wtApi } from '@/lib/worktime';
+import { Category, Credit, Routine, WState, WTask, clock, hm, slotLabel, wtApi } from '@/lib/worktime';
 
 const STATUS: Record<string, string> = {
   todo: 'To do', in_progress: 'Running', paused: 'Paused', blocked: 'Blocked', pool: 'In the Pool',
@@ -148,6 +148,44 @@ function SetDayEnd({ day, onSave }: { day: { date: string; start_at: string }; o
 /* v3 one-tap buttons: the running task pauses; the same button again resumes it. */
 const BREAKS: Record<string, string> = { break: 'Break', lunch: 'Lunch', thinking: 'Thinking', waiting: 'Waiting' };
 
+/* "owes 1h 00m" / "1h 30m ahead" for the month so far. */
+const owes = (c: Credit) => c.owedMinutes > 0 ? `owes ${hm(c.owedMinutes)}` : c.balanceMinutes > 0 ? `${hm(c.balanceMinutes)} ahead` : 'on track';
+
+function CreditsCard({ s, act }: { s: WState; act: (fn: () => Promise<{ data: WState }>, ok?: string) => Promise<void> }) {
+  const [all, setAll] = useState(String(s.allowanceAll));
+  const [mine, setMine] = useState<Record<string, string>>({});
+  return (
+    <Card title="Hour credits this month">
+      <p className="mb-3 text-xs text-muted">
+        Finished days only. A day counts up to {s.teamCredits[0]?.dayCapHours ?? 9} h; extra hours make up short days.
+        Idle after a dependency stop (nothing started within 60 s) is debited. The allowance is how much someone may be short in a month.
+      </p>
+      <form className="mb-3 flex flex-wrap items-end gap-2" onSubmit={(e) => { e.preventDefault(); act(() => wtApi.allowance('*', Number(all)), 'Allowance saved for everyone.'); }}>
+        <label className="w-36 text-xs text-muted">Allowance, everyone (h)
+          <input type="number" min={0} max={200} step={0.5} required className="input-field mt-1" value={all} onChange={(e) => setAll(e.target.value)} />
+        </label>
+        <button className="btn-secondary" type="submit">Save</button>
+      </form>
+      <ul className="space-y-2 text-sm">
+        {s.teamCredits.map((p) => (
+          <li key={p.user_id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-line bg-raised p-3">
+            <span className="text-slate-200">
+              <b className="text-white">{p.name}</b> · {hm(p.workedMinutes)} of {hm(p.targetMinutes)}
+              {p.idleMinutes > 0 && <> · idle {hm(p.idleMinutes)}</>} ·{' '}
+              <b className={p.owedMinutes > 0 ? 'text-amber-300' : 'text-emerald-300'}>{owes(p)}</b>
+            </span>
+            <form className="flex items-center gap-2" onSubmit={(e) => { e.preventDefault(); act(() => wtApi.allowance(p.user_id, Number(mine[p.user_id])), `Allowance saved for ${p.name}.`); }}>
+              <input aria-label={`Allowance for ${p.name}`} type="number" min={0} max={200} step={0.5} required className="input-field w-20"
+                     value={mine[p.user_id] ?? String(p.allowanceHours)} onChange={(e) => setMine({ ...mine, [p.user_id]: e.target.value })} />
+              <button className="btn-secondary" type="submit">Set</button>
+            </form>
+          </li>
+        ))}
+      </ul>
+    </Card>
+  );
+}
+
 /* v3 daily ring: task time only (breaks never count), fills to today's hours. */
 function Ring({ s }: { s: WState }) {
   const target = s.work.targetMinutes;
@@ -177,6 +215,12 @@ function Ring({ s }: { s: WState }) {
           })}
           <span className="rounded-full bg-bg px-3 py-1 text-xs text-slate-200">Tasks done: {s.tasksDone}</span>
         </p>
+        {s.credit && (
+          <p className="mt-2 text-xs text-muted">
+            This month: <b className={s.credit.owedMinutes > 0 ? 'text-amber-300' : 'text-emerald-300'}>{owes(s.credit)}</b>
+            {s.credit.owedMinutes > 0 && ` · make it up on any day (up to ${s.credit.dayCapHours} h a day counts)`}
+          </p>
+        )}
       </div>
     </div>
   );
@@ -349,7 +393,12 @@ export default function TimerPanel({ status }: { status: TrackerStatus }) {
             <div className="mt-4 flex flex-wrap gap-2" aria-label="Breaks">
               {Object.entries(BREAKS).map(([k, label]) => run?.interval.type === k
                 ? <button key={k} className="btn-primary" onClick={() => act(() => wtApi.takeBreak(k), 'Back to work.')}>Resume ({label})</button>
-                : <button key={k} className="btn-secondary" onClick={() => act(() => wtApi.takeBreak(k))}>{label}</button>)}
+                : <button key={k} className="btn-secondary" onClick={() => act(() => wtApi.takeBreak(k))}>
+                    {label}{k === 'thinking' && <span className="ml-1 text-xs text-muted">(up to {s.settings.thinkingCap} min)</span>}
+                  </button>)}
+              {run?.interval.type === 'waiting' && (
+                <p className="w-full text-xs text-amber-300">Start another task or a daily task within 60 seconds, or the wait counts against your hours.</p>
+              )}
             </div>
           )}
         </Card>
@@ -418,6 +467,7 @@ export default function TimerPanel({ status }: { status: TrackerStatus }) {
       {suggest && (
         <Card title="Watch stopped. Stay on track: pick your next task">
           {suggest.approval && <p className="mb-2 text-sm text-amber-200">This stop goes to Jai for approval.</p>}
+          {s.dayFlow && <p className="mb-2 text-sm text-amber-200">Start one within 60 seconds, or the idle time counts against your hours.</p>}
           {suggest.routines.length > 0 && (
             <>
               <p className="label">Jump on a daily task</p>
@@ -496,6 +546,8 @@ export default function TimerPanel({ status }: { status: TrackerStatus }) {
       )}
 
       {s.dayFlow && s.hours && <HoursCard s={s} act={act} />}
+
+      {s.dayFlow && s.isSuperuser && s.teamCredits.length > 0 && <CreditsCard s={s} act={act} />}
 
       {s.dayFlow && s.isSuperuser && (
         <Card title="Daily tasks (offered when someone is stopped by a dependency)">

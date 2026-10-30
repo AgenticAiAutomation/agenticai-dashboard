@@ -75,3 +75,20 @@ undone the same day: the person presses **Resume my day** (Jai can do it for any
 `POST /v2/day/reopen {user_id?}` (empty = yourself; someone else = Jai only). Each reopen is a `day_reopen`
 event with the earlier end time ("ended 16:00, reopened by the person"). Time between parts never counts.
 Work after midnight belongs to the next day. Tests now 67.
+
+## Hour credits, thinking cap, idle debit, Big Ideas (Jai, 30 Oct 2026)
+
+| Rule | How |
+|---|---|
+| Credits | Month so far, finished days only, from the person's first day. Each day counts up to `credit_day_cap_hours` (9) against that day's target; extra hours make up short days. **Owed** = short beyond the allowance, plus idle debit. The person sees "owes 1h 00m / 2h ahead / on track" under the ring. |
+| Allowance | Hours someone may be short in a month. Jai sets everyone's (`user_id '*'`) and per person (own row wins) on the Timer tab, card "Hour credits this month". Table `hour_allowance`, append-only, latest wins, default 0. |
+| Thinking | Counts as work up to `thinking_cap_minutes` (60) a day; the rest doesn't fill the ring or credits. |
+| Idle debit | After a dependency stop or a Waiting tap, if no task or daily task starts within `idle_grace_seconds` (60), the whole gap until the next start (or End my day / midnight) is debited. Overlapping gaps count once. This is on top of the gap not counting as work. |
+| Big Ideas | New tab. Open board: everyone sees every idea and searches before submitting. Channel from `idea_channels`. `ideas_required` (1) a month; `ideas_for_nomination` (6) counted in a month = nominee. Jai's statuses: new, assigned (person + project: a task "Apply idea: …" lands on their desk), worked, not_applied, repeat (not counted). Jai picks Employee of the Month from nominees, once a month, final (`employee_of_month`). Table `big_ideas`, rows never deleted; each decision is a task_events row. |
+
+API: `POST /v2/hours/allowance {user_id|'*', hours}`; `GET/POST /v2/ideas`, `POST /v2/ideas/{id}/decide {status, assign_to, project, note}`,
+`POST /v2/ideas/employee-of-month {user_id, note}`. State adds `credit`, `teamCredits` + `allowanceAll` (Jai), `settings.thinkingCap`.
+Tests: `tests/test_tasks_v3_credits.py` (24).
+
+Limits: the thinking cap and idle debit use the day a stop started (past midnight stays on that day); changing weekly
+hours changes past targets, so it also changes this month's credits.

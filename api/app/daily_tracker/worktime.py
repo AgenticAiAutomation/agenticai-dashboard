@@ -222,8 +222,11 @@ def day_work(user_id, day, now=None):
     slots = day_slots(user_id, day, now)
     proven = set(slots) if settings.TASKS_V3 else {r["slot_start"] for r in store.rows(
         "SELECT slot_start FROM work_slots WHERE user_id=? AND slot_start LIKE ?", (user_id, day + "%"))}
+    over = 0.0
+    if settings.TASKS_V3:  # Thinking beyond the daily cap doesn't count
+        over = max(0.0, _break_minutes(user_id, day, now)["thinking"] - work_settings()["thinking_cap_minutes"])
     return {"workedMinutes": round(sum(s["minutes"] for s in slots.values()), 1),
-            "provenMinutes": round(sum(s["minutes"] for k, s in slots.items() if k in proven), 1),
+            "provenMinutes": round(sum(s["minutes"] for k, s in slots.items() if k in proven) - over, 1),
             "needProof": [{"slot": k, "minutes": round(s["minutes"], 1), "taskId": s["task_id"]}
                           for k, s in sorted(slots.items()) if k not in proven]}
 
@@ -270,13 +273,18 @@ def state(user, now=None):
         "work": {**work, "targetMinutes": target, "leftMinutes": max(0.0, target - work["provenMinutes"])},
         "settings": {"slotMinutes": cfg["slot_minutes"], "dailyTargetHours": target / 60,
                      "dayLateAfter": cfg["day_late_after"], "greenMin": signal["green_min"],
-                     "amberMin": signal["amber_min"]},
+                     "amberMin": signal["amber_min"], "thinkingCap": cfg["thinking_cap_minutes"]},
         "tasksDone": store.one("SELECT COUNT(*) c FROM task_events WHERE user_id=? AND event_type='complete' "
                                "AND server_ts >= ?", (me, _iso(datetime.fromisoformat(today).replace(tzinfo=IST))))["c"],
         "hours": {"week": cfg["week_hours"], "days": store.rows(
             "SELECT date, hours, note FROM day_hours d WHERE id=(SELECT MAX(id) FROM day_hours WHERE date=d.date) "
             "AND date>=? AND hours IS NOT NULL ORDER BY date LIMIT 60", (today,))} if taskmgr.is_super(user) else None,
         "isSuperuser": taskmgr.is_super(user),
+        "credit": month_credit(me, today[:7], now) if settings.TASKS_V3 else None,
+        "teamCredits": [{**p, **month_credit(p["user_id"], today[:7], now), "allowanceHours": allowance_hours(p["user_id"])}
+                        for p in store.rows("SELECT user_id, name FROM dt_people ORDER BY name")]
+        if settings.TASKS_V3 and taskmgr.is_super(user) else [],
+        "allowanceAll": allowance_hours("*"),
         "teamDays": store.rows("SELECT d.user_id, p.name, d.start_at, d.end_at, d.status, d.end_source FROM work_days d "
                                "LEFT JOIN dt_people p ON p.user_id=d.user_id WHERE d.date=? ORDER BY p.name", (today,))
         if taskmgr.is_super(user) else [],
@@ -660,6 +668,83 @@ def set_day_hours(user, body, now=None):
         return base._bad("Hours must be 0 to 16.")
     store.write("INSERT INTO day_hours(date, hours, note, set_by, set_at) VALUES (?,?,?,?,?)",
                 (day, hours, str(b.get("note") or "")[:NOTE_MAX], base.uid(user), _iso(_now(now))))
+    return state(user, now)
+
+
+# ------------------------------------------------------------------ v3: hour credits
+def allowance_hours(user_id):
+    """Hours this person may be short in a month: their own row, else everyone's ('*'), else 0."""
+    r = store.one("SELECT hours FROM hour_allowance WHERE user_id IN (?, '*') "
+                  "ORDER BY user_id='*', id DESC LIMIT 1", (user_id,))
+    return float(r["hours"]) if r else 0.0
+
+
+def idle_minutes(user_id, d0, d1):
+    """Idle after a dependency stop or a Waiting tap, d0 <= stop < d1 (IST dates): if nothing
+    started within the grace, the whole gap until the next start (or the day's end) counts.
+    Gaps are merged so a stop plus a Waiting tap never count twice."""
+    a0, a1 = (_iso(datetime.fromisoformat(d).replace(tzinfo=IST)) for d in (d0, d1))
+    stops = [r["t"] for r in store.rows(
+        "SELECT start_ts t FROM task_holds WHERE user_id=? AND start_ts>=? AND start_ts<? UNION "
+        "SELECT start_ts t FROM work_intervals WHERE user_id=? AND type='waiting' AND start_ts>=? AND start_ts<? "
+        "ORDER BY t", (user_id, a0, a1, user_id, a0, a1))]
+    grace = timedelta(seconds=work_settings()["idle_grace_seconds"])
+    gaps = []
+    for t in stops:
+        s = _ist(t)
+        nxt = store.one("SELECT MIN(start_ts) t FROM work_intervals WHERE user_id=? AND type IN (?,?) AND start_ts>=?",
+                        (user_id, *COUNTS, t))["t"]
+        d = _day(user_id, s.date().isoformat())
+        end = min([_ist(x) for x in (nxt, d and d["end_at"]) if x]
+                  + [datetime.combine(s.date() + timedelta(days=1), datetime.min.time(), IST)])
+        if end - s > grace:
+            gaps.append([s, end])
+    total, last = 0.0, None
+    for s, e in gaps:
+        s = max(s, last) if last else s
+        if e > s:
+            total += (e - s).total_seconds() / 60
+        last = max(last, e) if last else e
+    return round(total, 1)
+
+
+def month_credit(user_id, month, now=None):
+    """The month so far (finished days only, from the person's first day): each day counts up to
+    credit_day_cap_hours against its target; extra hours make up short days. Owed = short hours
+    beyond the allowance, plus idle after dependency stops."""
+    now = _now(now)
+    cfg = work_settings()
+    first = store.one("SELECT MIN(date) d FROM work_days WHERE user_id=?", (user_id,))["d"]
+    today = now.astimezone(IST).date()
+    d = max(_date.fromisoformat(month + "-01"), _date.fromisoformat(first)) if first else today
+    start, worked, target = d, 0.0, 0.0
+    while d < today and d.isoformat()[:7] == month:
+        worked += min(day_work(user_id, d.isoformat(), now)["provenMinutes"], cfg["credit_day_cap_hours"] * 60)
+        target += target_hours(d.isoformat()) * 60
+        d += timedelta(days=1)
+    idle = idle_minutes(user_id, start.isoformat(), d.isoformat()) if d > start else 0.0
+    allow = allowance_hours(user_id) * 60
+    balance = round(worked - target - idle, 1)
+    return {"month": month, "workedMinutes": round(worked, 1), "targetMinutes": target, "idleMinutes": idle,
+            "balanceMinutes": balance, "allowanceMinutes": allow, "owedMinutes": max(0.0, -balance - allow),
+            "dayCapHours": cfg["credit_day_cap_hours"]}
+
+
+def set_allowance(user, body, now=None):
+    """Jai: hours someone (or everyone, user_id '*') may be short in a month."""
+    g = _guard(user, write=True, superuser=True)
+    if g:
+        return g
+    b = body or {}
+    who = str(b.get("user_id") or "*")
+    try:
+        hours = float(b.get("hours"))
+    except (TypeError, ValueError):
+        hours = -1
+    if not 0 <= hours <= 200 or (who != "*" and not store.one("SELECT 1 x FROM dt_people WHERE user_id=?", (who,))):
+        return base._bad("Pick everyone or one person, and 0 to 200 hours.")
+    store.write("INSERT INTO hour_allowance(user_id, hours, set_by, set_at) VALUES (?,?,?,?)",
+                (who, hours, base.uid(user), _iso(_now(now))))
     return state(user, now)
 
 

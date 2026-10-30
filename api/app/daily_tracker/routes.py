@@ -8,7 +8,7 @@ import importlib
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, Response
 
-from . import service, taskmgr, worktime
+from . import bigideas, service, taskmgr, worktime
 from .config import settings
 
 _hook = None
@@ -297,6 +297,26 @@ def build():
     @tasks.post("/v2/hours/week")
     async def v3_week_hours(request: Request):
         return _json(worktime.set_week_hours(current_user(request), await _body(request)))
+
+    @tasks.post("/v2/hours/allowance")
+    async def v3_allowance(request: Request):
+        return _json(worktime.set_allowance(current_user(request), await _body(request)))
+
+    @tasks.get("/v2/ideas")
+    async def v3_ideas(request: Request):
+        return _json(bigideas.board(current_user(request)))
+
+    @tasks.post("/v2/ideas")
+    async def v3_idea_submit(request: Request):
+        return _json(bigideas.submit(current_user(request), await _body(request)))
+
+    @tasks.post("/v2/ideas/{idea_id}/decide")
+    async def v3_idea_decide(request: Request, idea_id: int):
+        return _json(bigideas.decide(current_user(request), idea_id, await _body(request)))
+
+    @tasks.post("/v2/ideas/employee-of-month")
+    async def v3_idea_eom(request: Request):
+        return _json(bigideas.pick_employee_of_month(current_user(request), await _body(request)))
 
     @tasks.post("/v2/hours/day")
     async def v3_day_hours(request: Request):

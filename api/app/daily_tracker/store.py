@@ -327,7 +327,8 @@ ADD_COLUMNS = [
 #   points_ledger -> work_points, work_settings is append-only (latest row wins).
 V3_TABLES = ["task_categories", "work_tasks", "task_events", "work_intervals", "work_slots", "task_holds",
              "time_corrections", "leave_calendar", "work_settings", "work_points", "badges",
-             "badges_awarded", "employee_of_month", "work_days", "daily_routines", "day_hours"]
+             "badges_awarded", "employee_of_month", "work_days", "daily_routines", "day_hours", "hour_allowance",
+             "big_ideas"]
 
 SCHEMA_3 = """
 CREATE TABLE IF NOT EXISTS task_categories (
@@ -562,6 +563,37 @@ CREATE TABLE IF NOT EXISTS day_hours (
 );
 CREATE INDEX IF NOT EXISTS ix_dh_date ON day_hours(date, id);
 
+-- Tasks v3 hour credits: hours a person may be short in a month before they owe time.
+-- user_id '*' = everyone; latest row per user wins, a person's own row beats '*'.
+CREATE TABLE IF NOT EXISTS hour_allowance (
+    id      INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id TEXT NOT NULL,
+    hours   REAL NOT NULL,
+    set_by  TEXT NOT NULL,
+    set_at  TEXT NOT NULL
+);
+
+-- Tasks v3 Big Ideas: how to make Agentic AI Automation the most watched company
+-- (social, ChatGPT, Gemini, Maps...). Open to everyone. Jai sets status; 'repeat' doesn't
+-- count. 'assigned' made a work_tasks row (task_id) for the person applying it.
+CREATE TABLE IF NOT EXISTS big_ideas (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id     TEXT NOT NULL,
+    month       TEXT NOT NULL,
+    title       TEXT NOT NULL,
+    channel     TEXT NOT NULL,
+    idea        TEXT NOT NULL,
+    status      TEXT NOT NULL DEFAULT 'new',
+    assigned_to TEXT,
+    project     TEXT NOT NULL DEFAULT '',
+    task_id     INTEGER,
+    note        TEXT NOT NULL DEFAULT '',
+    decided_by  TEXT,
+    decided_at  TEXT,
+    created_at  TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ix_bi_month ON big_ideas(month, user_id);
+
 -- ---- guardrails: nothing in v2 is ever deleted
 """ + "".join(
     f"CREATE TRIGGER IF NOT EXISTS g_{t}_nodelete BEFORE DELETE ON {t} "
@@ -571,7 +603,7 @@ CREATE INDEX IF NOT EXISTS ix_dh_date ON day_hours(date, id);
     f"CREATE TRIGGER IF NOT EXISTS g_{t}_noupdate BEFORE UPDATE ON {t} "
     f"BEGIN SELECT RAISE(ABORT, 'tasks v2: {t} rows are never changed'); END;\n"
     for t in ("task_events", "work_slots", "work_settings", "work_points", "badges_awarded", "employee_of_month",
-              "day_hours")
+              "day_hours", "hour_allowance")
 ) + """
 -- An interval can only be CLOSED (end_ts set once, after start); never reopened or moved.
 CREATE TRIGGER IF NOT EXISTS g_work_intervals_close BEFORE UPDATE ON work_intervals
@@ -658,6 +690,14 @@ DEFAULT_WORK_SETTINGS = {
     "day_late_after": "10:30",                    # v3: "Start my day" after this (IST) = late start, never a penalty
     # v3: why the watch stopped for a dependency (Jai, 27 Oct). No proof is asked in v3.
     "block_reasons": ["Credentials expired", "Document required", "Information required"],
+    # v3 hour credits (Jai, 30 Oct): short hours beyond the allowance are made up on other days
+    "credit_day_cap_hours": 9,                    # at most this much of a day counts toward credits
+    "thinking_cap_minutes": 60,                   # Thinking counts as work up to this much a day
+    "idle_grace_seconds": 60,                     # after a dependency stop / Waiting, start something within this
+    "idea_channels": ["Social media", "Google search", "ChatGPT", "Google Gemini", "DeepSeek", "Grok",
+                      "Perplexity", "Claude", "Copilot", "Google Maps", "Apple Maps", "Other"],
+    "ideas_required": 1,                          # Big Ideas a month, everyone
+    "ideas_for_nomination": 6,                    # counted ideas in a month = Employee of the Month nominee
 }
 
 DEFAULT_BADGES = [

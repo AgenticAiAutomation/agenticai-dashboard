@@ -13,15 +13,17 @@ import MirrorPanel from '@/components/tasks/MirrorPanel';
 import PlanPanel from '@/components/tasks/PlanPanel';
 import TasksPanel from '@/components/tasks/TasksPanel';
 import TimerPanel from '@/components/worktime/TimerPanel';
+import BigIdeasPanel from '@/components/worktime/BigIdeasPanel';
 import { TrackerStatus, WorkType, is404, msg, trackerApi } from '@/lib/tracker';
 
-type Tab = 'timer' | 'tasks' | 'today' | 'progress' | 'ideas' | 'mirror' | 'review' | 'plan' | 'report';
+type Tab = 'timer' | 'bigideas' | 'tasks' | 'today' | 'progress' | 'ideas' | 'mirror' | 'review' | 'plan' | 'report';
 
 /* The tabs this person gets, in order. Used for the tab bar and ?tab= links. */
 function tabsFor(s: TrackerStatus): [Tab, string][] {
   const tm = !!s.taskManager;
   return [
     ...(s.tasksV2 ? ([['timer', 'Timer']] as [Tab, string][]) : []),
+    ...(s.tasksV3 ? ([['bigideas', 'Big Ideas']] as [Tab, string][]) : []),
     ...(tm ? ([['tasks', 'My tasks']] as [Tab, string][]) : []),
     ...(s.tracker ? ([['today', tm ? 'Daily log' : 'Today'], ['progress', 'Progress & leaderboard']] as [Tab, string][]) : []),
     ...(s.ideas ? ([['ideas', 'Idea Board']] as [Tab, string][]) : []),
@@ -103,6 +105,7 @@ export default function TasksPage() {
             ))}
           </div>
           {tab === 'timer' && status.tasksV2 && <TimerPanel status={status} />}
+          {tab === 'bigideas' && status.tasksV3 && <BigIdeasPanel />}
           {tab === 'tasks' && status.taskManager && <TasksPanel status={status} />}
           {tab === 'today' && status.tracker && <TodayPanel status={status} types={types} />}
           {tab === 'mirror' && status.taskManager && <MirrorPanel status={status} />}

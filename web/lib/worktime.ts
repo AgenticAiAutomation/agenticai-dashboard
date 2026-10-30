@@ -21,6 +21,25 @@ export type Hold = {
 /* v3: one row per person per day. status on_time | late; end_at null while the day runs. */
 export type WorkDay = { date: string; start_at: string; end_at: string | null; status: string; end_source: string };
 
+/* v3 hour credits for the month so far (finished days). owedMinutes = short beyond the allowance. */
+export type Credit = {
+  month: string; workedMinutes: number; targetMinutes: number; idleMinutes: number;
+  balanceMinutes: number; allowanceMinutes: number; owedMinutes: number; dayCapHours: number;
+};
+
+/* v3 Big Ideas board (open to everyone). */
+export type BigIdea = {
+  id: number; user_id: string; name: string; month: string; title: string; channel: string; idea: string;
+  status: string; assigned_to: string | null; assignedName: string; project: string; task_id: number | null;
+  note: string; created_at: string;
+};
+export type IdeaBoard = {
+  month: string; ideas: BigIdea[]; channels: string[]; required: number; forNomination: number; me: string;
+  people: { user_id: string; name: string; counted: number; worked: number; assigned: number; nominated: boolean }[];
+  isSuperuser: boolean; statuses: string[]; projects: string[];
+  employeeOfMonth: { user_id: string; name: string; note: string } | null;
+};
+
 /* v3: Jai's predefined daily tasks; user_id '*' = everyone. */
 export type Routine = {
   id: number; title: string; category: string; category_id: number; details: Record<string, string>;
@@ -36,10 +55,11 @@ export type WState = {
     workedMinutes: number; provenMinutes: number; targetMinutes: number; leftMinutes: number;
     needProof: { slot: string; minutes: number; taskId: number | null }[];
   };
-  settings: { slotMinutes: number; dailyTargetHours: number; dayLateAfter: string; greenMin: number; amberMin: number };
+  settings: { slotMinutes: number; dailyTargetHours: number; dayLateAfter: string; greenMin: number; amberMin: number; thinkingCap: number };
   tasksDone: number;
   hours: { week: number[]; days: { date: string; hours: number; note: string }[] } | null;
   isSuperuser: boolean;
+  credit: Credit | null; teamCredits: (Credit & { user_id: string; name: string; allowanceHours: number })[]; allowanceAll: number;
   teamDays: { user_id: string; name: string | null; start_at: string; end_at: string | null; status: string }[];
   dayFlow: boolean; day: WorkDay | null; openDay: WorkDay | null;
   blockReasons: string[]; routines: Routine[]; routinesAll: Routine[];
@@ -69,6 +89,12 @@ export const wtApi = {
   dayHours: (date: string, hours: number | null, note = '') => api.post<WState>(`${V}/hours/day`, { date, hours, note }),
   createRoutine: (body: Record<string, unknown>) => api.post<WState>(`${V}/routines`, body),
   routineActive: (id: number, active: boolean) => api.post<WState>(`${V}/routines/${id}/active`, { active }),
+  allowance: (user_id: string, hours: number) => api.post<WState>(`${V}/hours/allowance`, { user_id, hours }),
+  ideas: () => api.get<IdeaBoard>(`${V}/ideas`),
+  submitIdea: (body: { title: string; channel: string; idea: string }) => api.post<IdeaBoard>(`${V}/ideas`, body),
+  decideIdea: (id: number, body: { status: string; assign_to?: string; project?: string; note?: string }) =>
+    api.post<IdeaBoard>(`${V}/ideas/${id}/decide`, body),
+  pickEmployeeOfMonth: (user_id: string, note = '') => api.post<IdeaBoard>(`${V}/ideas/employee-of-month`, { user_id, note }),
   startRoutine: (id: number) => api.post<WState>(`${V}/routines/${id}/start`),
 };
 
