@@ -8,7 +8,7 @@ import importlib
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, Response
 
-from . import bigideas, service, taskmgr, worktime
+from . import bigideas, game, service, taskmgr, worktime
 from .config import settings
 
 _hook = None
@@ -313,6 +313,10 @@ def build():
     @tasks.post("/v2/ideas/employee-of-month")
     async def v3_idea_eom(request: Request):
         return _json(bigideas.pick_employee_of_month(current_user(request), await _body(request)))
+
+    @tasks.post("/v2/tasks/{task_id}/review")
+    async def v3_task_review(request: Request, task_id: int):
+        return _json(game.review(current_user(request), task_id, await _body(request)))
 
     @tasks.post("/v2/wins")
     async def v3_win_submit(request: Request):

@@ -28,6 +28,12 @@ export type Credit = {
   ringsClosed: number; ringDays: number;
 };
 
+/* v3 Step 6: points (earned when Jai accepts), streak, level, badges. */
+export type Game = {
+  points: number; pending: number; streak: number; level: string; nextLevel: { name: string; at: number } | null;
+  badges: { code: string; name: string; count: number }[];
+};
+
 /* v3 Big Ideas board (open to everyone). */
 export type BigIdea = {
   id: number; user_id: string; name: string; month: string; title: string; channel: string; idea: string;
@@ -70,6 +76,10 @@ export type WState = {
   hours: { week: number[]; days: { date: string; hours: number; note: string }[] } | null;
   isSuperuser: boolean;
   hoursChanges: { week: number[]; effective_from: string }[];
+  game?: Game; leaderboard?: { user_id: string; name: string; points: number; rings: number }[];
+  toReview?: { id: number; title: string; name: string; estimate_min: number; complexity: string; points: number; done_at: string }[];
+  chunks?: number[]; pointsPerHour?: number; complexity?: Record<string, number>;
+  monthGoal?: { month: string; to: string; targetMinutes: number; workedMinutes: number; ideaGiven: boolean };
   credit: Credit | null; teamCredits: (Credit & { user_id: string; name: string; allowanceHours: number })[]; allowanceAll: number;
   teamDays: { user_id: string; name: string | null; start_at: string; end_at: string | null; status: string }[];
   dayFlow: boolean; day: WorkDay | null;
@@ -111,6 +121,7 @@ export const wtApi = {
     api.post<IdeaBoard>(`${V}/wins/${id}/decide`, { decision, note }),
   bonusCsv: (month?: string) => api.get<Blob>(`${V}/bonus.csv`, { params: { month }, responseType: 'blob' }),
   pickEmployeeOfMonth: (user_id: string, note = '') => api.post<IdeaBoard>(`${V}/ideas/employee-of-month`, { user_id, note }),
+  reviewTask: (id: number, accept: boolean, note = '') => api.post<WState>(`${V}/tasks/${id}/review`, { accept, note }),
   startRoutine: (id: number) => api.post<WState>(`${V}/routines/${id}/start`),
 };
 
@@ -124,5 +135,12 @@ export const slotLabel = (slot: string, minutes = 15) => {
 /** ISO time → "9:42 am" in IST */
 export const clock = (iso: string) =>
   new Date(iso).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', timeZone: 'Asia/Kolkata' });
+
+/** Points a task earns once Jai accepts it: hours x points per hour x complexity. */
+export const pointsFor = (s: { pointsPerHour?: number; complexity?: Record<string, number> }, t: { estimate_min: number; details: Record<string, string> }) =>
+  Math.round(((t.estimate_min || 0) / 60) * (s.pointsPerHour ?? 20) * (s.complexity?.[t.details?.complexity] ?? 1));
+
+/** 15 -> "15m", 60 -> "1h", 180 -> "3h" */
+export const chunkLabel = (m: number) => (m < 60 ? `${m}m` : `${m / 60}h`);
 
 export const hm = (min: number) => `${Math.floor(min / 60)}h ${String(Math.round(min % 60)).padStart(2, '0')}m`;

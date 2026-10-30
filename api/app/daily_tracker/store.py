@@ -733,6 +733,12 @@ DEFAULT_WORK_SETTINGS = {
                       "Perplexity", "Claude", "Copilot", "Google Maps", "Apple Maps", "Other"],
     "ideas_required": 1,                          # Big Ideas a month, everyone
     "ideas_for_nomination": 6,                    # counted ideas in a month = Employee of the Month nominee
+    # v3 Step 6 points: 15m = 5, 30m = 10, 1h = 20, 3h = 60, times complexity; earned when Jai accepts
+    "chunks": [15, 30, 60, 180],
+    "points_per_hour": 20,
+    "complexity_multiplier": {"Easy": 1, "Medium": 1.5, "Hard": 2},
+    "idea_worked_points": 50,                     # a Big Idea Jai marks Worked
+    "win_points": 25,                             # a Win Jai approves
 }
 
 DEFAULT_BADGES = [
@@ -743,6 +749,15 @@ DEFAULT_BADGES = [
     ("helper", "Unblocker", "Helped a teammate get unblocked"),
     ("automation", "Automation Champion", "An automation with measured time saved"),
     ("employee_of_month", "Employee of the Month", "Chosen by Jai"),
+    # v3 Step 6 starter set
+    ("early_bird", "Early Bird", "Started the day on time"),
+    ("ring_closer", "Ring Closer", "Met the day's hours"),
+    ("streak_5d", "5-day Streak", "Met the day's hours 5 working days in a row"),
+    ("streak_20d", "20-day Streak", "Met the day's hours 20 working days in a row"),
+    ("hard_mode", "Hard Mode", "5 Hard tasks accepted in a week"),
+    ("blocker_buster", "Blocker Buster", "Started the next task within 2 minutes of a block"),
+    ("idea_maker", "Idea Maker", "Gave the month's Big Idea"),
+    ("achiever", "Achiever", "A Win approved by Jai"),
 ]
 
 DEFAULT_TIERS = [("Bronze", 300), ("Silver", 600), ("Gold", 1000), ("Platinum", 1500)]

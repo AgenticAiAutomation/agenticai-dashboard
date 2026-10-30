@@ -104,3 +104,19 @@ Tests: `tests/test_tasks_v3_credits.py` (24).
 
 Step 7 overlap: the idea part is Big Ideas (Jai's own rules replace the work order's idea form). Points and badges for
 approved items wait for the Step 6 points engine. Tests: credits 41, day 69.
+
+## Step 6 — points and game layer + status ring and month bar (Jai, 30 Oct 2026)
+
+| Rule | How |
+|---|---|
+| Points | Task = estimate hours × `points_per_hour` (20: 15m = 5, 30m = 10, 1h = 20, 3h = 60) × `complexity_multiplier` (Easy 1, Medium 1.5, Hard 2). Jai's create form has Time (`chunks`) and Complexity (kept in the task's details) and shows the points on offer. Pending until Jai accepts. |
+| Accept | Jai's card "Done, waiting for you": Accept (status accepted, `work_points` rule `task`) or Send back with a note (paused). `POST /v2/tasks/{id}/review {accept, note}`. No proof involved (no-proof decision of 27 Oct). |
+| Ideas / Wins | Worked Big Idea +`idea_worked_points` (50), approved Win +`win_points` (25), written when Jai decides. |
+| Streak | Working days in a row with the day's hours met; days without a target (Sunday, 0-hour dates) don't break it; today counts once met. Leave isn't built yet (Step 9). |
+| Levels | v2 `levels` setting, from all points. |
+| Badges | Early Bird (on-time start, per day), Ring Closer (hours met, per day), 5-day / 20-day Streak, Hard Mode (5 Hard accepted in an ISO week), Blocker Buster (next task within 2 min of a block), Idea Maker (month's idea given), Achiever (approved Win). Worked out by `game.refresh`, written once. |
+| Leaderboard | This week (Monday on): points and days the hours were met, never hours. Everyone sees it on the Timer tab. |
+| Ring | No longer fills toward the daily target. Green ("Winning") by default; amber when the month owes hours, red when it owes more than a day's hours. Today's time, streak and points sit beside it. Confetti + chime when the day's hours are met; "Sounds and confetti" switch per browser. |
+| Month bar | Hours this work month against the whole month's hours; stops at 99 % until the month's Big Idea is in. |
+
+Tests: `tests/test_tasks_v3_game.py` (22).

@@ -109,6 +109,10 @@ def decide(user, idea_id, body, now=None):
                      "decided_at=? WHERE id=?", (st, who, project, task_id, note, base.uid(user), wt._iso(now), idea_id))
         wt._event(conn, i["user_id"], task_id, "idea_" + st, now, i["status"], st, f"big idea #{idea_id}",
                   actor=base.uid(user))
+        if st == "worked":
+            from . import game
+            game._award(conn, i["user_id"], "idea_worked", f"idea:{idea_id}", wt.work_settings()["idea_worked_points"],
+                        i["title"][:200], base.uid(user), now=now)
     return board(user, now)
 
 
@@ -190,6 +194,10 @@ def decide_win(user, win_id, body, now=None):
         conn.execute("UPDATE achievements SET status=?, note=?, decided_by=?, decided_at=? WHERE id=?",
                      (st, note, base.uid(user), wt._iso(now), win_id))
         wt._event(conn, w["user_id"], None, "win_" + st, now, w["status"], st, f"win #{win_id}", actor=base.uid(user))
+        if st == "approved":
+            from . import game
+            game._award(conn, w["user_id"], "win", f"win:{win_id}", wt.work_settings()["win_points"], w["what"][:200],
+                        base.uid(user), now=now)
     return board(user, now)
 
 

@@ -92,7 +92,7 @@ cfg = store.one("SELECT value FROM work_settings ORDER BY id DESC LIMIT 1")["val
 check("settings: 7 h, Mon-Sat, 2 leaves, 15-min slots",
       all(s in cfg for s in ('"daily_target_hours": 7', '"working_days": [0, 1, 2, 3, 4, 5]',
                              '"leave_allowance_per_month": 2', '"slot_minutes": 15')))
-check("badges seeded", store.one("SELECT COUNT(*) c FROM badges")["c"] == 7)
+check("badges seeded", store.one("SELECT COUNT(*) c FROM badges")["c"] == 15)  # 7 v2 + 8 v3 Step 6
 
 store.init_db()
 check("running it again: no second backup, nothing re-seeded",

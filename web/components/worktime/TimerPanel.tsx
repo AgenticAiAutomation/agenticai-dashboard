@@ -1,9 +1,9 @@
 'use client';
 
-import { FormEvent, useCallback, useEffect, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useRef, useState } from 'react';
 import { Card, EmptyState, ErrorBanner } from '@/components/ui';
 import { TrackerStatus, msg } from '@/lib/tracker';
-import { Category, Credit, Routine, WState, WTask, clock, hm, slotLabel, wtApi } from '@/lib/worktime';
+import { Category, Credit, Routine, WState, WTask, chunkLabel, clock, hm, pointsFor, slotLabel, wtApi } from '@/lib/worktime';
 
 const STATUS: Record<string, string> = {
   todo: 'To do', in_progress: 'Running', paused: 'Paused', blocked: 'Blocked', pool: 'In the Pool',
@@ -28,7 +28,7 @@ function Elapsed({ start, skew }: { start: string; skew: number }) {
 
 function AddTask({ s, isAdmin, onDone, routine = false }: { s: WState; isAdmin: boolean; onDone: (m: string) => void; routine?: boolean }) {
   const [catId, setCatId] = useState<number>(s.categories[0]?.id ?? 0);
-  const [f, setF] = useState({ title: '', priority: 'P2', due_date: '', estimate_min: '', assign_to: '' });
+  const [f, setF] = useState({ title: '', priority: 'P2', due_date: '', estimate_min: s.dayFlow ? '60' : '', assign_to: '', complexity: 'Medium' });
   const [details, setDetails] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const cat: Category | undefined = s.categories.find((c) => c.id === catId);
@@ -36,7 +36,7 @@ function AddTask({ s, isAdmin, onDone, routine = false }: { s: WState; isAdmin: 
     e.preventDefault();
     try {
       if (routine) await wtApi.createRoutine({ title: f.title, category_id: catId, details, priority: f.priority, user_id: f.assign_to || '*' });
-      else await wtApi.create({ ...f, category_id: catId, details, estimate_min: Number(f.estimate_min) || 0,
+      else await wtApi.create({ ...f, complexity: s.dayFlow ? f.complexity : undefined, category_id: catId, details, estimate_min: Number(f.estimate_min) || 0,
                                 assign_to: f.assign_to || undefined, due_date: f.due_date || undefined });
       setF({ ...f, title: '' }); setDetails({}); setError(null);
       onDone(routine ? 'Daily task added.' : 'Task added.');
@@ -84,7 +84,24 @@ function AddTask({ s, isAdmin, onDone, routine = false }: { s: WState; isAdmin: 
           <input id="w-due" type="date" className="input-field" value={f.due_date} onChange={(e) => setF({ ...f, due_date: e.target.value })} />
         </div>
       )}
-      {!routine && (
+      {!routine && s.dayFlow && (
+        <>
+          <div>
+            <label className="label" htmlFor="w-chunk">Time</label>
+            <select id="w-chunk" className="input-field" value={f.estimate_min} onChange={(e) => setF({ ...f, estimate_min: e.target.value })}>
+              {(s.chunks ?? [15, 30, 60, 180]).map((m) => <option key={m} value={m}>{chunkLabel(m)}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="label" htmlFor="w-cx">Complexity</label>
+            <select id="w-cx" className="input-field" value={f.complexity} onChange={(e) => setF({ ...f, complexity: e.target.value })}>
+              {Object.keys(s.complexity ?? { Easy: 1, Medium: 1.5, Hard: 2 }).map((k) => <option key={k} value={k}>{k}</option>)}
+            </select>
+            <p className="mt-1 text-xs text-muted">Earns {pointsFor(s, { estimate_min: Number(f.estimate_min), details: { complexity: f.complexity } })} points when Jai accepts it.</p>
+          </div>
+        </>
+      )}
+      {!routine && !s.dayFlow && (
         <div>
           <label className="label" htmlFor="w-est">Estimate, minutes (optional)</label>
           <input id="w-est" type="number" min={0} className="input-field" value={f.estimate_min}
@@ -173,27 +190,37 @@ function CreditsCard({ s, act }: { s: WState; act: (fn: () => Promise<{ data: WS
   );
 }
 
-/* v3 daily ring: task time only (breaks never count), fills to today's hours. */
-function Ring({ s }: { s: WState }) {
-  const target = s.work.targetMinutes;
-  const pct = target ? Math.min(100, (s.work.provenMinutes / target) * 100) : 0;
-  const tone = pct >= s.settings.greenMin ? 'stroke-emerald-400' : pct >= s.settings.amberMin ? 'stroke-amber-400' : 'stroke-primary';
-  const C = 2 * Math.PI * 52;
+/* v3 status ring: green (winning) by default; amber when the month owes hours, red when it owes more
+   than a full day. It does not fill toward the daily target. */
+function Ring({ s, fx }: { s: WState; fx: boolean }) {
+  const owed = s.credit?.owedMinutes ?? 0;
+  const tone = owed <= 0 ? 'stroke-emerald-400' : owed < (s.work.targetMinutes || 420) ? 'stroke-amber-400' : 'stroke-red-400';
+  const done = s.work.targetMinutes > 0 && s.work.provenMinutes >= s.work.targetMinutes;
+  const was = useRef(done);
+  const [party, setParty] = useState(false);
+  useEffect(() => {
+    if (done && !was.current && fx) { setParty(true); chime(); setTimeout(() => setParty(false), 2500); }
+    was.current = done;
+  }, [done, fx]);
   return (
-    <div className="flex flex-col items-center gap-3 sm:flex-row sm:gap-6">
-      <svg viewBox="0 0 120 120" className="h-40 w-40 shrink-0 -rotate-90" role="img"
-           aria-label={target ? `${Math.round(pct)}% of today's ${hm(target)}` : 'Day off'}>
-        <circle cx="60" cy="60" r="52" fill="none" strokeWidth="10" className="stroke-bg" />
-        <circle cx="60" cy="60" r="52" fill="none" strokeWidth="10" strokeLinecap="round" className={`${tone} transition-all duration-700`}
-                strokeDasharray={C} strokeDashoffset={C * (1 - pct / 100)} />
-        <text x="60" y="60" transform="rotate(90 60 60)" textAnchor="middle" dominantBaseline="central" className="fill-white text-[18px] font-semibold">
-          {target ? `${Math.round(pct)}%` : 'Off'}
+    <div className="relative flex flex-col items-center gap-3 sm:flex-row sm:gap-6">
+      {party && <Confetti />}
+      <svg viewBox="0 0 120 120" className="h-40 w-40 shrink-0" role="img" aria-label={owed > 0 ? `Behind by ${hm(owed)} this month` : 'Winning this month'}>
+        <circle cx="60" cy="60" r="52" fill="none" strokeWidth="10" className={`${tone} transition-colors duration-700`} />
+        <text x="60" y="54" textAnchor="middle" dominantBaseline="central" className="fill-white text-[15px] font-semibold">
+          {owed > 0 ? `−${hm(owed)}` : 'Winning'}
+        </text>
+        <text x="60" y="74" textAnchor="middle" dominantBaseline="central" className="fill-slate-400 text-[9px]">
+          {owed > 0 ? 'to make up' : s.credit && s.credit.balanceMinutes > 0 ? `+${hm(s.credit.balanceMinutes)} ahead` : 'this month'}
         </text>
       </svg>
       <div className="text-center sm:text-left">
-        {!target ? <p className="text-sm text-slate-200">No hours set for today.</p>
-          : pct >= 100 ? <p className="text-lg font-semibold text-emerald-300">🎉 Day complete</p>
-          : <p className="text-sm text-slate-200"><b className="text-white">{hm(s.work.provenMinutes)}</b> of {hm(target)} · <b className="text-white">{hm(s.work.leftMinutes)}</b> to go</p>}
+        <p className="text-sm text-slate-200">Today: <b className="text-white">{hm(s.work.provenMinutes)}</b>
+          {done && <span className="ml-2 text-emerald-300">🎉 day&apos;s hours done</span>}</p>
+        {s.game && (
+          <p className="mt-1 text-sm text-slate-200">🔥 <b className="text-white">{s.game.streak}</b>-day streak · <b className="text-white">{s.game.points}</b> points
+            {s.game.pending > 0 && <span className="text-muted"> (+{s.game.pending} waiting for Jai)</span>}</p>
+        )}
         <p className="mt-2 flex flex-wrap justify-center gap-2 sm:justify-start">
           {(['break', 'lunch'] as const).map((k) => {
             const used = s.breaks.used[k], over = used > s.breaks.limit[k];
@@ -202,16 +229,80 @@ function Ring({ s }: { s: WState }) {
           })}
           <span className="rounded-full bg-bg px-3 py-1 text-xs text-slate-200">Tasks done: {s.tasksDone}</span>
         </p>
-        {s.credit && (
-          <p className="mt-2 text-xs text-muted">
-            This month: <b className={s.credit.owedMinutes > 0 ? 'text-amber-300' : 'text-emerald-300'}>{owes(s.credit)}</b>
-            {s.credit.owedMinutes > 0 && ` · make it up by ${day(s.credit.to)}`}
-          </p>
+        {s.credit && s.credit.owedMinutes > 0 && (
+          <p className="mt-2 text-xs text-amber-300">Make it up by {day(s.credit.to)}.</p>
         )}
       </div>
     </div>
   );
 }
+
+/* Month goal bar: hours this work month against the month's hours. Full only once the month's idea is in. */
+function MonthBar({ s }: { s: WState }) {
+  const g = s.monthGoal;
+  if (!g || !g.targetMinutes) return null;
+  const raw = Math.min(100, (g.workedMinutes / g.targetMinutes) * 100);
+  const pct = g.ideaGiven ? raw : Math.min(raw, 99);
+  return (
+    <div className="mt-5">
+      <div className="flex flex-wrap items-baseline justify-between gap-2 text-xs text-muted">
+        <span>Month goal (to {day(g.to)}): <b className="text-white">{hm(g.workedMinutes)}</b> of {hm(g.targetMinutes)}</span>
+        <span className="text-white">{Math.floor(pct)}%</span>
+      </div>
+      <div className="mt-1 h-2 overflow-hidden rounded-full bg-bg" role="progressbar" aria-valuenow={Math.floor(pct)} aria-valuemin={0} aria-valuemax={100}>
+        <div className={`h-full ${pct >= 100 ? 'bg-emerald-400' : 'bg-primary'} transition-all duration-700`} style={{ width: `${pct}%` }} />
+      </div>
+      {!g.ideaGiven && <p className="mt-1 text-xs text-amber-300">The month completes only after your Big Idea. <a className="underline" href="/tasks/?tab=bigideas">Give it</a></p>}
+    </div>
+  );
+}
+
+/* A short two-note chime; silent if the browser blocks audio. */
+function chime() {
+  try {
+    const ctx = new AudioContext();
+    [660, 880].forEach((f, i) => {
+      const o = ctx.createOscillator(), g = ctx.createGain();
+      o.frequency.value = f; g.gain.value = 0.08;
+      o.connect(g); g.connect(ctx.destination);
+      o.start(ctx.currentTime + i * 0.15); o.stop(ctx.currentTime + i * 0.15 + 0.14);
+    });
+  } catch { /* no sound */ }
+}
+
+function Confetti() {
+  return (
+    <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden">
+      <style>{'@keyframes wt-fall{from{transform:translateY(-20px) rotate(0)}to{transform:translateY(220px) rotate(540deg);opacity:0}}'}</style>
+      {Array.from({ length: 28 }, (_, i) => (
+        <span key={i} className="absolute top-0 h-2 w-1.5 rounded-sm"
+              style={{ left: `${(i * 37) % 100}%`, background: ['#34d399', '#60a5fa', '#fbbf24', '#f472b6'][i % 4],
+                       animation: `wt-fall ${1.2 + (i % 5) * 0.2}s ease-in ${(i % 7) * 0.08}s forwards` }} />
+      ))}
+    </div>
+  );
+}
+
+/* Points, level, badges; plus the sounds-and-confetti switch (this browser only). */
+function GameCard({ s, fx, setFx }: { s: WState; fx: boolean; setFx: (v: boolean) => void }) {
+  const g = s.game!;
+  return (
+    <Card title="Points & badges">
+      <p className="text-sm text-slate-200"><b className="text-white">{g.points}</b> points · level <b className="text-white">{g.level}</b>
+        {g.nextLevel && <span className="text-muted"> · {g.nextLevel.at - g.points} to {g.nextLevel.name}</span>}</p>
+      <p className="mt-1 text-xs text-muted">A task earns its points when Jai accepts it. Worked ideas and approved Wins add more.</p>
+      {g.badges.length > 0 ? (
+        <p className="mt-3 flex flex-wrap gap-2">
+          {g.badges.map((b) => <span key={b.code} className="rounded-full bg-bg px-3 py-1 text-xs text-slate-200">🏅 {b.name}{b.count > 1 && ` ×${b.count}`}</span>)}
+        </p>
+      ) : <p className="mt-3 text-xs text-muted">No badges yet. Start your day on time for Early Bird.</p>}
+      <label className="mt-3 flex items-center gap-2 text-xs text-muted">
+        <input type="checkbox" checked={fx} onChange={(e) => setFx(e.target.checked)} /> Sounds and confetti
+      </label>
+    </Card>
+  );
+}
+
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
@@ -276,6 +367,7 @@ function ProofForm({ slot, minutes, onSave }: { slot: string; minutes: number; o
 }
 
 export default function TimerPanel({ status }: { status: TrackerStatus }) {
+  const [fx, setFxState] = useState(() => { try { return localStorage.getItem('wt-fx') !== '0'; } catch { return true; } });
   const [s, setS] = useState<WState | null>(null);
   const [skew, setSkew] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -315,6 +407,7 @@ export default function TimerPanel({ status }: { status: TrackerStatus }) {
   }
 
   const run = s.running;
+  const setFx = (v: boolean) => { setFxState(v); try { localStorage.setItem('wt-fx', v ? '1' : '0'); } catch { /* private mode */ } };
   const onBreak = !!run && run.interval.type in BREAKS;
   const pct = Math.min(100, (s.work.provenMinutes / s.work.targetMinutes) * 100);
   const due = s.work.needProof;
@@ -400,7 +493,7 @@ export default function TimerPanel({ status }: { status: TrackerStatus }) {
             </div>
           )}
         </Card>
-        {s.dayFlow ? <Card title="Today"><Ring s={s} /></Card> : (
+        {s.dayFlow ? <Card title="This month"><Ring s={s} fx={fx} /><MonthBar s={s} /></Card> : (
         <Card title="Today">
           <p className="text-sm text-slate-200">
             <b className="text-white">{hm(s.work.provenMinutes)}</b> proven of {s.settings.dailyTargetHours}h ·{' '}
@@ -543,9 +636,48 @@ export default function TimerPanel({ status }: { status: TrackerStatus }) {
         </Card>
       )}
 
+      {s.dayFlow && s.game && (
+        <div className="grid gap-4 md:grid-cols-2">
+          <GameCard s={s} fx={fx} setFx={setFx} />
+          <Card title="This week">
+            <p className="mb-2 text-xs text-muted">Points and days the hours were met. Hours are never compared.</p>
+            {(s.leaderboard ?? []).length === 0 ? <p className="text-sm text-muted">Nobody yet this week.</p> : (
+              <ol className="space-y-1 text-sm">
+                {s.leaderboard!.map((r, i) => (
+                  <li key={r.user_id} className={`flex justify-between rounded-md px-3 py-2 ${r.user_id === status.me.id ? 'bg-primary/15' : 'bg-bg'}`}>
+                    <span className="text-slate-200">{i + 1}. {r.name}</span>
+                    <span className="text-white">{r.points} pts · {r.rings} ✓</span>
+                  </li>
+                ))}
+              </ol>
+            )}
+          </Card>
+        </div>
+      )}
+
       {s.dayFlow && s.hours && <HoursCard s={s} act={act} />}
 
       {s.dayFlow && s.isSuperuser && s.teamCredits.length > 0 && <CreditsCard s={s} act={act} />}
+
+      {s.dayFlow && s.isSuperuser && s.toReview && s.toReview.length > 0 && (
+        <Card title="Done, waiting for you">
+          <ul className="space-y-2 text-sm">
+            {s.toReview.map((t) => (
+              <li key={t.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-line bg-raised p-3">
+                <span className="text-slate-200"><b className="text-white">{t.title}</b> · {t.name} · {chunkLabel(t.estimate_min || 0)}
+                  {t.complexity && ` · ${t.complexity}`} · <b className="text-white">{t.points}</b> points</span>
+                <span className="flex gap-2">
+                  <button className="btn-primary" onClick={() => act(() => wtApi.reviewTask(t.id, true), `Accepted: ${t.points} points to ${t.name}.`)}>Accept</button>
+                  <button className="btn-secondary" onClick={() => {
+                    const note = window.prompt('What needs fixing?');
+                    if (note) act(() => wtApi.reviewTask(t.id, false, note), 'Sent back.');
+                  }}>Send back</button>
+                </span>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
 
       {s.dayFlow && s.isSuperuser && (
         <Card title="Daily tasks (offered when someone is stopped by a dependency)">
@@ -571,7 +703,7 @@ export default function TimerPanel({ status }: { status: TrackerStatus }) {
           <ul className="space-y-2">
             {workable.map((t) => (
               <li key={t.id} className="flex items-center justify-between gap-2 rounded-lg border border-line bg-raised p-3">
-                <span className="min-w-0"><span className="block truncate text-sm text-white">{t.title} <span className="text-xs text-muted">· {STATUS[t.status] ?? t.status}</span></span><Details t={t} /></span>
+                <span className="min-w-0"><span className="block truncate text-sm text-white">{t.title} <span className="text-xs text-muted">· {STATUS[t.status] ?? t.status}{s.dayFlow && t.estimate_min > 0 && ` · ${pointsFor(s, t)} pts`}</span></span><Details t={t} /></span>
                 {!readOnly && t.status !== 'in_progress' && (
                   <button className="btn-secondary shrink-0" onClick={() => act(() => wtApi.start(t.id))}>Start</button>
                 )}

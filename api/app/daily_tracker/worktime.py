@@ -350,6 +350,7 @@ def state(user, now=None):
                         for p in store.rows("SELECT user_id, name FROM dt_people ORDER BY name")]
         if settings.TASKS_V3 and taskmgr.is_super(user) else [],
         "allowanceAll": allowance_hours("*"),
+        **(_game(me, user, now, today) if settings.TASKS_V3 else {}),
         "teamDays": store.rows("SELECT d.user_id, p.name, d.start_at, d.end_at, d.status, d.end_source FROM work_days d "
                                "LEFT JOIN dt_people p ON p.user_id=d.user_id WHERE d.date=? ORDER BY p.name", (today,))
         if taskmgr.is_super(user) else [],
@@ -404,6 +405,10 @@ def create_task(user, body, now=None, routine_id=None):
         return base._bad("Estimate is minutes; the due date looks like 2026-10-27.")
     if not 0 <= est <= 7 * 24 * 60:
         return base._bad("The estimate must be between 0 and 10080 minutes.")
+    if b.get("complexity"):  # v3 Step 6: points multiplier, kept with the task's details
+        if b["complexity"] not in ("Easy", "Medium", "Hard"):
+            return base._bad("Complexity is Easy, Medium or Hard.")
+        details["complexity"] = b["complexity"]
     # Admins may assign to someone or post to the Pool; everyone else adds their own.
     target = str(b.get("assign_to") or me) if base.is_admin(user) else me
     pool = target == "pool"
@@ -532,6 +537,28 @@ def take_break(user, body, now=None):
         conn.execute("INSERT INTO work_intervals(user_id, task_id, type, start_ts, created_at) VALUES (?,?,?,?,?)",
                      (me, t["id"] if t else None, kind, _iso(now), _iso(now)))
     return state(user, now)
+
+
+def _game(me, user, now, today):
+    """v3 Step 6 + the month bar: points, streak, badges, leaderboard, Jai's accept queue."""
+    from . import game
+    cfg = work_settings()
+    first = store.one("SELECT MIN(date) d FROM work_days WHERE user_id=?", (me,))["d"]
+    cycle = cycle_of(work_date(now))
+    m0, m1 = cycle_bounds(cycle)
+    d, goal = max(m0, _date.fromisoformat(first)) if first else work_date(now), 0.0
+    while d <= m1:
+        goal += target_hours(d.isoformat()) * 60
+        d += timedelta(days=1)
+    c = month_credit(me, cycle, now)
+    idea = store.one("SELECT COUNT(*) c FROM big_ideas WHERE user_id=? AND month=? AND status!='repeat'",
+                     (me, cycle))["c"] >= cfg["ideas_required"]
+    return {"game": game.summary(me, now), "leaderboard": game.leaderboard(now),
+            "toReview": game.to_review() if taskmgr.is_super(user) else [],
+            "chunks": cfg["chunks"], "pointsPerHour": cfg["points_per_hour"],
+            "complexity": cfg["complexity_multiplier"],
+            "monthGoal": {"month": cycle, "to": m1.isoformat(), "targetMinutes": goal, "ideaGiven": idea,
+                          "workedMinutes": round(c["workedMinutes"] + day_work(me, today, now)["provenMinutes"], 1)}}
 
 
 def _break_minutes(user_id, day, now):
