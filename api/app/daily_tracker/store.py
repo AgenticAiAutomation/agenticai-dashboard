@@ -328,7 +328,7 @@ ADD_COLUMNS = [
 V3_TABLES = ["task_categories", "work_tasks", "task_events", "work_intervals", "work_slots", "task_holds",
              "time_corrections", "leave_calendar", "work_settings", "work_points", "badges",
              "badges_awarded", "employee_of_month", "work_days", "daily_routines", "day_hours", "hour_allowance",
-             "big_ideas", "week_hours"]
+             "big_ideas", "week_hours", "achievements"]
 
 SCHEMA_3 = """
 CREATE TABLE IF NOT EXISTS task_categories (
@@ -604,6 +604,25 @@ CREATE TABLE IF NOT EXISTS big_ideas (
 );
 CREATE INDEX IF NOT EXISTS ix_bi_month ON big_ideas(month, user_id);
 
+-- Tasks v3 Wins (Step 7): what someone achieved, for the company or a client. Jai approves,
+-- rejects or asks for more ('more': the person edits, it goes back to 'pending'). Approved and
+-- rejected are final (trigger below). Work month = 26th..25th.
+CREATE TABLE IF NOT EXISTS achievements (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id     TEXT NOT NULL,
+    month       TEXT NOT NULL,
+    what        TEXT NOT NULL,
+    for_whom    TEXT NOT NULL,
+    result      TEXT NOT NULL,
+    proof_url   TEXT NOT NULL DEFAULT '',
+    status      TEXT NOT NULL DEFAULT 'pending',
+    note        TEXT NOT NULL DEFAULT '',
+    decided_by  TEXT,
+    decided_at  TEXT,
+    created_at  TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ix_ach_month ON achievements(month, user_id);
+
 -- ---- guardrails: nothing in v2 is ever deleted
 """ + "".join(
     f"CREATE TRIGGER IF NOT EXISTS g_{t}_nodelete BEFORE DELETE ON {t} "
@@ -615,6 +634,11 @@ CREATE INDEX IF NOT EXISTS ix_bi_month ON big_ideas(month, user_id);
     for t in ("task_events", "work_slots", "work_settings", "work_points", "badges_awarded", "employee_of_month",
               "day_hours", "hour_allowance", "week_hours")
 ) + """
+-- Jai's Approve / Reject on a Win is final.
+CREATE TRIGGER IF NOT EXISTS g_achievements_final BEFORE UPDATE ON achievements
+WHEN OLD.status IN ('approved', 'rejected') OR NEW.user_id IS NOT OLD.user_id OR NEW.month IS NOT OLD.month
+BEGIN SELECT RAISE(ABORT, 'tasks v3: a decided Win never changes'); END;
+
 -- An interval can only be CLOSED (end_ts set once, after start); never reopened or moved.
 CREATE TRIGGER IF NOT EXISTS g_work_intervals_close BEFORE UPDATE ON work_intervals
 WHEN OLD.end_ts IS NOT NULL OR NEW.end_ts IS NULL OR NEW.end_ts < OLD.start_ts

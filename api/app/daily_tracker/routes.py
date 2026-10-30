@@ -314,6 +314,27 @@ def build():
     async def v3_idea_eom(request: Request):
         return _json(bigideas.pick_employee_of_month(current_user(request), await _body(request)))
 
+    @tasks.post("/v2/wins")
+    async def v3_win_submit(request: Request):
+        return _json(bigideas.submit_win(current_user(request), await _body(request)))
+
+    @tasks.post("/v2/wins/{win_id}")
+    async def v3_win_edit(request: Request, win_id: int):
+        return _json(bigideas.edit_win(current_user(request), win_id, await _body(request)))
+
+    @tasks.post("/v2/wins/{win_id}/decide")
+    async def v3_win_decide(request: Request, win_id: int):
+        return _json(bigideas.decide_win(current_user(request), win_id, await _body(request)))
+
+    @tasks.get("/v2/bonus.csv")
+    async def v3_bonus_csv(request: Request, month: str = None):
+        status, out = bigideas.bonus_csv(current_user(request), month)
+        if status != 200:
+            return _json((status, out))
+        return Response(out, media_type="text/csv; charset=utf-8", headers={
+            "Content-Disposition": f'attachment; filename="bonus-sheet-{month or "this-month"}.csv"',
+            "Cache-Control": "no-store"})
+
     @tasks.post("/v2/hours/day")
     async def v3_day_hours(request: Request):
         return _json(worktime.set_day_hours(current_user(request), await _body(request)))

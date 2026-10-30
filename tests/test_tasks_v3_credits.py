@@ -161,6 +161,42 @@ def main():
     check("Jai picks Priya", code == 200 and b["employeeOfMonth"]["name"] == "Priya Sharma")
     check("once a month", bi.pick_employee_of_month(J, {"user_id": "8"}, at(15, day=29))[0] == 409)
 
+    print("\n--- Wins and the bonus sheet (Step 7) ---")
+    win = {"what": "Got the clinic page into Google's top 3", "for_whom": "Smile Dental", "result": "Top 3 for 'dentist pune'"}
+    check("a Win needs what, for whom and the result", bi.submit_win(A, {"what": "x"}, at(15, day=29))[0] == 400)
+    check("a proof link must be a link", bi.submit_win(A, {**win, "proof_url": "nope"}, at(15, day=29))[0] == 400)
+    code, b = bi.submit_win(A, win, at(15, day=29))
+    w1 = b["wins"][0]["id"]
+    check("Akash adds a Win; he sees only his own", code == 200 and [w["user_id"] for w in b["wins"]] == ["7"]
+          and bi.board(P, at(15, day=29))[1]["wins"] == [])
+    check("only Jai decides", bi.decide_win(A, w1, {"decision": "approved"}, at(15, day=29))[0] == 403)
+    check("asking for more needs a note", bi.decide_win(J, w1, {"decision": "more"}, at(15, day=29))[0] == 400)
+    bi.decide_win(J, w1, {"decision": "more", "note": "Add the ranking screenshot link"}, at(15, day=29))
+    check("Priya can't edit Akash's Win", bi.edit_win(P, w1, {**win, "proof_url": "https://x.co/a"}, at(16, day=29))[0] == 404)
+    bi.edit_win(A, w1, {**win, "proof_url": "https://x.co/rank.png"}, at(16, day=29))
+    check("Akash adds the link; it goes back to Jai",
+          store.one("SELECT status, proof_url FROM achievements WHERE id=?", (w1,)) == {"status": "pending", "proof_url": "https://x.co/rank.png"})
+    bi.decide_win(J, w1, {"decision": "approved"}, at(16, day=29))
+    check("approved is final", bi.decide_win(J, w1, {"decision": "rejected"}, at(17, day=29))[0] == 404
+          and bi.edit_win(A, w1, win, at(17, day=29))[0] == 404)
+    try:
+        with store.connect() as conn:
+            conn.execute("UPDATE achievements SET status='rejected' WHERE id=?", (w1,))
+        refused = False
+    except Exception:
+        refused = True
+    check("the database refuses changing a decided Win", refused)
+    sheet = {r["user_id"]: r for r in bi.board(J, at(17, day=29))[1]["bonus"]}
+    check("bonus sheet: Akash gave his idea and has an approved Win = eligible",
+          sheet["7"]["ideaGiven"] and sheet["7"]["winsApproved"] == 1 and sheet["7"]["eligible"])
+    check("Priya: 6 ideas, one worked = eligible and nominated", sheet["8"]["eligible"] and sheet["8"]["nominated"]
+          and sheet["8"]["ideasWorked"] == 1)
+    check("Jai with no idea isn't eligible", not sheet["1"]["eligible"])
+    r = c.get("/api/tasks/v2/bonus.csv?month=2026-11", headers={"x-user": "jai"})
+    check("Jai downloads the sheet as CSV", r.status_code == 200 and r.text.startswith("Work month,Name")
+          and "Akash Yadav" in r.text)
+    check("nobody else can", c.get("/api/tasks/v2/bonus.csv", headers={"x-user": "akash"}).status_code == 403)
+
     print("\n--- switch off ---")
     wt.settings.TASKS_V3 = False
     check("v3 off: ideas answer 404", bi.board(A)[0] == 404 and wt.state(A, at(9, day=29))[1]["credit"] is None)

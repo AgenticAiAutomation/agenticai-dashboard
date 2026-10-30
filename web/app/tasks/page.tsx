@@ -23,7 +23,7 @@ function tabsFor(s: TrackerStatus): [Tab, string][] {
   const tm = !!s.taskManager;
   return [
     ...(s.tasksV2 ? ([['timer', 'Timer']] as [Tab, string][]) : []),
-    ...(s.tasksV3 ? ([['bigideas', 'Big Ideas']] as [Tab, string][]) : []),
+    ...(s.tasksV3 ? ([['bigideas', 'Ideas & Wins']] as [Tab, string][]) : []),
     ...(tm ? ([['tasks', 'My tasks']] as [Tab, string][]) : []),
     ...(s.tracker ? ([['today', tm ? 'Daily log' : 'Today'], ['progress', 'Progress & leaderboard']] as [Tab, string][]) : []),
     ...(s.ideas ? ([['ideas', 'Idea Board']] as [Tab, string][]) : []),

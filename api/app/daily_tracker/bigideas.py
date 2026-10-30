@@ -6,12 +6,18 @@ on the internet: social media, ChatGPT, Gemini, DeepSeek, Grok, Perplexity, Clau
   * Jai marks each idea: assigned (to whom, on which project: a task lands on their desk),
     worked, not_applied, or repeat (given before by anyone, Jai included: not counted)
   * Employee of the Month: Jai picks from the nominees by what was proven and applied; final
+  * Wins (Step 7): achievements for the company or a client; Jai approves, rejects (final) or asks
+    for more. Bonus sheet per work month: eligible = this month's idea given AND at least one
+    worked idea or approved Win. Hours and leave are shown, never part of eligibility (Jai, 30 Oct)
 """
+import csv
+import io
 from datetime import datetime, timezone
 
 from . import service as base, store, taskmgr, worktime as wt
 
 STATUSES = ("new", "assigned", "worked", "not_applied", "repeat")
+DECISIONS = ("approved", "rejected", "more")
 NOTE_MAX = 2000
 
 
@@ -40,11 +46,16 @@ def board(user, now=None):
                        "assigned": sum(i["status"] == "assigned" for i in mine),
                        "nominated": len(mine) >= cfg["ideas_for_nomination"]})
     eom = store.one("SELECT * FROM employee_of_month WHERE month=?", (month,))
+    wins = store.rows("SELECT * FROM achievements ORDER BY id DESC LIMIT 500")
+    for w in wins:
+        w["name"] = names.get(w["user_id"], w["user_id"])
     return 200, {"month": month, "ideas": ideas, "people": people, "channels": cfg["idea_channels"],
                  "required": cfg["ideas_required"], "forNomination": cfg["ideas_for_nomination"],
                  "me": base.uid(user), "isSuperuser": taskmgr.is_super(user), "statuses": STATUSES,
                  "projects": list(base.sites(user)[0]) if taskmgr.is_super(user) else [],
-                 "employeeOfMonth": eom and {**eom, "name": names.get(eom["user_id"], eom["user_id"])}}
+                 "employeeOfMonth": eom and {**eom, "name": names.get(eom["user_id"], eom["user_id"])},
+                 "wins": wins if taskmgr.is_super(user) else [w for w in wins if w["user_id"] == base.uid(user)],
+                 "bonus": bonus_sheet(month, now) if taskmgr.is_super(user) else None}
 
 
 def submit(user, body, now=None):
@@ -117,3 +128,102 @@ def pick_employee_of_month(user, body, now=None):
     store.write("INSERT INTO employee_of_month(month, user_id, score, note, chosen_by, chosen_at) VALUES (?,?,?,?,?,?)",
                 (b["month"], who, p["worked"], str((body or {}).get("note") or "")[:300], base.uid(user), wt._iso(now)))
     return board(user, now)
+
+
+# ------------------------------------------------------------------ Wins (Step 7)
+def _win_fields(b):
+    f = {k: str(b.get(k) or "").strip() for k in ("what", "for_whom", "result", "proof_url")}
+    if not 10 <= len(f["what"]) <= NOTE_MAX or not 2 <= len(f["for_whom"]) <= 200 or not 3 <= len(f["result"]) <= NOTE_MAX:
+        return None, base._bad("Say what you did, for whom (the company or a client) and the result.")
+    if f["proof_url"] and not base._valid_url(f["proof_url"]):
+        return None, base._bad("The proof link must start with http:// or https://.")
+    return f, None
+
+
+def submit_win(user, body, now=None):
+    g = wt._guard_v3(user)
+    if g:
+        return g
+    now = now or datetime.now(timezone.utc)
+    f, err = _win_fields(body or {})
+    if err:
+        return err
+    store.write("INSERT INTO achievements(user_id, month, what, for_whom, result, proof_url, created_at) "
+                "VALUES (?,?,?,?,?,?,?)", (base.uid(user), _month(now), f["what"], f["for_whom"], f["result"],
+                                           f["proof_url"][:500], wt._iso(now)))
+    return board(user, now)
+
+
+def edit_win(user, win_id, body, now=None):
+    """After Jai asks for more, the person fixes it and it goes back to Jai."""
+    g = wt._guard_v3(user)
+    if g:
+        return g
+    w = store.one("SELECT * FROM achievements WHERE id=? AND user_id=?", (win_id, base.uid(user)))
+    if not w or w["status"] != "more":
+        return 404, {"error": "not_found", "message": "No Win of yours waiting for more detail."}
+    f, err = _win_fields(body or {})
+    if err:
+        return err
+    store.write("UPDATE achievements SET what=?, for_whom=?, result=?, proof_url=?, status='pending' WHERE id=?",
+                (f["what"], f["for_whom"], f["result"], f["proof_url"][:500], win_id))
+    return board(user, now)
+
+
+def decide_win(user, win_id, body, now=None):
+    g = wt._guard(user, write=True, superuser=True) or (None if wt.settings.TASKS_V3 else wt.ERR_OFF_V3)
+    if g:
+        return g
+    now = now or datetime.now(timezone.utc)
+    b = body or {}
+    w = store.one("SELECT * FROM achievements WHERE id=?", (win_id,))
+    if not w or w["status"] not in ("pending", "more"):
+        return 404, {"error": "not_found", "message": "No Win waiting for a decision."}
+    st = b.get("decision")
+    note = str(b.get("note") or "").strip()[:NOTE_MAX]
+    if st not in DECISIONS:
+        return base._bad("Approve, reject or ask for more.")
+    if st == "more" and not note:
+        return base._bad("Say what more you need.")
+    conn = store.connect()
+    with conn:
+        conn.execute("UPDATE achievements SET status=?, note=?, decided_by=?, decided_at=? WHERE id=?",
+                     (st, note, base.uid(user), wt._iso(now), win_id))
+        wt._event(conn, w["user_id"], None, "win_" + st, now, w["status"], st, f"win #{win_id}", actor=base.uid(user))
+    return board(user, now)
+
+
+def bonus_sheet(month, now=None):
+    """One row per person for a work month. Jai decides amounts outside the system."""
+    cfg = wt.work_settings()
+    rows = []
+    for p in store.rows("SELECT user_id, name FROM dt_people ORDER BY name"):
+        ideas = store.rows("SELECT status FROM big_ideas WHERE user_id=? AND month=? AND status!='repeat'",
+                           (p["user_id"], month))
+        worked = sum(i["status"] == "worked" for i in ideas)
+        wins = store.one("SELECT COUNT(*) c FROM achievements WHERE user_id=? AND month=? AND status='approved'",
+                         (p["user_id"], month))["c"]
+        c = wt.month_credit(p["user_id"], month, now)
+        rows.append({"user_id": p["user_id"], "name": p["name"], "ideas": len(ideas),
+                     "ideaGiven": len(ideas) >= cfg["ideas_required"], "ideasWorked": worked, "winsApproved": wins,
+                     "ringsClosed": c["ringsClosed"], "ringDays": c["ringDays"], "owedMinutes": c["owedMinutes"],
+                     "nominated": len(ideas) >= cfg["ideas_for_nomination"],
+                     "eligible": len(ideas) >= cfg["ideas_required"] and (worked + wins) > 0})
+    return rows
+
+
+def bonus_csv(user, month=None, now=None):
+    g = wt._guard(user, superuser=True) or (None if wt.settings.TASKS_V3 else wt.ERR_OFF_V3)
+    if g:
+        return g
+    now = now or datetime.now(timezone.utc)
+    month = month or _month(now)
+    out = io.StringIO()
+    w = csv.writer(out)
+    w.writerow(["Work month", "Name", "Ideas counted", "Monthly idea given", "Ideas worked", "Wins approved",
+                "Rings closed", "Days with a target", "Hours owed", "Nominated", "Bonus eligible"])
+    for r in bonus_sheet(month, now):
+        w.writerow([month, r["name"], r["ideas"], "yes" if r["ideaGiven"] else "no", r["ideasWorked"],
+                    r["winsApproved"], r["ringsClosed"], r["ringDays"], round(r["owedMinutes"] / 60, 2),
+                    "yes" if r["nominated"] else "no", "yes" if r["eligible"] else "no"])
+    return 200, out.getvalue()

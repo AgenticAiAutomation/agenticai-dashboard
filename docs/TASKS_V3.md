@@ -80,7 +80,7 @@ Work after midnight belongs to the next day. Tests now 67.
 
 | Rule | How |
 |---|---|
-| Credits | Month so far, finished days only, from the person's first day. Each day counts up to `credit_day_cap_hours` (9) against that day's target; extra hours make up short days. **Owed** = short beyond the allowance, plus idle debit. The person sees "owes 1h 00m / 2h ahead / on track" under the ring. |
+| Credits | Work month (26th–25th) so far, finished days only, from the person's first day. All hours count (no daily cap); extra hours make up short days in the same work month. **Owed** = short beyond the allowance, plus idle debit. The person sees "owes 1h 00m / 2h ahead / on track" under the ring. |
 | Allowance | Hours someone may be short in a month. Jai sets everyone's (`user_id '*'`) and per person (own row wins) on the Timer tab, card "Hour credits this month". Table `hour_allowance`, append-only, latest wins, default 0. |
 | Thinking | Counts as work up to `thinking_cap_minutes` (60) a day; the rest doesn't fill the ring or credits. |
 | Idle debit | After a dependency stop or a Waiting tap, if no task or daily task starts within `idle_grace_seconds` (60), the whole gap until the next start (or End my day / midnight) is debited. Overlapping gaps count once. This is on top of the gap not counting as work. |
@@ -90,5 +90,17 @@ API: `POST /v2/hours/allowance {user_id|'*', hours}`; `GET/POST /v2/ideas`, `POS
 `POST /v2/ideas/employee-of-month {user_id, note}`. State adds `credit`, `teamCredits` + `allowanceAll` (Jai), `settings.thinkingCap`.
 Tests: `tests/test_tasks_v3_credits.py` (24).
 
-Limits: the thinking cap and idle debit use the day a stop started (past midnight stays on that day); changing weekly
-hours changes past targets, so it also changes this month's credits.
+
+## Work day, work month, dated hours, Wins (Jai, 30 Oct 2026, later)
+
+| Rule | How |
+|---|---|
+| Work day | Runs `day_starts_hour` (4 AM) to 4 AM IST, so late-night work stays on the same day. A day nobody ended closes by itself at 4 AM (`end_source 'auto'`, event `day_end_auto`) at the last thing done; a timer left running stops where it started and counts nothing (never guessed). Next day is a normal Start my day. The old "say when you stopped" screen and `/v2/day/set-end` are gone. |
+| Work month | 26th to 25th (`month_closes_day`), named by the month it closes in ("2026-11" = 26 Oct–25 Nov). Credits, ideas, Wins and Employee of the Month all use it. Hours after the 25th go to the next work month; a closed one can't be topped up. |
+| Weekly hours | Table `week_hours` (week, effective_from), written once. Default start = the next work month (the 26th); Jai may pick a later date or today, never the past. Everyone sees "New working hours from 26 Nov: …" until it starts. Per-date hours also refuse past dates. Past targets never change. |
+| No daily cap | The 9-hour cap is gone. |
+| Wins (Step 7) | Table `achievements`: what, for whom, result, optional proof link. Jai: Approve / Reject (final, enforced by a trigger) / Ask for more (with a note; the person edits, it goes back). A person sees only their own Wins. |
+| Bonus sheet | Jai only, per work month: ideas counted, monthly idea given, ideas worked, Wins approved, rings closed / days with a target, hours owed, nominee, eligible. Eligible = monthly idea given AND at least one worked idea or approved Win; hours and leave never decide it. `GET /v2/bonus.csv?month=`. |
+
+Step 7 overlap: the idea part is Big Ideas (Jai's own rules replace the work order's idea form). Points and badges for
+approved items wait for the Step 6 points engine. Tests: credits 41, day 69.

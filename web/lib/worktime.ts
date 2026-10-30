@@ -34,11 +34,20 @@ export type BigIdea = {
   status: string; assigned_to: string | null; assignedName: string; project: string; task_id: number | null;
   note: string; created_at: string;
 };
+export type Win = {
+  id: number; user_id: string; name: string; month: string; what: string; for_whom: string; result: string;
+  proof_url: string; status: 'pending' | 'approved' | 'rejected' | 'more'; note: string; created_at: string;
+};
+export type BonusRow = {
+  user_id: string; name: string; ideas: number; ideaGiven: boolean; ideasWorked: number; winsApproved: number;
+  ringsClosed: number; ringDays: number; owedMinutes: number; nominated: boolean; eligible: boolean;
+};
 export type IdeaBoard = {
   month: string; ideas: BigIdea[]; channels: string[]; required: number; forNomination: number; me: string;
   people: { user_id: string; name: string; counted: number; worked: number; assigned: number; nominated: boolean }[];
   isSuperuser: boolean; statuses: string[]; projects: string[];
   employeeOfMonth: { user_id: string; name: string; note: string } | null;
+  wins: Win[]; bonus: BonusRow[] | null;
 };
 
 /* v3: Jai's predefined daily tasks; user_id '*' = everyone. */
@@ -95,6 +104,12 @@ export const wtApi = {
   submitIdea: (body: { title: string; channel: string; idea: string }) => api.post<IdeaBoard>(`${V}/ideas`, body),
   decideIdea: (id: number, body: { status: string; assign_to?: string; project?: string; note?: string }) =>
     api.post<IdeaBoard>(`${V}/ideas/${id}/decide`, body),
+  submitWin: (body: { what: string; for_whom: string; result: string; proof_url: string }) => api.post<IdeaBoard>(`${V}/wins`, body),
+  editWin: (id: number, body: { what: string; for_whom: string; result: string; proof_url: string }) =>
+    api.post<IdeaBoard>(`${V}/wins/${id}`, body),
+  decideWin: (id: number, decision: 'approved' | 'rejected' | 'more', note = '') =>
+    api.post<IdeaBoard>(`${V}/wins/${id}/decide`, { decision, note }),
+  bonusCsv: (month?: string) => api.get<Blob>(`${V}/bonus.csv`, { params: { month }, responseType: 'blob' }),
   pickEmployeeOfMonth: (user_id: string, note = '') => api.post<IdeaBoard>(`${V}/ideas/employee-of-month`, { user_id, note }),
   startRoutine: (id: number) => api.post<WState>(`${V}/routines/${id}/start`),
 };
