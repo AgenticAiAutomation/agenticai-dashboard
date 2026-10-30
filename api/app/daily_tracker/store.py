@@ -328,7 +328,7 @@ ADD_COLUMNS = [
 V3_TABLES = ["task_categories", "work_tasks", "task_events", "work_intervals", "work_slots", "task_holds",
              "time_corrections", "leave_calendar", "work_settings", "work_points", "badges",
              "badges_awarded", "employee_of_month", "work_days", "daily_routines", "day_hours", "hour_allowance",
-             "big_ideas"]
+             "big_ideas", "week_hours"]
 
 SCHEMA_3 = """
 CREATE TABLE IF NOT EXISTS task_categories (
@@ -573,6 +573,16 @@ CREATE TABLE IF NOT EXISTS hour_allowance (
     set_at  TEXT NOT NULL
 );
 
+-- Tasks v3: weekly hours from a date (default the next work month). The latest change that
+-- started by a date wins for it, so past days never change. Written once.
+CREATE TABLE IF NOT EXISTS week_hours (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    week           TEXT NOT NULL,
+    effective_from TEXT NOT NULL,
+    set_by         TEXT NOT NULL,
+    set_at         TEXT NOT NULL
+);
+
 -- Tasks v3 Big Ideas: how to make Agentic AI Automation the most watched company
 -- (social, ChatGPT, Gemini, Maps...). Open to everyone. Jai sets status; 'repeat' doesn't
 -- count. 'assigned' made a work_tasks row (task_id) for the person applying it.
@@ -603,7 +613,7 @@ CREATE INDEX IF NOT EXISTS ix_bi_month ON big_ideas(month, user_id);
     f"CREATE TRIGGER IF NOT EXISTS g_{t}_noupdate BEFORE UPDATE ON {t} "
     f"BEGIN SELECT RAISE(ABORT, 'tasks v2: {t} rows are never changed'); END;\n"
     for t in ("task_events", "work_slots", "work_settings", "work_points", "badges_awarded", "employee_of_month",
-              "day_hours", "hour_allowance")
+              "day_hours", "hour_allowance", "week_hours")
 ) + """
 -- An interval can only be CLOSED (end_ts set once, after start); never reopened or moved.
 CREATE TRIGGER IF NOT EXISTS g_work_intervals_close BEFORE UPDATE ON work_intervals
@@ -691,7 +701,8 @@ DEFAULT_WORK_SETTINGS = {
     # v3: why the watch stopped for a dependency (Jai, 27 Oct). No proof is asked in v3.
     "block_reasons": ["Credentials expired", "Document required", "Information required"],
     # v3 hour credits (Jai, 30 Oct): short hours beyond the allowance are made up on other days
-    "credit_day_cap_hours": 9,                    # at most this much of a day counts toward credits
+    "day_starts_hour": 4,                         # a work day runs 4 AM to 4 AM IST; unended days close then
+    "month_closes_day": 25,                       # work month = 26th..25th (credits, ideas, Employee of the Month)
     "thinking_cap_minutes": 60,                   # Thinking counts as work up to this much a day
     "idle_grace_seconds": 60,                     # after a dependency stop / Waiting, start something within this
     "idea_channels": ["Social media", "Google search", "ChatGPT", "Google Gemini", "DeepSeek", "Grok",

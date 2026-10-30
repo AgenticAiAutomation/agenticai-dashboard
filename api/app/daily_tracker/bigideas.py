@@ -16,7 +16,8 @@ NOTE_MAX = 2000
 
 
 def _month(now):
-    return now.astimezone(store.IST).strftime("%Y-%m")
+    """The work month (26th..25th): an idea after the 25th counts for the next one."""
+    return wt.cycle_of(wt.work_date(now))
 
 
 def board(user, now=None):

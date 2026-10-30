@@ -290,10 +290,6 @@ def build():
     async def v3_day_reopen(request: Request):
         return _json(worktime.reopen_day(current_user(request), await _body(request)))
 
-    @tasks.post("/v2/day/set-end")
-    async def v3_day_set_end(request: Request):
-        return _json(worktime.set_day_end(current_user(request), await _body(request)))
-
     @tasks.post("/v2/hours/week")
     async def v3_week_hours(request: Request):
         return _json(worktime.set_week_hours(current_user(request), await _body(request)))

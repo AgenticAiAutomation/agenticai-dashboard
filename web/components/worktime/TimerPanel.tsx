@@ -129,24 +129,11 @@ function StartDay({ s, name, onStart }: { s: WState; name: string; onStart: () =
 }
 
 /* v3: the day was never ended. The person says when they stopped; the server never guesses. */
-function SetDayEnd({ day, onSave }: { day: { date: string; start_at: string }; onSave: (end: string) => void }) {
-  const [time, setTime] = useState('');
-  return (
-    <Card title="You didn't end your day">
-      <p className="text-sm text-slate-200">
-        {new Date(`${day.date}T12:00`).toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'short' })}: you started
-        at {clock(day.start_at)} and never pressed End my day. When did you stop? Today starts once you say.
-      </p>
-      <form className="mt-3 flex flex-wrap gap-2" onSubmit={(e) => { e.preventDefault(); onSave(`${day.date}T${time}`); }}>
-        <input aria-label="Stopped at" type="time" required className="input-field w-auto" value={time} onChange={(e) => setTime(e.target.value)} />
-        <button className="btn-primary" type="submit">Save</button>
-      </form>
-    </Card>
-  );
-}
-
 /* v3 one-tap buttons: the running task pauses; the same button again resumes it. */
 const BREAKS: Record<string, string> = { break: 'Break', lunch: 'Lunch', thinking: 'Thinking', waiting: 'Waiting' };
+
+/* "2026-11-25" -> "25 Nov" */
+const day = (d: string) => new Date(`${d}T12:00`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
 
 /* "owes 1h 00m" / "1h 30m ahead" for the month so far. */
 const owes = (c: Credit) => c.owedMinutes > 0 ? `owes ${hm(c.owedMinutes)}` : c.balanceMinutes > 0 ? `${hm(c.balanceMinutes)} ahead` : 'on track';
@@ -157,7 +144,7 @@ function CreditsCard({ s, act }: { s: WState; act: (fn: () => Promise<{ data: WS
   return (
     <Card title="Hour credits this month">
       <p className="mb-3 text-xs text-muted">
-        Finished days only. A day counts up to {s.teamCredits[0]?.dayCapHours ?? 9} h; extra hours make up short days.
+        Work month {s.teamCredits[0] && `${day(s.teamCredits[0].from)} to ${day(s.teamCredits[0].to)}`}, finished days only. Extra hours make up short days in the same work month.
         Idle after a dependency stop (nothing started within 60 s) is debited. The allowance is how much someone may be short in a month.
       </p>
       <form className="mb-3 flex flex-wrap items-end gap-2" onSubmit={(e) => { e.preventDefault(); act(() => wtApi.allowance('*', Number(all)), 'Allowance saved for everyone.'); }}>
@@ -218,7 +205,7 @@ function Ring({ s }: { s: WState }) {
         {s.credit && (
           <p className="mt-2 text-xs text-muted">
             This month: <b className={s.credit.owedMinutes > 0 ? 'text-amber-300' : 'text-emerald-300'}>{owes(s.credit)}</b>
-            {s.credit.owedMinutes > 0 && ` · make it up on any day (up to ${s.credit.dayCapHours} h a day counts)`}
+            {s.credit.owedMinutes > 0 && ` · make it up by ${day(s.credit.to)}`}
           </p>
         )}
       </div>
@@ -232,20 +219,25 @@ const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 function HoursCard({ s, act }: { s: WState; act: (fn: () => Promise<{ data: WState }>, ok?: string) => Promise<void> }) {
   const [week, setWeek] = useState(() => s.hours!.week.map(String));
   const [day, setDay] = useState({ date: '', hours: '', note: '' });
+  const [from, setFrom] = useState('');
   return (
     <Card title="Working hours">
-      <form className="flex flex-wrap items-end gap-2" onSubmit={(e) => { e.preventDefault(); act(() => wtApi.weekHours(week.map(Number)), 'Weekly hours saved.'); }}>
+      <form className="flex flex-wrap items-end gap-2" onSubmit={(e) => { e.preventDefault(); act(() => wtApi.weekHours(week.map(Number), from), 'Saved. Everyone sees the change coming.'); }}>
         {DAYS.map((d, i) => (
           <label key={d} className="w-16 text-xs text-muted">{d}
             <input type="number" min={0} max={16} step={0.5} required className="input-field mt-1" value={week[i]}
                    onChange={(e) => setWeek(week.map((v, j) => (j === i ? e.target.value : v)))} />
           </label>
         ))}
+        <label className="text-xs text-muted">Starts
+          <input type="date" className="input-field mt-1" value={from} min={s.today} onChange={(e) => setFrom(e.target.value)} />
+        </label>
         <button className="btn-primary" type="submit">Save for every week</button>
       </form>
+      <p className="mt-1 text-xs text-muted">Leave the date empty to start with the next work month (the 26th). Past days never change.</p>
       <form className="mt-4 flex flex-wrap items-end gap-2" onSubmit={(e) => { e.preventDefault(); act(() => wtApi.dayHours(day.date, Number(day.hours), day.note), 'Saved for that day.').then(() => setDay({ date: '', hours: '', note: '' })); }}>
         <label className="text-xs text-muted">One day different
-          <input type="date" required className="input-field mt-1" value={day.date} onChange={(e) => setDay({ ...day, date: e.target.value })} />
+          <input type="date" required min={s.today} className="input-field mt-1" value={day.date} onChange={(e) => setDay({ ...day, date: e.target.value })} />
         </label>
         <label className="w-20 text-xs text-muted">Hours
           <input type="number" min={0} max={16} step={0.5} required className="input-field mt-1" value={day.hours} onChange={(e) => setDay({ ...day, hours: e.target.value })} />
@@ -313,12 +305,11 @@ export default function TimerPanel({ status }: { status: TrackerStatus }) {
 
   // v3: nothing starts before Start my day or after End my day (the server refuses too).
   const readOnly = viewer || (s.dayFlow && !!s.day?.end_at);
-  if (s.dayFlow && !viewer && (s.openDay || !s.day)) {
+  if (s.dayFlow && !viewer && !s.day) {
     return (
       <div className="space-y-5">
         <ErrorBanner message={error} />
-        {s.openDay ? <SetDayEnd day={s.openDay} onSave={(end) => act(() => wtApi.setDayEnd(end), 'Saved. Now start today.')} />
-                   : <StartDay s={s} name={(status.me.name || '').split(' ')[0]} onStart={() => act(wtApi.startDay)} />}
+        <StartDay s={s} name={(status.me.name || '').split(' ')[0]} onStart={() => act(wtApi.startDay)} />
       </div>
     );
   }
@@ -352,6 +343,13 @@ export default function TimerPanel({ status }: { status: TrackerStatus }) {
           )}
         </div>
       )}
+
+      {s.dayFlow && s.hoursChanges.map((c) => (
+        <p key={c.effective_from} className="rounded-md border border-primary/40 bg-primary/10 px-3 py-2 text-sm text-blue-100">
+          New working hours from <b className="text-white">{day(c.effective_from)}</b>:{' '}
+          {DAYS.map((d, i) => `${d} ${c.week[i]}h`).join(' · ')}
+        </p>
+      ))}
 
       {run?.stale && (
         <Card title="You left a timer running">

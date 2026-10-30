@@ -21,10 +21,11 @@ export type Hold = {
 /* v3: one row per person per day. status on_time | late; end_at null while the day runs. */
 export type WorkDay = { date: string; start_at: string; end_at: string | null; status: string; end_source: string };
 
-/* v3 hour credits for the month so far (finished days). owedMinutes = short beyond the allowance. */
+/* v3 hour credits for the work month (26th..25th) so far (finished days). owedMinutes = short beyond the allowance. */
 export type Credit = {
   month: string; workedMinutes: number; targetMinutes: number; idleMinutes: number;
-  balanceMinutes: number; allowanceMinutes: number; owedMinutes: number; dayCapHours: number;
+  balanceMinutes: number; allowanceMinutes: number; owedMinutes: number; from: string; to: string;
+  ringsClosed: number; ringDays: number;
 };
 
 /* v3 Big Ideas board (open to everyone). */
@@ -59,9 +60,10 @@ export type WState = {
   tasksDone: number;
   hours: { week: number[]; days: { date: string; hours: number; note: string }[] } | null;
   isSuperuser: boolean;
+  hoursChanges: { week: number[]; effective_from: string }[];
   credit: Credit | null; teamCredits: (Credit & { user_id: string; name: string; allowanceHours: number })[]; allowanceAll: number;
   teamDays: { user_id: string; name: string | null; start_at: string; end_at: string | null; status: string }[];
-  dayFlow: boolean; day: WorkDay | null; openDay: WorkDay | null;
+  dayFlow: boolean; day: WorkDay | null;
   blockReasons: string[]; routines: Routine[]; routinesAll: Routine[];
   breaks: { used: Record<'break' | 'lunch' | 'thinking' | 'waiting', number>; limit: { break: number; lunch: number } };
   suggestions?: WTask[]; needsApproval?: boolean;
@@ -84,8 +86,7 @@ export const wtApi = {
   startDay: () => api.post<WState>(`${V}/day/start`),
   endDay: () => api.post<WState>(`${V}/day/end`),
   reopenDay: (user_id?: string) => api.post<WState>(`${V}/day/reopen`, { user_id }),
-  setDayEnd: (end: string) => api.post<WState>(`${V}/day/set-end`, { end }),
-  weekHours: (week: number[]) => api.post<WState>(`${V}/hours/week`, { week }),
+  weekHours: (week: number[], from?: string) => api.post<WState>(`${V}/hours/week`, { week, from: from || undefined }),
   dayHours: (date: string, hours: number | null, note = '') => api.post<WState>(`${V}/hours/day`, { date, hours, note }),
   createRoutine: (body: Record<string, unknown>) => api.post<WState>(`${V}/routines`, body),
   routineActive: (id: number, active: boolean) => api.post<WState>(`${V}/routines/${id}/active`, { active }),

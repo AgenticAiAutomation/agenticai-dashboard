@@ -80,11 +80,11 @@ def main():
     s = wt.end_day(A, at(15))[1]
     check("thinking is capped at 60 min a day", s["work"]["provenMinutes"] == 300 and s["settings"]["thinkingCap"] == 60)
 
-    print("\n--- Tue 27: 10 h (only 9 count toward credits) ---")
+    print("\n--- Tue 27: 10 h, all of it counts (no daily cap) ---")
     wt.start_day(A, at(9, day=27))
     wt.start(A, t1, at(9, day=27))
     s = wt.end_day(A, at(19, day=27))[1]
-    check("the ring still shows all 10 h", s["work"]["provenMinutes"] == 600)
+    check("all 10 h count", s["work"]["provenMinutes"] == 600)
 
     print("\n--- Wed 28: a quick switch after a stop is free, 30 min of Waiting is not ---")
     wt.start_day(A, at(9, day=28))
@@ -98,23 +98,36 @@ def main():
     check("idle: 30 s after the stop is free, the 30 min wait is debited",
           wt.idle_minutes("7", "2026-10-28", "2026-10-29") == 30)
 
-    print("\n--- the month on Thu 29 ---")
-    m = wt.month_credit("7", "2026-10", at(9, day=29))
-    check("worked 5 + 9 (capped) + 6.5 h against 3 x 7 h", m["workedMinutes"] == 1230 and m["targetMinutes"] == 1260)
-    check("balance -30 min short, -30 min idle = owes 1 h", m["balanceMinutes"] == -60 and m["owedMinutes"] == 60)
-    check("only Jai sets the allowance", wt.set_allowance(A, {"hours": 5})[0] == 403)
-    check("the allowance is 0 to 200 h", wt.set_allowance(J, {"hours": -1})[0] == 400)
-    wt.set_allowance(J, {"user_id": "*", "hours": 0.5}, at(9, day=29))
-    check("everyone may be 30 min short: owes 30 min", wt.month_credit("7", "2026-10", at(9, day=29))["owedMinutes"] == 30)
-    wt.set_allowance(J, {"user_id": "7", "hours": 2}, at(9, day=29))
-    check("Akash's own 2 h beats everyone's: owes nothing",
-          wt.month_credit("7", "2026-10", at(9, day=29))["owedMinutes"] == 0 and wt.allowance_hours("8") == 0.5)
-    s = wt.state(J, at(9, day=29))[1]
+    print("\n--- Thu 29: a short day (1 h) ---")
+    wt.start_day(A, at(9, day=29))
+    wt.start(A, t2, at(9, day=29))
+    wt.end_day(A, at(10, day=29))
+
+    print("\n--- the work month (26 Oct - 25 Nov) on Fri 30 ---")
+    check("the work month runs 26th to 25th", wt.cycle_of(wt._date(2026, 10, 26)) == "2026-11"
+          and wt.cycle_of(wt._date(2026, 10, 25)) == "2026-10"
+          and wt.cycle_bounds("2026-11") == (wt._date(2026, 10, 26), wt._date(2026, 11, 25))
+          and wt.cycle_bounds("2027-01") == (wt._date(2026, 12, 26), wt._date(2027, 1, 25)))
+    F = at(9, day=30)
+    m = wt.month_credit("7", "2026-11", F)
+    check("worked 5 + 10 + 6.5 + 1 h against 4 x 7 h", m["workedMinutes"] == 1350 and m["targetMinutes"] == 1680
+          and m["from"] == "2026-10-26" and m["to"] == "2026-11-25")
+    check("5.5 h short and 30 min idle = owes 6 h", m["balanceMinutes"] == -360 and m["owedMinutes"] == 360)
+    check("rings closed: 1 of 4 days", m["ringsClosed"] == 1 and m["ringDays"] == 4)
+    check("days before the work month don't count", wt.month_credit("7", "2026-10", F)["targetMinutes"] == 0)
+    check("only Jai sets the allowance", wt.set_allowance(A, {"hours": 5}, F)[0] == 403)
+    check("the allowance is 0 to 200 h", wt.set_allowance(J, {"hours": -1}, F)[0] == 400)
+    wt.set_allowance(J, {"user_id": "*", "hours": 0.5}, F)
+    check("everyone may be 30 min short: owes 5.5 h", wt.month_credit("7", "2026-11", F)["owedMinutes"] == 330)
+    wt.set_allowance(J, {"user_id": "7", "hours": 2}, F)
+    check("Akash's own 2 h beats everyone's: owes 4 h",
+          wt.month_credit("7", "2026-11", F)["owedMinutes"] == 240 and wt.allowance_hours("8") == 0.5)
+    s = wt.state(J, F)[1]
     check("Jai sees everyone's credits", {p["user_id"]: p["allowanceHours"] for p in s["teamCredits"]}["7"] == 2
           and s["allowanceAll"] == 0.5)
-    check("a person never sees the team", wt.state(A, at(9, day=29))[1]["teamCredits"] == []
-          and wt.state(A, at(9, day=29))[1]["credit"]["owedMinutes"] == 0)
-    check("days before someone's first day don't count", wt.month_credit("8", "2026-10", at(9, day=29))["targetMinutes"] == 0)
+    check("a person never sees the team", wt.state(A, F)[1]["teamCredits"] == []
+          and wt.state(A, F)[1]["credit"]["owedMinutes"] == 240)
+    check("days before someone's first day don't count", wt.month_credit("8", "2026-11", F)["targetMinutes"] == 0)
 
     print("\n--- Big Ideas ---")
     idea = {"channel": "ChatGPT", "idea": "Publish answer pages that ChatGPT quotes for agentic automation questions."}

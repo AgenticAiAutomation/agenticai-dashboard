@@ -5,15 +5,15 @@ writes a task_events row in one transaction; the browser only displays.
 
   * one running task per person: starting another pauses the first
   * an interval left open on an earlier day blocks everything until the person
-    sets its end time (never invented by the server)
+    sets its end time (never invented by the server; v3: closes by itself at 4 AM)
   * worked time = work intervals, merged (never double-counted), cut into
     15-minute slots; a slot counts only once it has proof
   * yesterday is locked: proof only for today's slots
   * road blocker: the watch stops at once, a task_holds row waits for Jai when
     the category says so, and the person gets their next task suggested
   * v3 (FEATURE_TASKS_V3): "Start my day" clocks in (work_days); a task starts
-    only inside a started day; a day left open blocks the next one until the
-    person says when they stopped. No proof at all (Jai, 27 Oct): timer time
+    only inside a started day. A work day runs 4 AM to 4 AM IST; a day nobody ended
+    closes by itself then (_autoclose), and a forgotten running timer counts nothing. No proof at all (Jai, 27 Oct): timer time
     counts as it runs, Done needs no link. A dependency stop picks a reason
     from block_reasons and offers Jai's daily tasks (daily_routines) to jump to.
     Break / Lunch / Thinking / Waiting are one tap (take_break); the same tap resumes
@@ -45,11 +45,12 @@ class _Taken(Exception):
 
 
 # ------------------------------------------------------------------ helpers
-def _guard(user, write=False, superuser=False):
+def _guard(user, write=False, superuser=False, now=None):
     if not settings.TASKS_V2:
         return ERR_OFF
     if not user:
         return base.ERR_AUTH
+    _autoclose(base.uid(user), _now(now))
     if superuser and not taskmgr.is_super(user):
         return ERR_SUPER
     if write and taskmgr.is_viewer(user):
@@ -71,6 +72,61 @@ def _ist(s):
     return datetime.fromisoformat(s).astimezone(IST)
 
 
+def _off():
+    """v3: a work day runs from day_starts_hour (4 AM IST) to 4 AM next day, so late-night work stays on it."""
+    return timedelta(hours=work_settings()["day_starts_hour"]) if settings.TASKS_V3 else timedelta(0)
+
+
+def work_date(dt):
+    return (dt.astimezone(IST) - _off()).date()
+
+
+def _day_start(day):
+    return datetime.fromisoformat(str(day)).replace(tzinfo=IST) + _off()
+
+
+def cycle_of(day):
+    """The work month a date belongs to: 26th..25th (month_closes_day), named by the month it closes in."""
+    close = work_settings()["month_closes_day"]
+    y, m = (day.year + (day.month == 12), day.month % 12 + 1) if day.day > close else (day.year, day.month)
+    return f"{y}-{m:02d}"
+
+
+def cycle_bounds(cycle):
+    """(first day, last day) of a work month, e.g. '2026-11' -> 2026-10-26, 2026-11-25."""
+    close = work_settings()["month_closes_day"]
+    y, m = map(int, cycle.split("-"))
+    py, pm = (y - 1, 12) if m == 1 else (y, m - 1)
+    return _date(py, pm, close) + timedelta(days=1), _date(y, m, close)
+
+
+def _autoclose(user_id, now):
+    """v3: at 4 AM a day nobody ended closes by itself. A timer left running stops where it started
+    (the forgotten run counts nothing: never guessed); the day ends at the last thing done."""
+    if not settings.TASKS_V3 or settings.READ_ONLY:
+        return
+    today = work_date(now)
+    iv = _open(user_id)
+    iv = iv if iv and work_date(_ist(iv["start_ts"])) < today else None
+    days = store.rows("SELECT * FROM work_days WHERE user_id=? AND date<? AND end_at IS NULL", (user_id, today.isoformat()))
+    if not iv and not days:
+        return
+    conn = store.connect()
+    with conn:
+        if iv:
+            conn.execute("UPDATE work_intervals SET end_ts=start_ts WHERE id=?", (iv["id"],))
+            t = _task(iv["task_id"]) if iv["task_id"] else None
+            if t and t["status"] == "in_progress":
+                _set_status(conn, t, "paused", user_id, "auto_stop", now, "forgot to stop; not counted")
+        for d in days:
+            last = conn.execute("SELECT MAX(COALESCE(end_ts, start_ts)) t FROM work_intervals WHERE user_id=? "
+                                "AND start_ts>=? AND start_ts<?", (user_id, _iso(_day_start(d["date"])),
+                                _iso(_day_start(_date.fromisoformat(d["date"]) + timedelta(days=1))))).fetchone()["t"]
+            end = max([d["start_at"]] + ([_iso(_ist(last))] if last else []))
+            conn.execute("UPDATE work_days SET end_at=?, end_source='auto' WHERE id=?", (end, d["id"]))
+            _event(conn, user_id, None, "day_end_auto", now, reason=f"{d['date']} not ended; closed at {_ist(end):%H:%M}")
+
+
 def _slot_key(dt):
     return dt.astimezone(IST).strftime("%Y-%m-%dT%H:%M")
 
@@ -82,13 +138,19 @@ def work_settings():
     return out
 
 
+def week_on(day):
+    """The weekly hours in force on a date: the latest change that started by then, else the settings."""
+    r = store.one("SELECT week FROM week_hours WHERE effective_from<=? ORDER BY effective_from DESC, id DESC LIMIT 1",
+                  (str(day),))
+    return json.loads(r["week"]) if r else work_settings()["week_hours"]
+
+
 def target_hours(day):
-    """The day's target: Jai's hours for that date if set, else the weekly hours for its weekday.
-    shortcut: changing the weekly hours also changes past days' targets; keep history if reports need it."""
+    """The day's target: Jai's hours for that date if set, else the weekly hours in force that day."""
     o = store.one("SELECT hours FROM day_hours WHERE date=? ORDER BY id DESC LIMIT 1", (day,))
     if o and o["hours"] is not None:
         return float(o["hours"])
-    return float(work_settings()["week_hours"][_date.fromisoformat(day).weekday()])
+    return float(week_on(day)[_date.fromisoformat(day).weekday()])
 
 
 def _event(conn, user_id, task_id, kind, now, prev="", new="", reason="", actor=""):
@@ -111,7 +173,7 @@ def _open(user_id):
 
 
 def _stale(iv, now):
-    return bool(iv) and _ist(iv["start_ts"]).date() < now.astimezone(IST).date()
+    return bool(iv) and work_date(_ist(iv["start_ts"])) < work_date(now)
 
 
 def _close(conn, iv, now, user_id, kind="pause", reason=""):
@@ -167,7 +229,7 @@ def _end_time(body):
 # ------------------------------------------------------------------ time math
 def _spans(user_id, day, now):
     """[(start, end, task_id)] of effective work on that IST day, clipped to the day."""
-    d0 = datetime.fromisoformat(day).replace(tzinfo=IST)
+    d0 = _day_start(day)
     d1 = d0 + timedelta(days=1)
     out = []
     for iv in store.rows("SELECT * FROM work_intervals WHERE user_id=? AND type IN (?,?) AND start_ts < ? "
@@ -243,12 +305,12 @@ def suggestions(user_id, exclude=None):
 
 # ------------------------------------------------------------------ read
 def state(user, now=None):
-    g = _guard(user)
+    g = _guard(user, now=now)
     if g:
         return g
     now = _now(now)
     me = base.uid(user)
-    today = now.astimezone(IST).date().isoformat()
+    today = work_date(now).isoformat()
     cfg = work_settings()
     cats = {c["id"]: c for c in _categories(False)}
     iv = _open(me)
@@ -275,20 +337,23 @@ def state(user, now=None):
                      "dayLateAfter": cfg["day_late_after"], "greenMin": signal["green_min"],
                      "amberMin": signal["amber_min"], "thinkingCap": cfg["thinking_cap_minutes"]},
         "tasksDone": store.one("SELECT COUNT(*) c FROM task_events WHERE user_id=? AND event_type='complete' "
-                               "AND server_ts >= ?", (me, _iso(datetime.fromisoformat(today).replace(tzinfo=IST))))["c"],
-        "hours": {"week": cfg["week_hours"], "days": store.rows(
+                               "AND server_ts >= ?", (me, _iso(_day_start(today))))["c"],
+        "hoursChanges": [{**r, "week": json.loads(r["week"])} for r in store.rows(
+            "SELECT week, effective_from FROM week_hours WHERE effective_from>? ORDER BY effective_from, id", (today,))],
+        "hours": {"week": week_on(today), "days": store.rows(
             "SELECT date, hours, note FROM day_hours d WHERE id=(SELECT MAX(id) FROM day_hours WHERE date=d.date) "
             "AND date>=? AND hours IS NOT NULL ORDER BY date LIMIT 60", (today,))} if taskmgr.is_super(user) else None,
         "isSuperuser": taskmgr.is_super(user),
-        "credit": month_credit(me, today[:7], now) if settings.TASKS_V3 else None,
-        "teamCredits": [{**p, **month_credit(p["user_id"], today[:7], now), "allowanceHours": allowance_hours(p["user_id"])}
+        "credit": month_credit(me, cycle_of(work_date(now)), now) if settings.TASKS_V3 else None,
+        "teamCredits": [{**p, **month_credit(p["user_id"], cycle_of(work_date(now)), now),
+                         "allowanceHours": allowance_hours(p["user_id"])}
                         for p in store.rows("SELECT user_id, name FROM dt_people ORDER BY name")]
         if settings.TASKS_V3 and taskmgr.is_super(user) else [],
         "allowanceAll": allowance_hours("*"),
         "teamDays": store.rows("SELECT d.user_id, p.name, d.start_at, d.end_at, d.status, d.end_source FROM work_days d "
                                "LEFT JOIN dt_people p ON p.user_id=d.user_id WHERE d.date=? ORDER BY p.name", (today,))
         if taskmgr.is_super(user) else [],
-        "dayFlow": settings.TASKS_V3, "day": _day(me, today), "openDay": _unended(me, today),
+        "dayFlow": settings.TASKS_V3, "day": _day(me, today),
         "blockReasons": cfg["block_reasons"], "routines": routines(me),
         "breaks": {"used": _break_minutes(me, today, now),
                    "limit": {"break": cfg["breaks"]["short_minutes"] * cfg["breaks"]["short_per_day"],
@@ -315,7 +380,7 @@ def _details(b):
 
 
 def create_task(user, body, now=None, routine_id=None):
-    g = _guard(user, write=True)
+    g = _guard(user, now=now, write=True)
     if g:
         return g
     now = _now(now)
@@ -362,7 +427,7 @@ def create_task(user, body, now=None, routine_id=None):
 
 
 def start(user, task_id, now=None):
-    g = _guard(user, write=True)
+    g = _guard(user, now=now, write=True)
     if g:
         return g
     now = _now(now)
@@ -376,7 +441,7 @@ def start(user, task_id, now=None):
     if not picking and t["status"] not in WORKABLE:
         return 409, {"error": "not_workable", "message": f"This task is {t['status']}."}
     if settings.TASKS_V3:
-        d = _day(me, now.astimezone(IST).date().isoformat())
+        d = _day(me, work_date(now).isoformat())
         if not d or d["end_at"]:
             return 409, {"error": "day_not_started" if not d else "day_ended",
                          "message": "Press Start my day first." if not d else "You ended your day already."}
@@ -418,7 +483,7 @@ def _start(conn, me, t, task_id, iv, picking, now):
 
 
 def pause(user, now=None):
-    g = _guard(user, write=True)
+    g = _guard(user, now=now, write=True)
     if g:
         return g
     now = _now(now)
@@ -437,7 +502,7 @@ def pause(user, now=None):
 def take_break(user, body, now=None):
     """v3 one-tap Break / Lunch / Thinking / Waiting. The running task pauses and is
     kept on the break interval; the same tap again resumes it. Another kind switches."""
-    g = _guard_v3(user)
+    g = _guard_v3(user, now)
     if g:
         return g
     now = _now(now)
@@ -445,7 +510,7 @@ def take_break(user, body, now=None):
     kind = str((body or {}).get("type") or "")
     if kind not in BREAKS:
         return base._bad("Pick Break, Lunch, Thinking or Waiting.")
-    d = _day(me, now.astimezone(IST).date().isoformat())
+    d = _day(me, work_date(now).isoformat())
     if not d or d["end_at"]:
         return 409, {"error": "day_not_started" if not d else "day_ended",
                      "message": "Press Start my day first." if not d else "You ended your day already."}
@@ -471,7 +536,7 @@ def take_break(user, body, now=None):
 
 def _break_minutes(user_id, day, now):
     """{type: minutes} of Break / Lunch / Thinking / Waiting started that IST day."""
-    d0 = datetime.fromisoformat(day).replace(tzinfo=IST)
+    d0 = _day_start(day)
     out = dict.fromkeys(BREAKS, 0.0)
     for iv in store.rows("SELECT * FROM work_intervals WHERE user_id=? AND type IN (?,?,?,?) AND start_ts>=? "
                          "AND start_ts<?", (user_id, *BREAKS, _iso(d0), _iso(d0 + timedelta(days=1)))):
@@ -482,7 +547,7 @@ def _break_minutes(user_id, day, now):
 
 def end_session(user, body, now=None):
     """The forgotten timer: the person says when they stopped (on that day, not later than now)."""
-    g = _guard(user, write=True)
+    g = _guard(user, now=now, write=True)
     if g:
         return g
     now = _now(now)
@@ -503,7 +568,7 @@ def end_session(user, body, now=None):
 
 
 def complete(user, task_id, body, now=None):
-    g = _guard(user, write=True)
+    g = _guard(user, now=now, write=True)
     if g:
         return g
     now = _now(now)
@@ -529,19 +594,17 @@ def complete(user, task_id, body, now=None):
 
 
 # ------------------------------------------------------------------ v3: start / end my day
-def _guard_v3(user):
-    return _guard(user, write=True) or (None if settings.TASKS_V3 else ERR_OFF_V3)
+def _guard_v3(user, now=None):
+    return _guard(user, write=True, now=now) or (None if settings.TASKS_V3 else ERR_OFF_V3)
 
 
 def start_day(user, now=None):
-    g = _guard_v3(user)
+    g = _guard_v3(user, now)
     if g:
         return g
     now = _now(now)
     me = base.uid(user)
-    today = now.astimezone(IST).date().isoformat()
-    if _unended(me, today):
-        return 409, {"error": "open_day", "message": "You didn't end an earlier day. Say when you stopped first."}
+    today = work_date(now).isoformat()
     if not _day(me, today):
         status = "late" if now.astimezone(IST).strftime("%H:%M") > str(work_settings()["day_late_after"]) \
             else "on_time"
@@ -557,12 +620,12 @@ def start_day(user, now=None):
 
 
 def end_day(user, now=None):
-    g = _guard_v3(user)
+    g = _guard_v3(user, now)
     if g:
         return g
     now = _now(now)
     me = base.uid(user)
-    d = _day(me, now.astimezone(IST).date().isoformat())
+    d = _day(me, work_date(now).isoformat())
     if not d:
         return 409, {"error": "day_not_started", "message": "Your day hasn't started."}
     if d["end_at"]:
@@ -582,7 +645,7 @@ def end_day(user, now=None):
 def reopen_day(user, body, now=None):
     """Resume an ended day (today only): the person their own (flexible hours, work in parts), Jai anyone's.
     The old end stays in task_events."""
-    g = _guard_v3(user)
+    g = _guard_v3(user, now)
     if g:
         return g
     now = _now(now)
@@ -590,7 +653,7 @@ def reopen_day(user, body, now=None):
     who = str((body or {}).get("user_id") or me)
     if who != me and not taskmgr.is_super(user):
         return ERR_SUPER
-    d = _day(who, now.astimezone(IST).date().isoformat())
+    d = _day(who, work_date(now).isoformat())
     if not d or not d["end_at"]:
         return 404, {"error": "not_found", "message": "That person has no ended day today."}
     conn = store.connect()
@@ -598,35 +661,6 @@ def reopen_day(user, body, now=None):
         conn.execute("UPDATE work_days SET end_at=NULL, end_source='reopened' WHERE id=?", (d["id"],))
         _event(conn, who, None, "day_reopen", now, "ended", "open",
                f"ended {_ist(d['end_at']):%H:%M}, reopened by " + ("the person" if who == me else "Jai"), actor=me)
-    return state(user, now)
-
-
-def set_day_end(user, body, now=None):
-    """The forgotten End my day: the person says when they stopped (never guessed).
-    A timer left running that same day stops at the same time."""
-    g = _guard_v3(user)
-    if g:
-        return g
-    now = _now(now)
-    me = base.uid(user)
-    d = _unended(me, now.astimezone(IST).date().isoformat())
-    if not d:
-        return state(user, now)
-    end = _end_time(body)
-    if not end:
-        return base._bad("Give the time you stopped, like 2026-10-25T18:30.")
-    if not _ist(d["start_at"]) < end <= now or end.date().isoformat() != d["date"]:
-        return base._bad("The stop time must be on that day, after you started, and not in the future.")
-    iv = _open(me)
-    iv = iv if iv and _ist(iv["start_ts"]).date().isoformat() == d["date"] else None
-    if iv and end < _ist(iv["start_ts"]):
-        return base._bad(f"A timer ran from {_ist(iv['start_ts']):%H:%M} that day; the day can't end before it.")
-    conn = store.connect()
-    with conn:
-        if iv:
-            _close(conn, iv, end, me, "manual_end", "day end set by the person after a forgotten stop")
-        conn.execute("UPDATE work_days SET end_at=?, end_source='set_later' WHERE id=?", (_iso(end), d["id"]))
-        _event(conn, me, None, "day_end_set", now, reason=f"{d['date']} ended at {end:%H:%M}")
     return state(user, now)
 
 
@@ -640,22 +674,31 @@ def _hours(v):
 
 
 def set_week_hours(user, body, now=None):
-    """Same hours for every week: a new settings row (the history stays)."""
-    g = _guard(user, write=True, superuser=True)
+    """New weekly hours from a date (default: the next work month, 26th). Never earlier than today,
+    so past days keep their targets; everyone sees the change coming on their screen."""
+    g = _guard(user, now=now, write=True, superuser=True)
     if g:
         return g
-    week = [_hours(v) for v in ((body or {}).get("week") or [])]
+    now = _now(now)
+    b = body or {}
+    week = [_hours(v) for v in (b.get("week") or [])]
     if len(week) != 7 or None in week:
         return base._bad("Give 7 numbers, Monday to Sunday, each 0 to 16 hours.")
-    cfg = {**work_settings(), "week_hours": week}
-    store.write("INSERT INTO work_settings(value, set_by, set_at) VALUES (?,?,?)",
-                (json.dumps(cfg), base.uid(user), _iso(_now(now))))
+    today = work_date(now)
+    try:
+        start = _date.fromisoformat(b["from"]) if b.get("from") else cycle_bounds(cycle_of(today))[1] + timedelta(days=1)
+    except ValueError:
+        return base._bad("The start date looks like 2026-11-26.")
+    if start < today:
+        return base._bad("New hours can start today or later, never on past days.")
+    store.write("INSERT INTO week_hours(week, effective_from, set_by, set_at) VALUES (?,?,?,?)",
+                (json.dumps(week), start.isoformat(), base.uid(user), _iso(now)))
     return state(user, now)
 
 
 def set_day_hours(user, body, now=None):
     """Hours for one date, for everyone. hours null = back to the weekly hours."""
-    g = _guard(user, write=True, superuser=True)
+    g = _guard(user, now=now, write=True, superuser=True)
     if g:
         return g
     b = body or {}
@@ -663,6 +706,8 @@ def set_day_hours(user, body, now=None):
         day = _date.fromisoformat(str(b.get("date"))).isoformat()
     except ValueError:
         return base._bad("Pick a date.")
+    if day < work_date(_now(now)).isoformat():
+        return base._bad("Past days keep their hours.")
     hours = None if b.get("hours") is None else _hours(b.get("hours"))
     if b.get("hours") is not None and hours is None:
         return base._bad("Hours must be 0 to 16.")
@@ -683,7 +728,7 @@ def idle_minutes(user_id, d0, d1):
     """Idle after a dependency stop or a Waiting tap, d0 <= stop < d1 (IST dates): if nothing
     started within the grace, the whole gap until the next start (or the day's end) counts.
     Gaps are merged so a stop plus a Waiting tap never count twice."""
-    a0, a1 = (_iso(datetime.fromisoformat(d).replace(tzinfo=IST)) for d in (d0, d1))
+    a0, a1 = (_iso(_day_start(d)) for d in (d0, d1))
     stops = [r["t"] for r in store.rows(
         "SELECT start_ts t FROM task_holds WHERE user_id=? AND start_ts>=? AND start_ts<? UNION "
         "SELECT start_ts t FROM work_intervals WHERE user_id=? AND type='waiting' AND start_ts>=? AND start_ts<? "
@@ -694,9 +739,8 @@ def idle_minutes(user_id, d0, d1):
         s = _ist(t)
         nxt = store.one("SELECT MIN(start_ts) t FROM work_intervals WHERE user_id=? AND type IN (?,?) AND start_ts>=?",
                         (user_id, *COUNTS, t))["t"]
-        d = _day(user_id, s.date().isoformat())
-        end = min([_ist(x) for x in (nxt, d and d["end_at"]) if x]
-                  + [datetime.combine(s.date() + timedelta(days=1), datetime.min.time(), IST)])
+        d = _day(user_id, work_date(s).isoformat())
+        end = min([_ist(x) for x in (nxt, d and d["end_at"]) if x] + [_day_start(work_date(s) + timedelta(days=1))])
         if end - s > grace:
             gaps.append([s, end])
     total, last = 0.0, None
@@ -709,30 +753,32 @@ def idle_minutes(user_id, d0, d1):
 
 
 def month_credit(user_id, month, now=None):
-    """The month so far (finished days only, from the person's first day): each day counts up to
-    credit_day_cap_hours against its target; extra hours make up short days. Owed = short hours
-    beyond the allowance, plus idle after dependency stops."""
+    """A work month (26th..25th) so far: finished days only, from the person's first day. Extra hours
+    make up short days inside the same work month only; a closed month can't be topped up.
+    Owed = short hours beyond the allowance, plus idle after dependency stops."""
     now = _now(now)
-    cfg = work_settings()
     first = store.one("SELECT MIN(date) d FROM work_days WHERE user_id=?", (user_id,))["d"]
-    today = now.astimezone(IST).date()
-    d = max(_date.fromisoformat(month + "-01"), _date.fromisoformat(first)) if first else today
-    start, worked, target = d, 0.0, 0.0
-    while d < today and d.isoformat()[:7] == month:
-        worked += min(day_work(user_id, d.isoformat(), now)["provenMinutes"], cfg["credit_day_cap_hours"] * 60)
-        target += target_hours(d.isoformat()) * 60
+    today = work_date(now)
+    m0, m1 = cycle_bounds(month)
+    d = max(m0, _date.fromisoformat(first)) if first else today
+    start, worked, target, rings, ring_days = d, 0.0, 0.0, 0, 0
+    while d < today and d <= m1:
+        mins, goal = day_work(user_id, d.isoformat(), now)["provenMinutes"], target_hours(d.isoformat()) * 60
+        worked, target = worked + mins, target + goal
+        if goal:
+            ring_days, rings = ring_days + 1, rings + (mins >= goal)
         d += timedelta(days=1)
     idle = idle_minutes(user_id, start.isoformat(), d.isoformat()) if d > start else 0.0
     allow = allowance_hours(user_id) * 60
     balance = round(worked - target - idle, 1)
-    return {"month": month, "workedMinutes": round(worked, 1), "targetMinutes": target, "idleMinutes": idle,
-            "balanceMinutes": balance, "allowanceMinutes": allow, "owedMinutes": max(0.0, -balance - allow),
-            "dayCapHours": cfg["credit_day_cap_hours"]}
+    return {"month": month, "from": m0.isoformat(), "to": m1.isoformat(), "workedMinutes": round(worked, 1),
+            "targetMinutes": target, "idleMinutes": idle, "balanceMinutes": balance, "allowanceMinutes": allow,
+            "owedMinutes": max(0.0, -balance - allow), "ringsClosed": rings, "ringDays": ring_days}
 
 
 def set_allowance(user, body, now=None):
     """Jai: hours someone (or everyone, user_id '*') may be short in a month."""
-    g = _guard(user, write=True, superuser=True)
+    g = _guard(user, now=now, write=True, superuser=True)
     if g:
         return g
     b = body or {}
@@ -762,7 +808,7 @@ def routines(user_id):
 
 
 def create_routine(user, body, now=None):
-    g = _guard(user, write=True, superuser=True)
+    g = _guard(user, now=now, write=True, superuser=True)
     if g:
         return g
     b = body or {}
@@ -783,7 +829,7 @@ def create_routine(user, body, now=None):
 
 
 def set_routine_active(user, routine_id, body, now=None):
-    g = _guard(user, write=True, superuser=True)
+    g = _guard(user, now=now, write=True, superuser=True)
     if g:
         return g
     if store.write("UPDATE daily_routines SET active=? WHERE id=?",
@@ -794,7 +840,7 @@ def set_routine_active(user, routine_id, body, now=None):
 
 def start_routine(user, routine_id, now=None):
     """Jump to a daily task: carry on today's copy if there is one, else make it, then start it."""
-    g = _guard(user, write=True)
+    g = _guard(user, now=now, write=True)
     if g:
         return g
     now = _now(now)
@@ -816,7 +862,7 @@ def start_routine(user, routine_id, now=None):
 
 # ------------------------------------------------------------------ road blockers
 def block(user, task_id, body, now=None):
-    g = _guard(user, write=True)
+    g = _guard(user, now=now, write=True)
     if g:
         return g
     now = _now(now)
@@ -858,7 +904,7 @@ def block(user, task_id, body, now=None):
 
 
 def unblock(user, task_id, now=None):
-    g = _guard(user, write=True)
+    g = _guard(user, now=now, write=True)
     if g:
         return g
     now = _now(now)
@@ -874,7 +920,7 @@ def unblock(user, task_id, now=None):
 
 
 def decide_hold(user, hold_id, body, now=None):
-    g = _guard(user, write=True, superuser=True)
+    g = _guard(user, now=now, write=True, superuser=True)
     if g:
         return g
     now = _now(now)
@@ -894,14 +940,14 @@ def decide_hold(user, hold_id, body, now=None):
 
 # ------------------------------------------------------------------ 15-minute proof
 def add_proof(user, body, now=None):
-    g = _guard(user, write=True)
+    g = _guard(user, now=now, write=True)
     if g:
         return g
     now = _now(now)
     me = base.uid(user)
     b = body or {}
     slot = str(b.get("slot") or "")
-    today = now.astimezone(IST).date().isoformat()
+    today = work_date(now).isoformat()
     if not slot.startswith(today):
         return 409, {"error": "locked", "message": "Only today's time can get proof. Earlier days are locked; "
                                                     "ask Jai for a correction."}

@@ -106,24 +106,23 @@ def main():
     check("pressing End again keeps the first time",
           wt.state(A, at(19))[1]["day"]["end_at"] == "2026-10-26T13:00:00+00:00")
 
-    print("\n--- forgotten End my day ---")
+    print("\n--- the day runs 4 AM to 4 AM; a forgotten day closes by itself ---")
     wt.start_day(A, at(9, day=27))
+    wt.start(A, t2, at(14, day=27))
+    wt.pause(A, at(15, day=27))
     wt.start(A, t2, at(16, day=27))
+    s = wt.state(A, at(1, 30, day=28))[1]
+    check("1:30 AM still belongs to the 27th, the timer still runs",
+          s["today"] == "2026-10-27" and s["day"]["date"] == "2026-10-27" and s["running"]["task"]["id"] == t2)
+    check("late-night work counts on that day", s["work"]["provenMinutes"] == 60 + 570)
     code, s = wt.state(A, at(9, day=28))
-    check("next login: yesterday is flagged as not ended", s["openDay"]["date"] == "2026-10-27" and s["day"] is None)
-    check("today can't start until it is set", wt.start_day(A, at(9, day=28))[1]["error"] == "open_day")
-    check("the stop time must be on that day",
-          wt.set_day_end(A, {"end": "2026-10-28T08:00"}, at(9, day=28))[0] == 400)
-    check("not before the day started",
-          wt.set_day_end(A, {"end": "2026-10-27T08:00"}, at(9, day=28))[0] == 400)
-    check("not before the timer that ran that day",
-          wt.set_day_end(A, {"end": "2026-10-27T15:00"}, at(9, day=28))[0] == 400)
-    code, s = wt.set_day_end(A, {"end": "2026-10-27T18:15"}, at(9, day=28))
     d = store.one("SELECT * FROM work_days WHERE user_id='7' AND date='2026-10-27'")
-    check("18:15 ends the day, marked as set later", code == 200 and s["openDay"] is None
-          and d["end_at"] == "2026-10-27T12:45:00+00:00" and d["end_source"] == "set_later")
-    iv = store.one("SELECT * FROM work_intervals WHERE user_id='7' AND task_id=? ORDER BY id DESC", (t2,))
-    check("the timer left running stops at the same time", iv["end_ts"] == "2026-10-27T12:45:00+00:00")
+    check("next morning: a new day, nothing to fill in", s["today"] == "2026-10-28" and s["day"] is None and s["running"] is None)
+    check("the day closed by itself at the last thing done (15:00)", d["end_source"] == "auto"
+          and d["end_at"] == "2026-10-27T10:30:00+00:00")
+    check("the forgotten timer counts nothing (never guessed)", wt.day_work("7", "2026-10-27", at(9, day=28))["provenMinutes"] == 60
+          and store.one("SELECT status FROM work_tasks WHERE id=?", (t2,))["status"] == "paused")
+    check("the close is in the event trail", store.one("SELECT COUNT(*) c FROM task_events WHERE event_type='day_end_auto'")["c"] == 1)
     check("then today starts normally", wt.start_day(A, at(9, 5, day=28))[1]["day"]["date"] == "2026-10-28")
 
     print("\n--- no proof in v3 (Jai, 27 Oct) ---")
@@ -138,7 +137,7 @@ def main():
     print("\n--- dependency stop: reasons + Jai's daily tasks ---")
     J = USERS["jai"]
     daily = {"title": "Reply to client emails", "category_id": cat, "details": {"reason": "inbox"}}
-    check("only Jai sets daily tasks", wt.create_routine(A, daily)[0] == 403)
+    check("only Jai sets daily tasks", wt.create_routine(A, daily, at(11, day=28))[0] == 403)
     check("a daily task needs its category's fields",
           wt.create_routine(J, {**daily, "details": {}})[0] == 400)
     wt.create_routine(J, daily)
@@ -167,13 +166,21 @@ def main():
     print("\n--- working hours: weekly, and per date (Jai) ---")
     check("default: 7 h Mon-Sat, Sunday off",
           wt.target_hours("2026-10-28") == 7 and wt.target_hours("2026-11-01") == 0)
-    check("only Jai sets hours", wt.set_week_hours(A, {"week": [8] * 7})[0] == 403
-          and wt.set_day_hours(A, {"date": "2026-10-31", "hours": 4})[0] == 403)
+    check("only Jai sets hours", wt.set_week_hours(A, {"week": [8] * 7}, at(12, day=28))[0] == 403
+          and wt.set_day_hours(A, {"date": "2026-10-31", "hours": 4}, at(12, day=28))[0] == 403)
     check("the week needs 7 numbers of 0-16", wt.set_week_hours(J, {"week": [8] * 6})[0] == 400
           and wt.set_week_hours(J, {"week": [8, 8, 8, 8, 8, 20, 0]})[0] == 400)
     code, s = wt.set_week_hours(J, {"week": [8, 8, 8, 8, 8, 5, 0]}, at(12, day=28))
-    check("Jai sets the same hours for every week (Sat 5 h)", code == 200 and s["hours"]["week"][5] == 5
-          and wt.target_hours("2026-10-28") == 8 and wt.target_hours("2026-11-07") == 5)
+    check("new weekly hours start with the next work month (26 Nov), this one keeps its hours",
+          code == 200 and wt.target_hours("2026-11-25") == 7 and wt.target_hours("2026-11-28") == 5
+          and wt.target_hours("2026-11-27") == 8 and s["hours"]["week"][5] == 7)
+    check("everyone is told what changes and from when",
+          wt.state(A, at(12, day=28))[1]["hoursChanges"] == [{"week": [8, 8, 8, 8, 8, 5, 0], "effective_from": "2026-11-26"}])
+    check("never on past days", wt.set_week_hours(J, {"week": [8] * 7, "from": "2026-10-27"}, at(12, day=28))[0] == 400
+          and wt.set_day_hours(J, {"date": "2026-10-27", "hours": 4}, at(12, day=28))[0] == 400)
+    code, s = wt.set_week_hours(J, {"week": [8, 8, 8, 8, 8, 8, 0], "from": "2026-10-28"}, at(12, day=28))
+    check("Jai can start them today; yesterday keeps 7 h", wt.target_hours("2026-10-28") == 8
+          and wt.target_hours("2026-10-27") == 7 and wt.target_hours("2026-11-28") == 5)
     code, s = wt.set_day_hours(J, {"date": "2026-10-30", "hours": 4, "note": "Diwali prep"}, at(12, day=28))
     check("one date can differ (Fri 30 Oct: 4 h), the next Friday doesn't",
           wt.target_hours("2026-10-30") == 4 and wt.target_hours("2026-11-06") == 8
@@ -188,7 +195,7 @@ def main():
 
     print("\n--- break buttons (Step 3) ---")
     tb = task(A, "Call for breaks")
-    check("POST /api/tasks/v2/break answers", c.post("/api/tasks/v2/break", headers={"x-user": "akash"},
+    check("POST /api/tasks/v2/break answers", c.post("/api/tasks/v2/break", headers={"x-user": "jai"},
                                                     json={"type": "nap"}).status_code == 400)
     wt.start(A, tb, at(13, day=28))
     code, s = wt.take_break(A, {"type": "lunch"}, at(13, 10, day=28))
@@ -217,7 +224,6 @@ def main():
     check("no break before Start my day", wt.take_break(P, {"type": "break"}, at(9, day=30))[0] == 409)
 
     print("\n--- Jai resumes an ended day ---")
-    wt.set_day_end(P, {"end": "2026-10-26T18:00"}, at(8, day=28))
     wt.start_day(P, at(9, day=28))
     wt.end_day(P, at(15, day=28))
     check("Priya can't resume Akash's day", wt.reopen_day(P, {"user_id": "7"}, at(15, 5, day=28))[0] == 403)
