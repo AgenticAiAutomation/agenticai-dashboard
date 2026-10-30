@@ -17,6 +17,7 @@ import {
 import Shell from '@/components/Shell';
 import Workspace, { DeskRow, MyLevels, RagSignals } from '@/components/Workspace';
 import FollowupBoard from '@/components/followups/FollowupBoard';
+import QuestionsBar from '@/components/worktime/QuestionsBar';
 import {
   Card,
   CardSkeleton,
@@ -84,6 +85,7 @@ export default function DashboardPage() {
       }
     >
       <ErrorBanner message={error} />
+      <QuestionsBar />
 
       {data && !data.go_live_approved && (
         <div className="mb-6 rounded-lg border border-warning/40 bg-warning/10 px-4 py-3 text-sm text-warning">

@@ -132,3 +132,14 @@ Tests: `tests/test_tasks_v3_game.py` (22).
 
 API: `POST /v2/leave {type, date, hours?, reason?}`, `/v2/leave/{id}/cancel`, `/v2/leave/policy {user_id|'*', days, short_count, short_hours}`.
 Tests: `tests/test_tasks_v3_leave.py` (28).
+
+## Q&A (Jai, 30 Oct 2026)
+
+Jai asks one person about their work (in general or one of their tasks). Only Jai (superusers) and that person
+see the thread. Open = waiting for the person: a red block on top of their Tasks page (and dashboard).
+Answered = waiting for Jai: a red block on top of his dashboard and Tasks page, where he asks more (back to open)
+or presses **Done ✓**. Done threads go to **Q&A history**: searchable by words or task, by person for Jai, for the
+last 12 months; Jai can reopen one. Tables `questions` (never deleted; who/what/when never change) and
+`question_messages` (written once). The bar refreshes every minute.
+API: `GET /v2/questions`, `GET /v2/questions/history?q=&who=`, `POST /v2/questions {to_user, task_id?, question}`,
+`/v2/questions/{id}/reply {body}`, `/done`, `/reopen`. Tests: `tests/test_tasks_v3_qa.py` (23).

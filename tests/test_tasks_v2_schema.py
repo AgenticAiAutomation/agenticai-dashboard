@@ -173,6 +173,8 @@ store.write("INSERT INTO hour_allowance(user_id, hours, set_by, set_at) VALUES (
 store.write("INSERT INTO week_hours(week, effective_from, set_by, set_at) VALUES ('[7,7,7,7,7,7,0]', '2026-11-26', '1', ?)", (T,))
 store.write("INSERT INTO achievements(user_id, month, what, for_whom, result, created_at) VALUES ('7', '2026-11', 'Ranked the clinic page', 'Dental client', 'Top 3 on Google', ?)", (T,))
 store.write("INSERT INTO leave_policy(user_id, days, short_count, short_hours, set_by, set_at) VALUES ('*', 2, 2, 2.5, '1', ?)", (T,))
+store.write("INSERT INTO questions(to_user, asked_by, created_at) VALUES ('7', '1', ?)", (T,))
+store.write("INSERT INTO question_messages(question_id, user_id, body, created_at) VALUES (1, '1', 'Status?', ?)", (T,))
 store.write("INSERT INTO big_ideas(user_id, month, title, channel, idea, created_at) VALUES ('7', '2026-10', 'GBP posts', 'Google Maps', 'Post weekly on Google Business Profile', ?)", (T,))
 check("every v2 table has a row to protect",
       all(store.one(f"SELECT COUNT(*) c FROM {t}")["c"] for t in store.V3_TABLES))

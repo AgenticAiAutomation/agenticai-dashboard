@@ -328,7 +328,7 @@ ADD_COLUMNS = [
 V3_TABLES = ["task_categories", "work_tasks", "task_events", "work_intervals", "work_slots", "task_holds",
              "time_corrections", "leave_calendar", "work_settings", "work_points", "badges",
              "badges_awarded", "employee_of_month", "work_days", "daily_routines", "day_hours", "hour_allowance",
-             "big_ideas", "week_hours", "achievements", "leave_policy"]
+             "big_ideas", "week_hours", "achievements", "leave_policy", "questions", "question_messages"]
 
 SCHEMA_3 = """
 CREATE TABLE IF NOT EXISTS task_categories (
@@ -594,6 +594,28 @@ CREATE TABLE IF NOT EXISTS leave_policy (
     set_at      TEXT NOT NULL
 );
 
+-- Tasks v3 Q&A: Jai asks one person about their work. Only the two of them see it.
+-- status open (waiting for the person) | answered (waiting for Jai) | done (history).
+CREATE TABLE IF NOT EXISTS questions (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    to_user    TEXT NOT NULL,
+    task_id    INTEGER,
+    asked_by   TEXT NOT NULL,
+    status     TEXT NOT NULL DEFAULT 'open',
+    done_by    TEXT,
+    done_at    TEXT,
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ix_q_user ON questions(to_user, status);
+CREATE TABLE IF NOT EXISTS question_messages (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    question_id INTEGER NOT NULL REFERENCES questions(id),
+    user_id     TEXT NOT NULL,
+    body        TEXT NOT NULL,
+    created_at  TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ix_qm_q ON question_messages(question_id, id);
+
 -- Tasks v3 Big Ideas: how to make Agentic AI Automation the most watched company
 -- (social, ChatGPT, Gemini, Maps...). Open to everyone. Jai sets status; 'repeat' doesn't
 -- count. 'assigned' made a work_tasks row (task_id) for the person applying it.
@@ -643,8 +665,14 @@ CREATE INDEX IF NOT EXISTS ix_ach_month ON achievements(month, user_id);
     f"CREATE TRIGGER IF NOT EXISTS g_{t}_noupdate BEFORE UPDATE ON {t} "
     f"BEGIN SELECT RAISE(ABORT, 'tasks v2: {t} rows are never changed'); END;\n"
     for t in ("task_events", "work_slots", "work_settings", "work_points", "badges_awarded", "employee_of_month",
-              "day_hours", "hour_allowance", "week_hours", "leave_policy")
+              "day_hours", "hour_allowance", "week_hours", "leave_policy", "question_messages")
 ) + """
+-- Who was asked, about what, by whom and when never changes.
+CREATE TRIGGER IF NOT EXISTS g_questions_origin BEFORE UPDATE ON questions
+WHEN NEW.to_user IS NOT OLD.to_user OR NEW.task_id IS NOT OLD.task_id OR NEW.asked_by IS NOT OLD.asked_by
+  OR NEW.created_at IS NOT OLD.created_at
+BEGIN SELECT RAISE(ABORT, 'tasks v3: who was asked what never changes'); END;
+
 -- Jai's Approve / Reject on a Win is final.
 CREATE TRIGGER IF NOT EXISTS g_achievements_final BEFORE UPDATE ON achievements
 WHEN OLD.status IN ('approved', 'rejected') OR NEW.user_id IS NOT OLD.user_id OR NEW.month IS NOT OLD.month

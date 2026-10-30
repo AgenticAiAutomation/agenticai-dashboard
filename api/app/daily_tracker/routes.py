@@ -8,7 +8,7 @@ import importlib
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, Response
 
-from . import bigideas, game, leave, service, taskmgr, worktime
+from . import bigideas, game, leave, qa, service, taskmgr, worktime
 from .config import settings
 
 _hook = None
@@ -317,6 +317,30 @@ def build():
     @tasks.post("/v2/tasks/{task_id}/review")
     async def v3_task_review(request: Request, task_id: int):
         return _json(game.review(current_user(request), task_id, await _body(request)))
+
+    @tasks.get("/v2/questions")
+    async def v3_questions(request: Request):
+        return _json(qa.inbox(current_user(request)))
+
+    @tasks.get("/v2/questions/history")
+    async def v3_questions_history(request: Request, q: str = "", who: str = ""):
+        return _json(qa.history(current_user(request), q, who))
+
+    @tasks.post("/v2/questions")
+    async def v3_question_ask(request: Request):
+        return _json(qa.ask(current_user(request), await _body(request)))
+
+    @tasks.post("/v2/questions/{qid}/reply")
+    async def v3_question_reply(request: Request, qid: int):
+        return _json(qa.reply(current_user(request), qid, await _body(request)))
+
+    @tasks.post("/v2/questions/{qid}/done")
+    async def v3_question_done(request: Request, qid: int):
+        return _json(qa.close(current_user(request), qid, True))
+
+    @tasks.post("/v2/questions/{qid}/reopen")
+    async def v3_question_reopen(request: Request, qid: int):
+        return _json(qa.close(current_user(request), qid, False))
 
     @tasks.post("/v2/leave")
     async def v3_leave_take(request: Request):

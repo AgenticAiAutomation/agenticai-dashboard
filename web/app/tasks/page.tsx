@@ -14,6 +14,7 @@ import PlanPanel from '@/components/tasks/PlanPanel';
 import TasksPanel from '@/components/tasks/TasksPanel';
 import TimerPanel from '@/components/worktime/TimerPanel';
 import BigIdeasPanel from '@/components/worktime/BigIdeasPanel';
+import QuestionsBar from '@/components/worktime/QuestionsBar';
 import { TrackerStatus, WorkType, is404, msg, trackerApi } from '@/lib/tracker';
 
 type Tab = 'timer' | 'bigideas' | 'tasks' | 'today' | 'progress' | 'ideas' | 'mirror' | 'review' | 'plan' | 'report';
@@ -82,6 +83,7 @@ export default function TasksPage() {
         !error && <Skeleton className="h-64 w-full" />
       ) : (
         <>
+          {status.tasksV3 && <QuestionsBar />}
           {status.readOnly && (
             <p className="mb-4 rounded-lg border border-warning/40 bg-warning/10 px-4 py-3 text-sm text-warning">
               The tracker is read-only for maintenance. If it stays down, log your work in the backup Google Sheet.

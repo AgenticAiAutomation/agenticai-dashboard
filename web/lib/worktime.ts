@@ -39,6 +39,17 @@ export type LeavePolicy = { days: number; short_count: number; short_hours: numb
 export type LeaveRow = { id: number; user_id: string; date: string; type: 'full' | 'short'; credited_hours: number; reason: string };
 export type LeaveSummary = { policy: LeavePolicy; usedDays: number; usedShort: number; leaves: LeaveRow[]; carriedHours: number };
 
+/* v3 Q&A: Jai asks one person; open = waiting for them, answered = waiting for Jai. */
+export type QThread = {
+  id: number; to_user: string; to_name: string | null; task_id: number | null; task_title: string | null;
+  status: 'open' | 'answered' | 'done'; created_at: string; done_at: string | null;
+  messages: { id: number; user_id: string; name: string; body: string; created_at: string }[];
+};
+export type QInbox = {
+  threads: QThread[]; isSuperuser: boolean; me: string;
+  people?: { user_id: string; name: string; tasks: { id: number; title: string }[] }[];
+};
+
 /* v3 Big Ideas board (open to everyone). */
 export type BigIdea = {
   id: number; user_id: string; name: string; month: string; title: string; channel: string; idea: string;
@@ -130,6 +141,12 @@ export const wtApi = {
   takeLeave: (body: { type: 'full' | 'short'; date: string; hours?: number; reason?: string }) => api.post<WState>(`${V}/leave`, body),
   cancelLeave: (id: number) => api.post<WState>(`${V}/leave/${id}/cancel`),
   leavePolicy: (body: { user_id: string } & LeavePolicy) => api.post<WState>(`${V}/leave/policy`, body),
+  questions: () => api.get<QInbox>(`${V}/questions`),
+  questionHistory: (q = '', who = '') => api.get<{ threads: QThread[] }>(`${V}/questions/history`, { params: { q, who } }),
+  askQuestion: (body: { to_user: string; task_id?: number; question: string }) => api.post<QInbox>(`${V}/questions`, body),
+  replyQuestion: (id: number, body: string) => api.post<QInbox>(`${V}/questions/${id}/reply`, { body }),
+  questionDone: (id: number) => api.post<QInbox>(`${V}/questions/${id}/done`),
+  questionReopen: (id: number) => api.post<QInbox>(`${V}/questions/${id}/reopen`),
   reviewTask: (id: number, accept: boolean, note = '') => api.post<WState>(`${V}/tasks/${id}/review`, { accept, note }),
   startRoutine: (id: number) => api.post<WState>(`${V}/routines/${id}/start`),
 };
