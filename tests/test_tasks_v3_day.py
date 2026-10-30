@@ -220,7 +220,7 @@ def main():
     wt.set_day_end(P, {"end": "2026-10-26T18:00"}, at(8, day=28))
     wt.start_day(P, at(9, day=28))
     wt.end_day(P, at(15, day=28))
-    check("Priya can't resume her own day", wt.reopen_day(P, {"user_id": "8"}, at(15, 5, day=28))[0] == 403)
+    check("Priya can't resume Akash's day", wt.reopen_day(P, {"user_id": "7"}, at(15, 5, day=28))[0] == 403)
     check("Jai sees her ended day", any(d["user_id"] == "8" and d["end_at"]
                                        for d in wt.state(J, at(15, 5, day=28))[1]["teamDays"]))
     code, s = wt.reopen_day(J, {"user_id": "8"}, at(15, 10, day=28))
@@ -232,6 +232,13 @@ def main():
     check("and end her day again", wt.end_day(P, at(16, day=28))[0] == 200
           and wt._day("8", "2026-10-28")["end_source"] == "button")
     check("an open day can't be resumed", wt.reopen_day(J, {"user_id": "7"}, at(16, day=28))[0] == 404)
+    check("flexible hours: Priya resumes her own day in the evening", wt.reopen_day(P, {}, at(19, day=28))[0] == 200
+          and store.one("SELECT reason FROM task_events WHERE event_type='day_reopen' ORDER BY server_ts DESC")["reason"]
+          == "ended 16:00, reopened by the person")
+    tq = task(P, "Evening part")
+    wt.start(P, tq, at(19, day=28))
+    s = wt.end_day(P, at(21, day=28))[1]
+    check("both parts of her day fill the same ring", s["work"]["provenMinutes"] == 40 + 120)
 
     print("\n--- guardrails ---")
     conn = store.connect()

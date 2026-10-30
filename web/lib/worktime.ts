@@ -63,7 +63,7 @@ export const wtApi = {
   proof: (body: Record<string, string>) => api.post<WState>(`${V}/proof`, body),
   startDay: () => api.post<WState>(`${V}/day/start`),
   endDay: () => api.post<WState>(`${V}/day/end`),
-  reopenDay: (user_id: string) => api.post<WState>(`${V}/day/reopen`, { user_id }),
+  reopenDay: (user_id?: string) => api.post<WState>(`${V}/day/reopen`, { user_id }),
   setDayEnd: (end: string) => api.post<WState>(`${V}/day/set-end`, { end }),
   weekHours: (week: number[]) => api.post<WState>(`${V}/hours/week`, { week }),
   dayHours: (date: string, hours: number | null, note = '') => api.post<WState>(`${V}/hours/day`, { date, hours, note }),

@@ -67,3 +67,11 @@ Lunch chips come with the break buttons in Step 3. Changing the weekly hours als
 API: `POST /v2/break {type: break|lunch|thinking|waiting}` (v3 only; 409 before Start my day / after End my day);
 state adds `breaks: {used: {break, lunch, thinking, waiting}, limit: {break, lunch}}` (minutes, breaks started today).
 Tests now 58.
+
+## Flexible hours (30 Oct 2026)
+
+A day can be worked in parts. The ring adds up task time from any part of the IST day. **End my day** can be
+undone the same day: the person presses **Resume my day** (Jai can do it for anyone from **Team today**).
+`POST /v2/day/reopen {user_id?}` (empty = yourself; someone else = Jai only). Each reopen is a `day_reopen`
+event with the earlier end time ("ended 16:00, reopened by the person"). Time between parts never counts.
+Work after midnight belongs to the next day. Tests now 67.

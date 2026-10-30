@@ -296,12 +296,15 @@ export default function TimerPanel({ status }: { status: TrackerStatus }) {
           <span className="text-slate-200">
             Started <b className="text-white">{clock(s.day.start_at)}</b>
             {s.day.status === 'late' && <span className="ml-2 rounded-full bg-amber-500/15 px-2 py-0.5 text-xs text-amber-200">late start</span>}
-            {s.day.end_at && <> · ended <b className="text-white">{clock(s.day.end_at)}</b> · only Jai can resume it</>}
+            {s.day.end_at && <> · ended <b className="text-white">{clock(s.day.end_at)}</b></>}
           </span>
           {!s.day.end_at && !viewer && (
             <button className="btn-secondary" onClick={() => {
-              if (window.confirm('End your day now? The running task stops. Only Jai can resume your day after this.')) act(wtApi.endDay, 'Day ended. See you tomorrow.');
+              if (window.confirm('End your day now? The running task stops. You can resume it later today if you work in parts.')) act(wtApi.endDay, 'Day ended. See you tomorrow.');
             }}>End my day</button>
+          )}
+          {s.day.end_at && !viewer && (
+            <button className="btn-secondary" onClick={() => act(() => wtApi.reopenDay(), 'Welcome back. Your day is running again.')}>Resume my day</button>
           )}
         </div>
       )}

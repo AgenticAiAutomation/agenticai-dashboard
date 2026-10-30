@@ -572,12 +572,16 @@ def end_day(user, now=None):
 
 
 def reopen_day(user, body, now=None):
-    """Jai resumes someone's ended day (today only). The person can't; the old end stays in task_events."""
-    g = _guard_v3(user) or (None if taskmgr.is_super(user) else ERR_SUPER)
+    """Resume an ended day (today only): the person their own (flexible hours, work in parts), Jai anyone's.
+    The old end stays in task_events."""
+    g = _guard_v3(user)
     if g:
         return g
     now = _now(now)
-    who = str((body or {}).get("user_id") or "")
+    me = base.uid(user)
+    who = str((body or {}).get("user_id") or me)
+    if who != me and not taskmgr.is_super(user):
+        return ERR_SUPER
     d = _day(who, now.astimezone(IST).date().isoformat())
     if not d or not d["end_at"]:
         return 404, {"error": "not_found", "message": "That person has no ended day today."}
@@ -585,7 +589,7 @@ def reopen_day(user, body, now=None):
     with conn:
         conn.execute("UPDATE work_days SET end_at=NULL, end_source='reopened' WHERE id=?", (d["id"],))
         _event(conn, who, None, "day_reopen", now, "ended", "open",
-               f"ended {_ist(d['end_at']):%H:%M}, reopened by Jai", actor=base.uid(user))
+               f"ended {_ist(d['end_at']):%H:%M}, reopened by " + ("the person" if who == me else "Jai"), actor=me)
     return state(user, now)
 
 
