@@ -40,6 +40,7 @@ export type WState = {
   tasksDone: number;
   hours: { week: number[]; days: { date: string; hours: number; note: string }[] } | null;
   isSuperuser: boolean;
+  teamDays: { user_id: string; name: string | null; start_at: string; end_at: string | null; status: string }[];
   dayFlow: boolean; day: WorkDay | null; openDay: WorkDay | null;
   blockReasons: string[]; routines: Routine[]; routinesAll: Routine[];
   breaks: { used: Record<'break' | 'lunch' | 'thinking' | 'waiting', number>; limit: { break: number; lunch: number } };
@@ -62,6 +63,7 @@ export const wtApi = {
   proof: (body: Record<string, string>) => api.post<WState>(`${V}/proof`, body),
   startDay: () => api.post<WState>(`${V}/day/start`),
   endDay: () => api.post<WState>(`${V}/day/end`),
+  reopenDay: (user_id: string) => api.post<WState>(`${V}/day/reopen`, { user_id }),
   setDayEnd: (end: string) => api.post<WState>(`${V}/day/set-end`, { end }),
   weekHours: (week: number[]) => api.post<WState>(`${V}/hours/week`, { week }),
   dayHours: (date: string, hours: number | null, note = '') => api.post<WState>(`${V}/hours/day`, { date, hours, note }),

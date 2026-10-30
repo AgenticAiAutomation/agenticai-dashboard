@@ -216,11 +216,29 @@ def main():
           and s["breaks"]["used"]["break"] == 10)
     check("no break before Start my day", wt.take_break(P, {"type": "break"}, at(9, day=30))[0] == 409)
 
+    print("\n--- Jai resumes an ended day ---")
+    wt.set_day_end(P, {"end": "2026-10-26T18:00"}, at(8, day=28))
+    wt.start_day(P, at(9, day=28))
+    wt.end_day(P, at(15, day=28))
+    check("Priya can't resume her own day", wt.reopen_day(P, {"user_id": "8"}, at(15, 5, day=28))[0] == 403)
+    check("Jai sees her ended day", any(d["user_id"] == "8" and d["end_at"]
+                                       for d in wt.state(J, at(15, 5, day=28))[1]["teamDays"]))
+    code, s = wt.reopen_day(J, {"user_id": "8"}, at(15, 10, day=28))
+    check("Jai resumes it; the old end stays in the log", code == 200
+          and store.one("SELECT reason FROM task_events WHERE event_type='day_reopen'")["reason"]
+          == "ended 15:00, reopened by Jai")
+    tp = task(P, "Call after reopen")
+    check("Priya can start tasks again", wt.start(P, tp, at(15, 20, day=28))[0] == 200)
+    check("and end her day again", wt.end_day(P, at(16, day=28))[0] == 200
+          and wt._day("8", "2026-10-28")["end_source"] == "button")
+    check("an open day can't be resumed", wt.reopen_day(J, {"user_id": "7"}, at(16, day=28))[0] == 404)
+
     print("\n--- guardrails ---")
     conn = store.connect()
     for sql in ("DELETE FROM work_days", "DELETE FROM daily_routines", "UPDATE day_hours SET hours=9", "UPDATE work_days SET end_at='2026-10-26T14:00:00+00:00' WHERE date='2026-10-26'",
                 "UPDATE work_days SET start_at='2026-10-28T03:00:00+00:00' WHERE date='2026-10-28'",
                 "UPDATE work_days SET status='on_time', end_at='2026-10-26T13:00:00+00:00' WHERE user_id='8'",
+                "UPDATE work_days SET end_at=NULL WHERE date='2026-10-26'",
                 "INSERT OR REPLACE INTO work_days(user_id, date, start_at) VALUES ('7', '2026-10-26', 'x')"):
         try:
             with conn:

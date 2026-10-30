@@ -296,11 +296,11 @@ export default function TimerPanel({ status }: { status: TrackerStatus }) {
           <span className="text-slate-200">
             Started <b className="text-white">{clock(s.day.start_at)}</b>
             {s.day.status === 'late' && <span className="ml-2 rounded-full bg-amber-500/15 px-2 py-0.5 text-xs text-amber-200">late start</span>}
-            {s.day.end_at && <> · ended <b className="text-white">{clock(s.day.end_at)}</b></>}
+            {s.day.end_at && <> · ended <b className="text-white">{clock(s.day.end_at)}</b> · only Jai can resume it</>}
           </span>
           {!s.day.end_at && !viewer && (
             <button className="btn-secondary" onClick={() => {
-              if (window.confirm('End your day now? The running task stops, and nothing more can start today.')) act(wtApi.endDay, 'Day ended. See you tomorrow.');
+              if (window.confirm('End your day now? The running task stops. Only Jai can resume your day after this.')) act(wtApi.endDay, 'Day ended. See you tomorrow.');
             }}>End my day</button>
           )}
         </div>
@@ -466,6 +466,26 @@ export default function TimerPanel({ status }: { status: TrackerStatus }) {
                   <button className="btn-primary" onClick={() => act(() => wtApi.decide(h.id, true), 'Approved.')}>Approve</button>
                   <button className="btn-secondary" onClick={() => act(() => wtApi.decide(h.id, false), 'Rejected: that time counts as normal.')}>Reject</button>
                 </span>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
+
+      {s.dayFlow && s.isSuperuser && s.teamDays.length > 0 && (
+        <Card title="Team today">
+          <ul className="space-y-2">
+            {s.teamDays.map((d) => (
+              <li key={d.user_id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-line bg-raised p-3 text-sm">
+                <span className="text-slate-200">
+                  <b className="text-white">{d.name ?? d.user_id}</b> · started {clock(d.start_at)}
+                  {d.status === 'late' && ' (late)'}{d.end_at ? <> · ended {clock(d.end_at)}</> : ' · working'}
+                </span>
+                {d.end_at && (
+                  <button className="btn-secondary" onClick={() => {
+                    if (window.confirm(`Resume ${d.name ?? 'their'} day? They can start tasks again.`)) act(() => wtApi.reopenDay(d.user_id), 'Day resumed.');
+                  }}>Resume day</button>
+                )}
               </li>
             ))}
           </ul>

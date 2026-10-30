@@ -605,8 +605,12 @@ WHEN NEW.task_id IS NOT OLD.task_id OR NEW.user_id IS NOT OLD.user_id OR NEW.sta
 BEGIN SELECT RAISE(ABORT, 'tasks v2: a hold is ended once and decided once'); END;
 
 -- A day is ended once; who, which day, when it started and late/on time never change.
-CREATE TRIGGER IF NOT EXISTS g_work_days_end BEFORE UPDATE ON work_days
-WHEN OLD.end_at IS NOT NULL OR NEW.end_at IS NULL OR NEW.end_at < OLD.start_at
+-- Ended once; the one way back is Jai's reopen (end_source 'reopened', old end kept in task_events).
+-- DROP first so a database made before reopen gets the new rule.
+DROP TRIGGER IF EXISTS g_work_days_end;
+CREATE TRIGGER g_work_days_end BEFORE UPDATE ON work_days
+WHEN (OLD.end_at IS NOT NULL AND NOT (NEW.end_at IS NULL AND NEW.end_source = 'reopened'))
+  OR (NEW.end_at IS NULL AND NEW.end_source IS NOT 'reopened') OR NEW.end_at < OLD.start_at
   OR NEW.user_id IS NOT OLD.user_id OR NEW.date IS NOT OLD.date OR NEW.start_at IS NOT OLD.start_at
   OR NEW.status IS NOT OLD.status
 BEGIN SELECT RAISE(ABORT, 'tasks v3: a day is ended once'); END;

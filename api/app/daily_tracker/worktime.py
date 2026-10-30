@@ -277,6 +277,9 @@ def state(user, now=None):
             "SELECT date, hours, note FROM day_hours d WHERE id=(SELECT MAX(id) FROM day_hours WHERE date=d.date) "
             "AND date>=? AND hours IS NOT NULL ORDER BY date LIMIT 60", (today,))} if taskmgr.is_super(user) else None,
         "isSuperuser": taskmgr.is_super(user),
+        "teamDays": store.rows("SELECT d.user_id, p.name, d.start_at, d.end_at, d.status, d.end_source FROM work_days d "
+                               "LEFT JOIN dt_people p ON p.user_id=d.user_id WHERE d.date=? ORDER BY p.name", (today,))
+        if taskmgr.is_super(user) else [],
         "dayFlow": settings.TASKS_V3, "day": _day(me, today), "openDay": _unended(me, today),
         "blockReasons": cfg["block_reasons"], "routines": routines(me),
         "breaks": {"used": _break_minutes(me, today, now),
@@ -565,6 +568,24 @@ def end_day(user, now=None):
             _close(conn, iv, now, me, "auto_pause", "day ended")
         conn.execute("UPDATE work_days SET end_at=?, end_source='button' WHERE id=?", (_iso(now), d["id"]))
         _event(conn, me, None, "day_end", now)
+    return state(user, now)
+
+
+def reopen_day(user, body, now=None):
+    """Jai resumes someone's ended day (today only). The person can't; the old end stays in task_events."""
+    g = _guard_v3(user) or (None if taskmgr.is_super(user) else ERR_SUPER)
+    if g:
+        return g
+    now = _now(now)
+    who = str((body or {}).get("user_id") or "")
+    d = _day(who, now.astimezone(IST).date().isoformat())
+    if not d or not d["end_at"]:
+        return 404, {"error": "not_found", "message": "That person has no ended day today."}
+    conn = store.connect()
+    with conn:
+        conn.execute("UPDATE work_days SET end_at=NULL, end_source='reopened' WHERE id=?", (d["id"],))
+        _event(conn, who, None, "day_reopen", now, "ended", "open",
+               f"ended {_ist(d['end_at']):%H:%M}, reopened by Jai", actor=base.uid(user))
     return state(user, now)
 
 
