@@ -25,7 +25,7 @@ export type WorkDay = { date: string; start_at: string; end_at: string | null; s
 export type Credit = {
   month: string; workedMinutes: number; targetMinutes: number; idleMinutes: number;
   balanceMinutes: number; allowanceMinutes: number; owedMinutes: number; from: string; to: string;
-  ringsClosed: number; ringDays: number;
+  ringsClosed: number; ringDays: number; carriedMinutes: number;
 };
 
 /* v3 Step 6: points (earned when Jai accepts), streak, level, badges. */
@@ -33,6 +33,11 @@ export type Game = {
   points: number; pending: number; streak: number; level: string; nextLevel: { name: string; at: number } | null;
   badges: { code: string; name: string; count: number }[];
 };
+
+/* v3 leave per work month; unused carries to the next month as hours. */
+export type LeavePolicy = { days: number; short_count: number; short_hours: number };
+export type LeaveRow = { id: number; user_id: string; date: string; type: 'full' | 'short'; credited_hours: number; reason: string };
+export type LeaveSummary = { policy: LeavePolicy; usedDays: number; usedShort: number; leaves: LeaveRow[]; carriedHours: number };
 
 /* v3 Big Ideas board (open to everyone). */
 export type BigIdea = {
@@ -79,6 +84,7 @@ export type WState = {
   game?: Game; leaderboard?: { user_id: string; name: string; points: number; rings: number }[];
   toReview?: { id: number; title: string; name: string; estimate_min: number; complexity: string; points: number; done_at: string }[];
   chunks?: number[]; pointsPerHour?: number; complexity?: Record<string, number>;
+  leave?: LeaveSummary; teamLeave?: (LeaveSummary & { user_id: string; name: string })[]; leaveAll?: LeavePolicy;
   monthGoal?: { month: string; to: string; targetMinutes: number; workedMinutes: number; ideaGiven: boolean };
   credit: Credit | null; teamCredits: (Credit & { user_id: string; name: string; allowanceHours: number })[]; allowanceAll: number;
   teamDays: { user_id: string; name: string | null; start_at: string; end_at: string | null; status: string }[];
@@ -121,6 +127,9 @@ export const wtApi = {
     api.post<IdeaBoard>(`${V}/wins/${id}/decide`, { decision, note }),
   bonusCsv: (month?: string) => api.get<Blob>(`${V}/bonus.csv`, { params: { month }, responseType: 'blob' }),
   pickEmployeeOfMonth: (user_id: string, note = '') => api.post<IdeaBoard>(`${V}/ideas/employee-of-month`, { user_id, note }),
+  takeLeave: (body: { type: 'full' | 'short'; date: string; hours?: number; reason?: string }) => api.post<WState>(`${V}/leave`, body),
+  cancelLeave: (id: number) => api.post<WState>(`${V}/leave/${id}/cancel`),
+  leavePolicy: (body: { user_id: string } & LeavePolicy) => api.post<WState>(`${V}/leave/policy`, body),
   reviewTask: (id: number, accept: boolean, note = '') => api.post<WState>(`${V}/tasks/${id}/review`, { accept, note }),
   startRoutine: (id: number) => api.post<WState>(`${V}/routines/${id}/start`),
 };

@@ -257,6 +257,89 @@ function MonthBar({ s }: { s: WState }) {
   );
 }
 
+type Act = (fn: () => Promise<{ data: WState }>, ok?: string) => Promise<void>;
+
+/* The person's leave this work month: take a full day or a short leave, cancel until the day passes. */
+function LeaveCard({ s, act }: { s: WState; act: Act }) {
+  const l = s.leave!;
+  const [f, setF] = useState({ type: 'full' as 'full' | 'short', date: '', hours: String(l.policy.short_hours), reason: '' });
+  return (
+    <Card title="Leave this work month">
+      <p className="text-sm text-slate-200">
+        Full days: <b className="text-white">{l.usedDays} of {l.policy.days}</b> · Short leaves: <b className="text-white">{l.usedShort} of {l.policy.short_count}</b> (up to {l.policy.short_hours} h)
+        {l.carriedHours > 0 && <> · <span className="text-emerald-300">{l.carriedHours} h carried from last month</span></>}
+      </p>
+      <p className="mt-1 text-xs text-muted">Leave takes those hours off your day. Leave you don&apos;t use moves to next month as hours.</p>
+      <form className="mt-3 flex flex-wrap items-end gap-2" onSubmit={(e) => {
+        e.preventDefault();
+        act(() => wtApi.takeLeave({ type: f.type, date: f.date, hours: f.type === 'short' ? Number(f.hours) : undefined, reason: f.reason }), 'Leave saved.');
+      }}>
+        <select aria-label="Kind of leave" className="input-field w-auto" value={f.type} onChange={(e) => setF({ ...f, type: e.target.value as 'full' | 'short' })}>
+          <option value="full">Full day</option><option value="short">Short leave</option>
+        </select>
+        <input aria-label="Date" type="date" required min={s.today} className="input-field w-auto" value={f.date} onChange={(e) => setF({ ...f, date: e.target.value })} />
+        {f.type === 'short' && (
+          <input aria-label="Hours" type="number" required min={0.5} max={l.policy.short_hours} step={0.5} className="input-field w-24" value={f.hours} onChange={(e) => setF({ ...f, hours: e.target.value })} />
+        )}
+        <input aria-label="Reason" className="input-field w-auto flex-1" placeholder="Reason (optional)" value={f.reason} onChange={(e) => setF({ ...f, reason: e.target.value })} />
+        <button className="btn-secondary" type="submit">Take leave</button>
+      </form>
+      {l.leaves.length > 0 && (
+        <ul className="mt-3 space-y-1 text-sm">
+          {l.leaves.map((r) => (
+            <li key={r.id} className="flex items-center justify-between gap-2 rounded-md bg-bg px-3 py-2 text-slate-200">
+              <span>{day(r.date)}: {r.type === 'full' ? 'full day' : `short, ${r.credited_hours} h`}{r.reason && ` · ${r.reason}`}</span>
+              {r.date >= s.today && <button className="text-xs text-muted hover:text-white" onClick={() => act(() => wtApi.cancelLeave(r.id), 'Leave cancelled.')}>Cancel</button>}
+            </li>
+          ))}
+        </ul>
+      )}
+    </Card>
+  );
+}
+
+/* Jai: leave for everyone, and any person differently. */
+function LeavePolicyCard({ s, act }: { s: WState; act: Act }) {
+  const toForm = (p: { days: number; short_count: number; short_hours: number }) => ({ days: String(p.days), short_count: String(p.short_count), short_hours: String(p.short_hours) });
+  const [all, setAll] = useState(toForm(s.leaveAll!));
+  const [mine, setMine] = useState<Record<string, ReturnType<typeof toForm>>>({});
+  const nums = (f: ReturnType<typeof toForm>) => ({ days: Number(f.days), short_count: Number(f.short_count), short_hours: Number(f.short_hours) });
+  const row = (f: ReturnType<typeof toForm>, set: (v: ReturnType<typeof toForm>) => void, who: string) => (
+    <span className="flex flex-wrap items-center gap-2">
+      <input aria-label={`Leave days for ${who}`} type="number" min={0} max={31} required className="input-field w-16" value={f.days} onChange={(e) => set({ ...f, days: e.target.value })} />
+      <span className="text-xs text-muted">days</span>
+      <input aria-label={`Short leaves for ${who}`} type="number" min={0} max={31} required className="input-field w-16" value={f.short_count} onChange={(e) => set({ ...f, short_count: e.target.value })} />
+      <span className="text-xs text-muted">short ×</span>
+      <input aria-label={`Short leave hours for ${who}`} type="number" min={0} max={8} step={0.5} required className="input-field w-20" value={f.short_hours} onChange={(e) => set({ ...f, short_hours: e.target.value })} />
+      <span className="text-xs text-muted">h</span>
+    </span>
+  );
+  return (
+    <Card title="Leave allowances (per work month)">
+      <form className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-line bg-raised p-3 text-sm"
+            onSubmit={(e) => { e.preventDefault(); act(() => wtApi.leavePolicy({ user_id: '*', ...nums(all) }), 'Saved for everyone.'); }}>
+        <b className="text-white">Everyone</b>{row(all, setAll, 'everyone')}<button className="btn-secondary" type="submit">Save</button>
+      </form>
+      <ul className="space-y-2 text-sm">
+        {s.teamLeave!.map((p) => {
+          const f = mine[p.user_id] ?? toForm(p.policy);
+          return (
+            <li key={p.user_id}>
+              <form className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-line bg-raised p-3"
+                    onSubmit={(e) => { e.preventDefault(); act(() => wtApi.leavePolicy({ user_id: p.user_id, ...nums(f) }), `Saved for ${p.name}.`); }}>
+                <span className="text-slate-200"><b className="text-white">{p.name}</b> · used {p.usedDays} days, {p.usedShort} short
+                  {p.carriedHours > 0 && ` · ${p.carriedHours} h carried`}</span>
+                {row(f, (v) => setMine({ ...mine, [p.user_id]: v }), p.name)}
+                <button className="btn-secondary" type="submit">Set</button>
+              </form>
+            </li>
+          );
+        })}
+      </ul>
+    </Card>
+  );
+}
+
 /* A short two-note chime; silent if the browser blocks audio. */
 function chime() {
   try {
@@ -654,6 +737,10 @@ export default function TimerPanel({ status }: { status: TrackerStatus }) {
           </Card>
         </div>
       )}
+
+      {s.dayFlow && s.leave && !viewer && <LeaveCard s={s} act={act} />}
+
+      {s.dayFlow && s.isSuperuser && s.teamLeave && s.leaveAll && <LeavePolicyCard s={s} act={act} />}
 
       {s.dayFlow && s.hours && <HoursCard s={s} act={act} />}
 

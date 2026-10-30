@@ -4,7 +4,7 @@
     x complexity (Easy 1, Medium 1.5, Hard 2); pending until Jai accepts the Done task
   * a worked Big Idea and an approved Win earn points too (idea_worked_points, win_points)
   * streak = working days in a row with the day's target met; days with no target
-    (Sunday, a 0-hour date) don't break it. shortcut: approved leave doesn't exist yet (Step 9)
+    (Sunday, a 0-hour date, a full leave day) don't break it
   * badges are worked out from what happened and written once (badges_awarded is append-only)
   * leaderboard: this week's points and target days met, never hours
 """
@@ -66,7 +66,7 @@ def _days(user_id, now):
     d = max(today - timedelta(days=SCAN_DAYS), datetime.fromisoformat(first).date())
     out = []
     while d <= today:
-        goal = wt.target_hours(d.isoformat()) * 60
+        goal = wt.user_target(user_id, d.isoformat()) * 60
         if goal:
             met = wt.day_work(user_id, d.isoformat(), now)["provenMinutes"] >= goal
             if d < today or met:
@@ -150,7 +150,7 @@ def leaderboard(now=None):
                         (p["user_id"], since))["p"]
         rings, d = 0, start
         while d <= wt.work_date(now):  # counted here, not from badges: those are written when the person looks
-            goal = wt.target_hours(d.isoformat()) * 60
+            goal = wt.user_target(p["user_id"], d.isoformat()) * 60
             rings += bool(goal) and wt.day_work(p["user_id"], d.isoformat(), now)["provenMinutes"] >= goal
             d += timedelta(days=1)
         if pts or rings or store.one("SELECT 1 x FROM work_days WHERE user_id=? AND date>=?", (p["user_id"], start.isoformat())):

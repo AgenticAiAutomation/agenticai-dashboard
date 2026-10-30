@@ -120,3 +120,15 @@ approved items wait for the Step 6 points engine. Tests: credits 41, day 69.
 | Month bar | Hours this work month against the whole month's hours; stops at 99 % until the month's Big Idea is in. |
 
 Tests: `tests/test_tasks_v3_game.py` (22).
+
+## Leave (Jai, 30 Oct 2026)
+
+| Rule | How |
+|---|---|
+| Allowance | Per work month: `leave_days_per_month` (2) full days + `short_leaves_per_month` (2) short leaves of up to `short_leave_hours` (2.5). Jai sets everyone (`'*'`) or any person differently (table `leave_policy`, latest row wins, own row beats `'*'`) on the Timer tab, card "Leave allowances". |
+| Taking it | The person, on the Timer tab: Full day or Short leave, today or later, one leave a day, inside the allowance. Rows in v2 `leave_calendar` (type `full` / `short`, `credited_hours` = hours excused). Cancel your own until the day passes; Jai cancels anyone's. |
+| Effect | `user_target` = the day's hours less that person's leave. Credits, the month bar, streaks (a full leave day doesn't break it) and the leaderboard use it. |
+| Carry forward | Unused leave of a work month moves to the next one only, as hours: unused days × `daily_target_hours` (7) + unused short leaves × their hours, added to that month's balance (`carriedMinutes`). Nothing carries for someone who hadn't started yet. |
+
+API: `POST /v2/leave {type, date, hours?, reason?}`, `/v2/leave/{id}/cancel`, `/v2/leave/policy {user_id|'*', days, short_count, short_hours}`.
+Tests: `tests/test_tasks_v3_leave.py` (28).

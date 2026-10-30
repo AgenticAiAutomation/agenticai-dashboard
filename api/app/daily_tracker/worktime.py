@@ -145,6 +145,14 @@ def week_on(day):
     return json.loads(r["week"]) if r else work_settings()["week_hours"]
 
 
+def user_target(user_id, day):
+    """A person's hours for a day: the day's target less their leave that day (v3)."""
+    if not settings.TASKS_V3:
+        return target_hours(day)
+    from . import leave
+    return max(0.0, target_hours(day) - leave.excused_hours(user_id, day))
+
+
 def target_hours(day):
     """The day's target: Jai's hours for that date if set, else the weekly hours in force that day."""
     o = store.one("SELECT hours FROM day_hours WHERE date=? ORDER BY id DESC LIMIT 1", (day,))
@@ -322,7 +330,7 @@ def state(user, now=None):
     approve = (store.rows("SELECT h.*, t.title FROM task_holds h JOIN work_tasks t ON t.id=h.task_id "
                           "WHERE h.status='pending' ORDER BY h.id") if taskmgr.is_super(user) else [])
     work = day_work(me, today, now)
-    target = target_hours(today) * 60
+    target = user_target(me, today) * 60
     signal = cfg["signal"]
     return 200, {
         "now": _iso(now), "today": today,
@@ -548,12 +556,18 @@ def _game(me, user, now, today):
     m0, m1 = cycle_bounds(cycle)
     d, goal = max(m0, _date.fromisoformat(first)) if first else work_date(now), 0.0
     while d <= m1:
-        goal += target_hours(d.isoformat()) * 60
+        goal += user_target(me, d.isoformat()) * 60
         d += timedelta(days=1)
     c = month_credit(me, cycle, now)
     idea = store.one("SELECT COUNT(*) c FROM big_ideas WHERE user_id=? AND month=? AND status!='repeat'",
                      (me, cycle))["c"] >= cfg["ideas_required"]
+    from . import leave
+    names = {p["user_id"]: p["name"] for p in store.rows("SELECT user_id, name FROM dt_people")}
     return {"game": game.summary(me, now), "leaderboard": game.leaderboard(now),
+            "leave": leave.summary(me, cycle),
+            "teamLeave": [{"user_id": u, "name": n, **leave.summary(u, cycle)} for u, n in sorted(names.items(), key=lambda x: x[1])]
+            if taskmgr.is_super(user) else [],
+            "leaveAll": leave.policy("*"),
             "toReview": game.to_review() if taskmgr.is_super(user) else [],
             "chunks": cfg["chunks"], "pointsPerHour": cfg["points_per_hour"],
             "complexity": cfg["complexity_multiplier"],
@@ -790,17 +804,20 @@ def month_credit(user_id, month, now=None):
     d = max(m0, _date.fromisoformat(first)) if first else today
     start, worked, target, rings, ring_days = d, 0.0, 0.0, 0, 0
     while d < today and d <= m1:
-        mins, goal = day_work(user_id, d.isoformat(), now)["provenMinutes"], target_hours(d.isoformat()) * 60
+        mins, goal = day_work(user_id, d.isoformat(), now)["provenMinutes"], user_target(user_id, d.isoformat()) * 60
         worked, target = worked + mins, target + goal
         if goal:
             ring_days, rings = ring_days + 1, rings + (mins >= goal)
         d += timedelta(days=1)
     idle = idle_minutes(user_id, start.isoformat(), d.isoformat()) if d > start else 0.0
     allow = allowance_hours(user_id) * 60
-    balance = round(worked - target - idle, 1)
+    from . import leave
+    carried = leave.carried_hours(user_id, month) * 60 if settings.TASKS_V3 else 0.0
+    balance = round(worked - target - idle + carried, 1)
     return {"month": month, "from": m0.isoformat(), "to": m1.isoformat(), "workedMinutes": round(worked, 1),
             "targetMinutes": target, "idleMinutes": idle, "balanceMinutes": balance, "allowanceMinutes": allow,
-            "owedMinutes": max(0.0, -balance - allow), "ringsClosed": rings, "ringDays": ring_days}
+            "owedMinutes": max(0.0, -balance - allow), "ringsClosed": rings, "ringDays": ring_days,
+            "carriedMinutes": carried}
 
 
 def set_allowance(user, body, now=None):
