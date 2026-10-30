@@ -9,7 +9,7 @@ import { Board, Contact, Followup, KIND_LABEL, Kind, PRI_STYLE, fuApi, when } fr
 /* The follow-up guide: To do (overdue first, then today by priority),
    Upcoming, Done — each with contact details and the last meeting's log.
    Used on the homepage (compact) and on /followups/. Hidden when the API
-   says no (403 = not owner/admin; 404 = switched off). */
+   says no (403 = not the owner or on the marketing list; 404 = switched off). */
 
 const toLocal = (d: Date) => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
 
@@ -149,8 +149,8 @@ export default function FollowupBoard({ compact = false }: { compact?: boolean }
 
   const first = useRef(true);
   const load = useCallback(async () => {
-    // On the Dashboard (compact) only the owner sees it: it's the owner's own to-do list.
-    if (compact && !(await fuApi.status().then((r) => r.data.superuser).catch(() => false))) { setHidden(true); return; }
+    // Only the owner and the marketing team list see it; everyone else gets a 403 and it stays hidden.
+    if (!(await fuApi.status().then((r) => r.data.allowed).catch(() => false))) { setHidden(true); return; }
     fuApi.board().then((r) => {
       setB(r.data);
       // Open on what matters: To do if anything is due, else Upcoming.
