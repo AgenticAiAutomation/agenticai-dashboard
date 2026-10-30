@@ -55,3 +55,15 @@ Tests now 49.
 **Not yet:** confetti and the streak (+1 when the ring closes) come with the streak engine in Step 6; Break and
 Lunch chips come with the break buttons in Step 3. Changing the weekly hours also changes past days' targets
 (no report reads them yet).
+
+## Step 3 — break buttons (done 30 Oct 2026, not deployed)
+
+| Rule | How |
+|---|---|
+| Buttons | Break, Lunch, Thinking, Waiting under "Now", once the day has started. One tap: the running task pauses and the break remembers it. The same button (now "Resume") starts that task again. Another button switches, the task carried along. Starting any task, Pause or End my day also ends the break. |
+| What counts | Thinking counts toward the ring (as in v2). Break, Lunch and Waiting never do. |
+| Limits | From v2 work setting `breaks`: Break 2 × 15 = 30 min, Lunch 1 × 30 = 30 min a day. Chips under the ring show "used X of Y min" and turn amber when over. No pop-up, no block. |
+
+API: `POST /v2/break {type: break|lunch|thinking|waiting}` (v3 only; 409 before Start my day / after End my day);
+state adds `breaks: {used: {break, lunch, thinking, waiting}, limit: {break, lunch}}` (minutes, breaks started today).
+Tests now 58.

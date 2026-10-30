@@ -270,6 +270,10 @@ def build():
     async def v2_pause(request: Request):
         return _json(worktime.pause(current_user(request)))
 
+    @tasks.post("/v2/break")
+    async def v3_break(request: Request):
+        return _json(worktime.take_break(current_user(request), await _body(request)))
+
     @tasks.post("/v2/session/end")
     async def v2_end_session(request: Request):
         return _json(worktime.end_session(current_user(request), await _body(request)))

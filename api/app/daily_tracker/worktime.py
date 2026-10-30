@@ -15,7 +15,8 @@ writes a task_events row in one transaction; the browser only displays.
     only inside a started day; a day left open blocks the next one until the
     person says when they stopped. No proof at all (Jai, 27 Oct): timer time
     counts as it runs, Done needs no link. A dependency stop picks a reason
-    from block_reasons and offers Jai's daily tasks (daily_routines) to jump to
+    from block_reasons and offers Jai's daily tasks (daily_routines) to jump to.
+    Break / Lunch / Thinking / Waiting are one tap (take_break); the same tap resumes
 
 Times are stored UTC ISO; days and slots are IST (store.IST).
 """
@@ -35,6 +36,7 @@ WORKABLE = ("todo", "paused", "in_progress")
 DONE = ("submitted", "accepted", "cancelled")
 PRIO = {"P1": 1, "P2": 2, "P3": 3}
 COUNTS = ("work", "thinking")          # interval types that are effective work
+BREAKS = ("break", "lunch", "thinking", "waiting")  # v3 one-tap buttons; thinking still counts as work
 NOTE_MAX = 300
 
 
@@ -277,6 +279,9 @@ def state(user, now=None):
         "isSuperuser": taskmgr.is_super(user),
         "dayFlow": settings.TASKS_V3, "day": _day(me, today), "openDay": _unended(me, today),
         "blockReasons": cfg["block_reasons"], "routines": routines(me),
+        "breaks": {"used": _break_minutes(me, today, now),
+                   "limit": {"break": cfg["breaks"]["short_minutes"] * cfg["breaks"]["short_per_day"],
+                             "lunch": cfg["breaks"]["lunch_minutes"] * cfg["breaks"]["lunch_per_day"]}},
         "routinesAll": _routines_public(store.rows("SELECT * FROM daily_routines ORDER BY active DESC, id"))
         if taskmgr.is_super(user) else [],
     }
@@ -416,6 +421,52 @@ def pause(user, now=None):
     with conn:
         _close(conn, iv, now, me)
     return state(user, now)
+
+
+def take_break(user, body, now=None):
+    """v3 one-tap Break / Lunch / Thinking / Waiting. The running task pauses and is
+    kept on the break interval; the same tap again resumes it. Another kind switches."""
+    g = _guard_v3(user)
+    if g:
+        return g
+    now = _now(now)
+    me = base.uid(user)
+    kind = str((body or {}).get("type") or "")
+    if kind not in BREAKS:
+        return base._bad("Pick Break, Lunch, Thinking or Waiting.")
+    d = _day(me, now.astimezone(IST).date().isoformat())
+    if not d or d["end_at"]:
+        return 409, {"error": "day_not_started" if not d else "day_ended",
+                     "message": "Press Start my day first." if not d else "You ended your day already."}
+    iv = _open(me)
+    if _stale(iv, now):
+        return 409, {"error": "open_session", "message": "Set when you stopped that earlier timer first."}
+    t = _task(iv["task_id"]) if iv and iv["task_id"] else None
+    conn = store.connect()
+    if iv and iv["type"] == kind:  # tap again = resume the task it paused
+        if t and t["status"] in WORKABLE:
+            _start(conn, me, t, t["id"], iv, False, now)
+        else:
+            with conn:
+                _close(conn, iv, now, me)
+        return state(user, now)
+    with conn:
+        if iv:
+            _close(conn, iv, now, me, "auto_pause", kind)
+        conn.execute("INSERT INTO work_intervals(user_id, task_id, type, start_ts, created_at) VALUES (?,?,?,?,?)",
+                     (me, t["id"] if t else None, kind, _iso(now), _iso(now)))
+    return state(user, now)
+
+
+def _break_minutes(user_id, day, now):
+    """{type: minutes} of Break / Lunch / Thinking / Waiting started that IST day."""
+    d0 = datetime.fromisoformat(day).replace(tzinfo=IST)
+    out = dict.fromkeys(BREAKS, 0.0)
+    for iv in store.rows("SELECT * FROM work_intervals WHERE user_id=? AND type IN (?,?,?,?) AND start_ts>=? "
+                         "AND start_ts<?", (user_id, *BREAKS, _iso(d0), _iso(d0 + timedelta(days=1)))):
+        end = _ist(iv["end_ts"]) if iv["end_ts"] else now.astimezone(IST)
+        out[iv["type"]] += (end - _ist(iv["start_ts"])).total_seconds() / 60
+    return {k: round(v, 1) for k, v in out.items()}
 
 
 def end_session(user, body, now=None):

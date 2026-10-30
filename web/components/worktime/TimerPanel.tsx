@@ -145,6 +145,9 @@ function SetDayEnd({ day, onSave }: { day: { date: string; start_at: string }; o
   );
 }
 
+/* v3 one-tap buttons: the running task pauses; the same button again resumes it. */
+const BREAKS: Record<string, string> = { break: 'Break', lunch: 'Lunch', thinking: 'Thinking', waiting: 'Waiting' };
+
 /* v3 daily ring: task time only (breaks never count), fills to today's hours. */
 function Ring({ s }: { s: WState }) {
   const target = s.work.targetMinutes;
@@ -166,7 +169,14 @@ function Ring({ s }: { s: WState }) {
         {!target ? <p className="text-sm text-slate-200">No hours set for today.</p>
           : pct >= 100 ? <p className="text-lg font-semibold text-emerald-300">🎉 Day complete</p>
           : <p className="text-sm text-slate-200"><b className="text-white">{hm(s.work.provenMinutes)}</b> of {hm(target)} · <b className="text-white">{hm(s.work.leftMinutes)}</b> to go</p>}
-        <p className="mt-2"><span className="rounded-full bg-bg px-3 py-1 text-xs text-slate-200">Tasks done: {s.tasksDone}</span></p>
+        <p className="mt-2 flex flex-wrap justify-center gap-2 sm:justify-start">
+          {(['break', 'lunch'] as const).map((k) => {
+            const used = s.breaks.used[k], over = used > s.breaks.limit[k];
+            return <span key={k} className={`rounded-full px-3 py-1 text-xs ${over ? 'bg-amber-500/20 text-amber-300' : 'bg-bg text-slate-200'}`}>
+              {BREAKS[k]} used: {Math.round(used)} of {s.breaks.limit[k]} min</span>;
+          })}
+          <span className="rounded-full bg-bg px-3 py-1 text-xs text-slate-200">Tasks done: {s.tasksDone}</span>
+        </p>
       </div>
     </div>
   );
@@ -270,6 +280,7 @@ export default function TimerPanel({ status }: { status: TrackerStatus }) {
   }
 
   const run = s.running;
+  const onBreak = !!run && run.interval.type in BREAKS;
   const pct = Math.min(100, (s.work.provenMinutes / s.work.targetMinutes) * 100);
   const due = s.work.needProof;
   const workable = s.tasks.filter((t) => t.status !== 'blocked');
@@ -312,10 +323,11 @@ export default function TimerPanel({ status }: { status: TrackerStatus }) {
         <Card title="Now">
           {run && !run.stale ? (
             <div>
-              <p className="text-sm font-medium text-white">{run.task?.title ?? run.interval.type}</p>
+              {onBreak && <p className="text-xs uppercase tracking-wide text-amber-300">{BREAKS[run.interval.type]}{run.task && ' · task paused'}</p>}
+              <p className="text-sm font-medium text-white">{run.task?.title ?? BREAKS[run.interval.type] ?? run.interval.type}</p>
               {run.task && <Details t={run.task} />}
               <div className="mt-3"><Elapsed start={run.interval.start_ts} skew={skew} /></div>
-              {!readOnly && run.task && (
+              {!readOnly && run.task && !onBreak && (
                 <div className="mt-3 flex flex-wrap gap-2">
                   <button className="btn-secondary" onClick={() => act(wtApi.pause, 'Paused.')}>Pause</button>
                   <button className="btn-primary" onClick={() => {
@@ -330,6 +342,13 @@ export default function TimerPanel({ status }: { status: TrackerStatus }) {
               )}
             </div>
           ) : !run && <p className="text-sm text-muted">No timer running. Start a task below. Only timer time with proof counts.</p>}
+          {s.dayFlow && s.day && !readOnly && !run?.stale && (
+            <div className="mt-4 flex flex-wrap gap-2" aria-label="Breaks">
+              {Object.entries(BREAKS).map(([k, label]) => run?.interval.type === k
+                ? <button key={k} className="btn-primary" onClick={() => act(() => wtApi.takeBreak(k), 'Back to work.')}>Resume ({label})</button>
+                : <button key={k} className="btn-secondary" onClick={() => act(() => wtApi.takeBreak(k))}>{label}</button>)}
+            </div>
+          )}
         </Card>
         {s.dayFlow ? <Card title="Today"><Ring s={s} /></Card> : (
         <Card title="Today">

@@ -186,6 +186,36 @@ def main():
           s["work"]["targetMinutes"] == 480 and s["tasksDone"] == 1 and s["hours"] is None
           and s["settings"]["greenMin"] == 95)
 
+    print("\n--- break buttons (Step 3) ---")
+    tb = task(A, "Call for breaks")
+    check("POST /api/tasks/v2/break answers", c.post("/api/tasks/v2/break", headers={"x-user": "akash"},
+                                                    json={"type": "nap"}).status_code == 400)
+    wt.start(A, tb, at(13, day=28))
+    code, s = wt.take_break(A, {"type": "lunch"}, at(13, 10, day=28))
+    check("Lunch: one tap pauses the task and keeps it on the lunch",
+          code == 200 and s["running"]["interval"]["type"] == "lunch" and s["running"]["task"]["id"] == tb
+          and s["running"]["task"]["status"] == "paused")
+    before = s["work"]["provenMinutes"]
+    code, s = wt.take_break(A, {"type": "lunch"}, at(13, 50, day=28))
+    check("tap again resumes the same task", s["running"]["interval"]["type"] == "work"
+          and s["running"]["task"]["status"] == "in_progress")
+    check("lunch never fills the ring", s["work"]["provenMinutes"] == before)
+    check("lunch used 40 of 30 min (the page shows amber)",
+          s["breaks"]["used"]["lunch"] == 40 and s["breaks"]["limit"] == {"break": 30, "lunch": 30})
+    wt.take_break(A, {"type": "waiting"}, at(14, day=28))
+    s = wt.take_break(A, {"type": "thinking"}, at(14, 5, day=28))[1]
+    check("switching Waiting to Thinking carries the task", s["running"]["interval"]["type"] == "thinking"
+          and s["running"]["task"]["id"] == tb)
+    s = wt.take_break(A, {"type": "thinking"}, at(14, 15, day=28))[1]
+    check("thinking counts as work, waiting doesn't", s["work"]["provenMinutes"] == before + 10 + 10
+          and s["breaks"]["used"]["waiting"] == 5)
+    wt.pause(A, at(14, 20, day=28))
+    s = wt.take_break(A, {"type": "break"}, at(14, 20, day=28))[1]
+    s = wt.take_break(A, {"type": "break"}, at(14, 30, day=28))[1]
+    check("a break with nothing running ends with nothing running", s["running"] is None
+          and s["breaks"]["used"]["break"] == 10)
+    check("no break before Start my day", wt.take_break(P, {"type": "break"}, at(9, day=30))[0] == 409)
+
     print("\n--- guardrails ---")
     conn = store.connect()
     for sql in ("DELETE FROM work_days", "DELETE FROM daily_routines", "UPDATE day_hours SET hours=9", "UPDATE work_days SET end_at='2026-10-26T14:00:00+00:00' WHERE date='2026-10-26'",

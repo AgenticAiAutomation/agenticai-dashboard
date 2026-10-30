@@ -42,6 +42,7 @@ export type WState = {
   isSuperuser: boolean;
   dayFlow: boolean; day: WorkDay | null; openDay: WorkDay | null;
   blockReasons: string[]; routines: Routine[]; routinesAll: Routine[];
+  breaks: { used: Record<'break' | 'lunch' | 'thinking' | 'waiting', number>; limit: { break: number; lunch: number } };
   suggestions?: WTask[]; needsApproval?: boolean;
 };
 
@@ -51,6 +52,7 @@ export const wtApi = {
   create: (body: Record<string, unknown>) => api.post<{ task: WTask }>(`${V}/tasks`, body),
   start: (id: number) => api.post<WState>(`${V}/tasks/${id}/start`),
   pause: () => api.post<WState>(`${V}/pause`),
+  takeBreak: (type: string) => api.post<WState>(`${V}/break`, { type }),
   endSession: (end: string) => api.post<WState>(`${V}/session/end`, { end }),
   complete: (id: number, evidence_url: string) => api.post<WState>(`${V}/tasks/${id}/complete`, { evidence_url }),
   block: (id: number, body: { depends_on_user_id?: string; depends_on_name?: string; reason: string; detail?: string }) =>
