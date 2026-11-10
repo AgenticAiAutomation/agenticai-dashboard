@@ -68,8 +68,14 @@ Changes:
 - Website: callout class for any non-reserved label, figures, author boxes,
   FAQ `answer_html`, homepage "Latest from the blog" (3 posts, 10-min cache,
   hidden on error).
-- **Unchanged:** `scoring.py`, `rankmath.py`, 80 rule, every existing publish
-  blocker. Old articles score and render as before.
+- **Scoring fix (Jai, 2026-11-10):** an image `![alt](url)` no longer counts as
+  a link in the house score (`scoring.LINK_PATTERN`) or Rank Math
+  (`rankmath._links`). Before, every image with alt text counted as an
+  internal or external link and gave points toward 80 for nothing. One
+  lookbehind `(?<!!)` in each; nothing else in either scorer changed. 80 rule
+  and every existing blocker unchanged.
+- **Scope:** v2 is for new articles. Posts already on the website are not
+  edited or republished, so the new Playbook blockers never reach them.
 
 Flag / rollback: `bash /root/blog-playbook-flag.sh v2-off` (L1) → redeploy
 previous commits (L2) → `alembic downgrade 003_playbook_blocks` (L3, drops only

@@ -537,7 +537,8 @@ def check_image_alt(ctx: ScoringContext) -> CheckResult:
     return CheckResult(points, "; ".join(notes), comments)
 
 
-LINK_PATTERN = re.compile(r"\[([^\]]+)\]\((https?://[^)\s]+|/[^)\s]*)\)")
+# (?<!!): an image ![alt](url) is not a link and earns no link points.
+LINK_PATTERN = re.compile(r"(?<!!)\[([^\]]+)\]\((https?://[^)\s]+|/[^)\s]*)\)")
 OWN_DOMAIN = "agenticaiautomation.co"
 
 

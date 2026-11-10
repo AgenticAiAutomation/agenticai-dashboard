@@ -302,3 +302,17 @@ def test_publisher_writes_extras_only_when_given(monkeypatch, tmp_path):
     doc = json.loads((tmp_path / "b.json").read_text(encoding="utf-8"))
     assert doc["author_extras"] == {"notice_html": "<p>n</p>"}
     assert doc["faqs"][0]["answer_html"] == "<p>A</p>"
+
+
+# ------------------------------------------------- images are not links
+def test_an_image_earns_no_link_points():
+    from app.seo.services import rankmath, scoring
+    md = ("# T\n\n![Clinic desk](/static/blog/inline/a.webp)\n\n"
+          "![Chart](https://agenticaiautomation.co/static/x.webp)\n\n"
+          "![Logo](https://example.com/logo.webp)\n\nSee [pricing](/pricing).\n")
+    ctx = SimpleNamespace(markdown=md)
+    internal, external = scoring._links(ctx)
+    assert [u for _, u in internal] == ["/pricing"] and external == []
+    assert rankmath._links(md) == (["/pricing"], [])
+    # The writer still needs 2 real internal links to get the 3 points.
+    assert scoring.check_internal_links(ctx).points == 1.5

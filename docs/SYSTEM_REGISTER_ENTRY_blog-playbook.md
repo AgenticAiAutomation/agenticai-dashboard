@@ -58,4 +58,4 @@ then delete this file. If it truly does not exist, rename this file to
 
 | Date | Change | Ref | By |
 |---|---|---|---|
-| 2026-11-10 | Blog Playbook v2 behind `BLOG_PLAYBOOK_V2` (off): bold/link root-cause fix, multi-item sections, inline WebP upload route, one-callout blocker, author extras (migration 004), Skim skip, homepage Blog section. No house-score or publish-gate change. | `feat/blog-playbook-v2` | Claude Code for Jai |
+| 2026-11-10 | Blog Playbook v2 behind `BLOG_PLAYBOOK_V2` (off): bold/link root-cause fix, multi-item sections, inline WebP upload route, one-callout blocker, author extras (migration 004), Skim skip, homepage Blog section. Publish gate unchanged. Scoring fix: images no longer count as internal/external links (house + Rank Math). New articles only. | `feat/blog-playbook-v2` | Claude Code for Jai |

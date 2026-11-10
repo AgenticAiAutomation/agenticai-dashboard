@@ -136,7 +136,8 @@ def _contains(haystack: Optional[str], needle: str) -> bool:
 
 def _links(md: str):
     internal, external = [], []
-    for _text, url in re.findall(r"\[([^\]]+)\]\((https?://[^)\s]+|/[^)\s]*)\)", md):
+    # (?<!!): an image ![alt](url) is not a link.
+    for _text, url in re.findall(r"(?<!!)\[([^\]]+)\]\((https?://[^)\s]+|/[^)\s]*)\)", md):
         (internal if url.startswith("/") or "agenticaiautomation.co" in url
          else external).append(url)
     return internal, external

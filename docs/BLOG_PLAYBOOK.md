@@ -224,7 +224,10 @@ the writer saves.
 as a table, so a body re-parsed without its saved blocks reopens it as a
 `table` item. The body is unchanged; saved blocks keep the real type.
 
-**Scoring.** House score, Rank Math, 80 and every existing blocker unchanged.
+**Scope.** For new articles only — posts already live are not edited.
+
+**Scoring.** 80 and every existing blocker unchanged. One fix in both
+scorers: an image `![alt](url)` is not a link (it used to count as one).
 Skim: no real example / no table → skipped, not zero. Half-filled optional
 blocks and the callout rule are Playbook blockers (no points). Path to 80 is
 the house scorer and never mentions optional blocks.
