@@ -137,7 +137,7 @@ in the published file).
 **Before deploy:** DB backup; note the current commit of both repos; run
 `node tests/playbook/*.test.mts`, `pytest tests/test_blog_playbook*.py` here and
 `pytest tests` in AgenticWeb. **Order:** migration 004 → API → web →
-AgenticWeb. Staging first, 3 sample articles end to end, then production.
+AgenticWeb. Dashboard: `bash /root/blog-playbook-v2-deploy.sh` (ops/deploy-blog-playbook-v2.sh: backup, migrate, health gate, auto-rollback, frontend build). Site: `bash /root/blog-playbook-site.sh`. Then `blog-playbook-flag.sh v2-on`.
 
 | Level | When | Do | Time |
 |---|---|---|---|

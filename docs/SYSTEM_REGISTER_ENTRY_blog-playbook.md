@@ -45,7 +45,7 @@ then delete this file. If it truly does not exist, rename this file to
 | Field | Value |
 |---|---|
 | Feature | Blog Playbook v2: multi-item sections, one free-label callout, inline WebP upload, bold/links in H2 + FAQ, author Best pick / Notice / Must do, Skim skip, homepage Blog section |
-| Status | Built 2026-11-10 on `feat/blog-playbook-v2` (dashboard + AgenticWeb). Not deployed, not pushed. |
+| Status | Built 2026-11-10 on `feat/blog-playbook-v2` (dashboard, on live `feat/tasks-v2`) + AgenticWeb `main`. Deploy: `ops/deploy-blog-playbook-v2.sh` then `ops/deploy-blog-playbook-site.sh`. |
 | Flag | `BLOG_PLAYBOOK_V2` (default `false`), on top of `BLOG_PLAYBOOK_ENABLED` / `BLOG_PLAYBOOK_USERS` / access file. `ops/blog-playbook-flag.sh v2-on / v2-off` |
 | New routes | `POST /api/seo/articles/{id}/upload-inline-image`, `DELETE /api/seo/articles/{id}/inline-image?url=` |
 | Changed routes | `GET /api/seo/playbook` (+`v2`), `GET …/playbook` (+`author_extras`), save routes (+`author_extras`), `…/skim` (+`skipped`, `parameters_skipped`), score/publish `blocking_issues` (+Playbook rules, Playbook posts only) |

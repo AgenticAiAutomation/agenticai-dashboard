@@ -19,8 +19,8 @@ before it lands.
 ## 2026-11-10 · Blog Playbook v2 (flagged) — built, not deployed
 
 Behind the new sub-flag `BLOG_PLAYBOOK_V2` (default `false`), on top of the
-existing Playbook access. Branch `feat/blog-playbook-v2` here (from
-`feat/blog-playbook`) and in AgenticWeb (from `main`). Spec:
+existing Playbook access. Branch `feat/blog-playbook-v2` here (on
+`feat/tasks-v2`, the live branch) and in AgenticWeb (from `main`). Spec:
 `BLOG_PLAYBOOK_V2_CHANGES.md`. Guide: `docs/BLOG_PLAYBOOK.md` § v2.
 
 **Root cause — bold and links "not accepted":**
