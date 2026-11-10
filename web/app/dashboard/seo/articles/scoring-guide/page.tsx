@@ -249,7 +249,9 @@ export default function ScoringGuidePage() {
             </div>
             <p className="mt-3 text-xs text-muted">
               The whole post still needs 1,200–2,500 words, readability 60–75, keyword
-              density 0.8–2%, and 2+ internal and 2+ external links.
+              density 0.8–2%, and 2+ internal and 2+ external links. Only text links
+              count: an image (<code>![alt](url)</code>, including an uploaded section image) is
+              never a link and earns no link points.
             </p>
 
             <p className="mt-2 text-xs text-muted">
@@ -501,6 +503,10 @@ export default function ScoringGuidePage() {
             somewhere. Link the actual source of any number or claim you made. Good: official vendor
             documentation, a standards body, a named research report. Weak: a competitor&apos;s
             blog, a listicle, an SEO content farm.
+          </p>
+          <p className="mt-3 text-sm leading-relaxed text-slate-300">
+            Images do not count — internal or external. Only a text link{' '}
+            <code>[words](url)</code> earns link points, in both the house score and Rank Math.
           </p>
         </Card>
 
