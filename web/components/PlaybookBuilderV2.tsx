@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 import { Card } from '@/components/ui';
 import FormatTextarea from '@/components/FormatTextarea';
 import { ListEditor, TableEditor } from '@/components/PlaybookBuilder';
@@ -98,7 +98,6 @@ function ItemEditor({
   articleId: string | null;
   onSaveDraft?: () => void;
 }) {
-  const fileRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -182,23 +181,25 @@ function ItemEditor({
                    alt={item.alt || 'Uploaded section image'} width={1536} height={1024}
                    className="h-auto w-full rounded border border-line" />
             )}
-            {/* The native picker stays hidden; the button below opens it, so the
-                control is a real, visible button in every theme. */}
-            {/* Any image is selectable (a WebP-only filter showed writers an
-                empty folder); toInlineWebp checks the size and converts. */}
-            <input ref={fileRef} id={`${id}-file`} type="file" accept="image/*"
-                   className="sr-only" tabIndex={-1} aria-hidden="true"
-                   onChange={(e) => {
-                     const file = e.target.files?.[0];
-                     if (file) upload(file);
-                     e.target.value = '';
-                   }} />
             <div className="flex flex-wrap items-center gap-3">
               {articleId ? (
-                <button type="button" className="btn-primary text-sm" disabled={busy}
-                        onClick={() => fileRef.current?.click()}>
-                  {busy ? 'Uploading…' : item.url ? 'Replace image' : 'Upload image'}
-                </button>
+                /* A plain, visible file input — the same control as the
+                   featured image, which is proven on writers' browsers. A
+                   hidden input opened from a button did not open the picker
+                   in Chrome 156. Any image is selectable (a WebP-only filter
+                   showed an empty folder); toInlineWebp checks and converts. */
+                <div className="w-full">
+                  <label className="label" htmlFor={`${id}-file`}>
+                    {busy ? 'Uploading…' : item.url ? 'Replace image' : 'Upload image'}
+                  </label>
+                  <input id={`${id}-file`} type="file" accept="image/*" disabled={busy}
+                         className="input-field text-xs"
+                         onChange={(e) => {
+                           const file = e.target.files?.[0];
+                           if (file) upload(file);
+                           e.target.value = '';
+                         }} />
+                </div>
               ) : (
                 <button type="button" className="btn-primary text-sm" onClick={onSaveDraft}
                         disabled={!onSaveDraft}>
