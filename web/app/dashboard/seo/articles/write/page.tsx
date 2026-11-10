@@ -482,6 +482,22 @@ function WriteArticlePage() {
       }
     });
 
+  /* "Save draft to enable image upload" in the Playbook. The server needs the
+     focus keyword to create the article, and that field is at the top of the
+     page — so take the writer there instead of sending a save that fails. */
+  const [keywordNudge, setKeywordNudge] = useState(false);
+  const saveForImages = () => {
+    if (keyword.trim().length < 2) {
+      setError('Type the Focus keyword (top of the page, at least 2 characters) — the draft cannot be saved without it.');
+      setKeywordNudge(true);
+      const field = document.getElementById('keyword');
+      field?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      field?.focus({ preventScroll: true });
+      return;
+    }
+    save();
+  };
+
   const score = () =>
     run('score', async () => {
       if (!articleId) {
@@ -617,9 +633,20 @@ function WriteArticlePage() {
                   id="keyword"
                   className="input-field"
                   value={keyword}
-                  onChange={(e) => setKeyword(e.target.value)}
+                  onChange={(e) => {
+                    setKeyword(e.target.value);
+                    if (e.target.value.trim().length >= 2) setKeywordNudge(false);
+                  }}
                   placeholder="whatsapp automation for clinics"
+                  aria-invalid={keywordNudge || undefined}
+                  style={keywordNudge ? { outline: '2px solid #ef4444', outlineOffset: 2 } : undefined}
                 />
+                {keywordNudge && (
+                  <p className="mt-1 text-xs text-danger" role="alert">
+                    Required to save the draft. Type it here, then go back down and click
+                    Save draft to enable image upload.
+                  </p>
+                )}
               </div>
 
               <div>
@@ -710,7 +737,7 @@ function WriteArticlePage() {
             <>
               {v2 && blocksV2 ? (
                 <PlaybookBuilderV2 value={blocksV2} onChange={setBlocksV2} articleId={articleId}
-                                   onSaveDraft={save} saveError={error} />
+                                   onSaveDraft={saveForImages} saveError={error} />
               ) : (
                 blocks && <PlaybookBuilder value={blocks} onChange={setBlocks} />
               )}
