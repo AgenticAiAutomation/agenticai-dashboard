@@ -387,7 +387,12 @@ export function apiError(error: unknown, fallback = 'Something went wrong.'): st
   if (typeof detail === 'string') return detail;
   if (Array.isArray(detail)) {
     return detail
-      .map((d) => (typeof d === 'string' ? d : d?.msg ?? JSON.stringify(d)))
+      .map((d) => {
+        if (typeof d === 'string') return d;
+        // FastAPI validation: name the field, or "String too short" says nothing.
+        const field = Array.isArray(d?.loc) ? String(d.loc[d.loc.length - 1]).replace(/_/g, ' ') : '';
+        return d?.msg ? (field ? `${field}: ${d.msg}` : d.msg) : JSON.stringify(d);
+      })
       .join('; ');
   }
   const obj = detail as Record<string, unknown>;

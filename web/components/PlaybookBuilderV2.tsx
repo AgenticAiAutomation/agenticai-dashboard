@@ -41,6 +41,8 @@ type Props = {
   articleId: string | null;
   /* Saves the draft (creating the article), so images can be uploaded. */
   onSaveDraft?: () => void;
+  /* The page's last save error, shown beside the Save draft button too. */
+  saveError?: string | null;
 };
 
 type Patch<T extends SectionItem> = (patch: Partial<T>) => void;
@@ -91,12 +93,14 @@ function ItemEditor({
   set,
   articleId,
   onSaveDraft,
+  saveError,
 }: {
   item: SectionItem;
   id: string;
   set: Patch<any>;
   articleId: string | null;
   onSaveDraft?: () => void;
+  saveError?: string | null;
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -212,6 +216,11 @@ function ItemEditor({
               </span>
             </div>
             {error && <p className="text-xs text-danger" role="alert">{error}</p>}
+            {!articleId && saveError && (
+              <p className="text-xs text-danger" role="alert">
+                Could not save the draft: {saveError}
+              </p>
+            )}
           </div>
           <div>
             <label className="label" htmlFor={`${id}-alt`}>Alt text (required)</label>
@@ -320,6 +329,7 @@ function SectionEditorV2({
   hasCallout,
   articleId,
   onSaveDraft,
+  saveError,
   onChange,
   onMove,
   onRemove,
@@ -330,6 +340,7 @@ function SectionEditorV2({
   hasCallout: boolean;
   articleId: string | null;
   onSaveDraft?: () => void;
+  saveError?: string | null;
   onChange: (next: PlaybookSectionV2) => void;
   onMove: (delta: number) => void;
   onRemove: () => void;
@@ -414,6 +425,7 @@ function SectionEditorV2({
               id={`${id}-i${i}`}
               articleId={articleId}
               onSaveDraft={onSaveDraft}
+              saveError={saveError}
               set={(patch) => {
                 const items = [...section.items];
                 items[i] = { ...item, ...patch } as SectionItem;
@@ -454,7 +466,9 @@ function SectionEditorV2({
   );
 }
 
-export default function PlaybookBuilderV2({ value, onChange, articleId, onSaveDraft }: Props) {
+export default function PlaybookBuilderV2({
+  value, onChange, articleId, onSaveDraft, saveError,
+}: Props) {
   const set = (patch: Partial<PlaybookBlocksV2>) => onChange({ ...value, ...patch });
   const hasCallout = countCallouts(value) > 0;
   const problems = playbookProblems(value);
@@ -508,6 +522,7 @@ export default function PlaybookBuilderV2({ value, onChange, articleId, onSaveDr
               hasCallout={hasCallout}
               articleId={articleId}
               onSaveDraft={onSaveDraft}
+              saveError={saveError}
               onChange={(next) => {
                 const sections = [...value.sections];
                 sections[index] = next;

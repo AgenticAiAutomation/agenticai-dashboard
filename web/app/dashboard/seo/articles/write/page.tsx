@@ -710,7 +710,7 @@ function WriteArticlePage() {
             <>
               {v2 && blocksV2 ? (
                 <PlaybookBuilderV2 value={blocksV2} onChange={setBlocksV2} articleId={articleId}
-                                   onSaveDraft={save} />
+                                   onSaveDraft={save} saveError={error} />
               ) : (
                 blocks && <PlaybookBuilder value={blocks} onChange={setBlocks} />
               )}
