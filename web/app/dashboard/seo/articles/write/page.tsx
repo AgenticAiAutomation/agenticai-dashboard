@@ -709,7 +709,8 @@ function WriteArticlePage() {
           {playbookEnabled && mode === 'playbook' && activeBlocks && (
             <>
               {v2 && blocksV2 ? (
-                <PlaybookBuilderV2 value={blocksV2} onChange={setBlocksV2} articleId={articleId} />
+                <PlaybookBuilderV2 value={blocksV2} onChange={setBlocksV2} articleId={articleId}
+                                   onSaveDraft={save} />
               ) : (
                 blocks && <PlaybookBuilder value={blocks} onChange={setBlocks} />
               )}

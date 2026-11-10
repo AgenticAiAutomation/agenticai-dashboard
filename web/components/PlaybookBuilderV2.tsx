@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Card } from '@/components/ui';
 import FormatTextarea from '@/components/FormatTextarea';
 import { ListEditor, TableEditor } from '@/components/PlaybookBuilder';
@@ -39,6 +39,8 @@ type Props = {
   onChange: (next: PlaybookBlocksV2) => void;
   /* Needed to upload images; null until the draft is first saved. */
   articleId: string | null;
+  /* Saves the draft (creating the article), so images can be uploaded. */
+  onSaveDraft?: () => void;
 };
 
 type Patch<T extends SectionItem> = (patch: Partial<T>) => void;
@@ -48,12 +50,15 @@ function ItemEditor({
   id,
   set,
   articleId,
+  onSaveDraft,
 }: {
   item: SectionItem;
   id: string;
   set: Patch<any>;
   articleId: string | null;
+  onSaveDraft?: () => void;
 }) {
+  const fileRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -101,6 +106,7 @@ function ItemEditor({
       );
 
     case 'image': {
+      const previous = item.url;
       const upload = async (file: File) => {
         if (!articleId) return;
         setBusy(true);
@@ -108,6 +114,10 @@ function ItemEditor({
         try {
           const { data } = await seoApi.uploadInlineImage(articleId, file);
           set({ url: data.url });
+          // Replacing: the old file goes (kept server-side while the post is live).
+          if (previous.startsWith(INLINE_PREFIX)) {
+            seoApi.deleteInlineImage(articleId, previous).catch(() => {});
+          }
         } catch (err) {
           setError(apiError(err));
         } finally {
@@ -116,31 +126,41 @@ function ItemEditor({
       };
       return (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <div className="sm:col-span-2">
-            {item.url ? (
+          <div className="space-y-2 sm:col-span-2">
+            {item.url && (
               /* Served by the website, not the dashboard. */
               /* eslint-disable-next-line @next/next/no-img-element */
               <img src={item.url.startsWith('/') ? SITE_ORIGIN + item.url : item.url}
                    alt={item.alt || 'Uploaded section image'} width={1536} height={1024}
                    className="h-auto w-full rounded border border-line" />
-            ) : !articleId ? (
-              <p className="text-xs text-warning">Save the draft once to upload images.</p>
-            ) : (
-              <>
-                <label className="label" htmlFor={`${id}-file`}>
-                  Upload — WebP, exactly 1536 × 1024
-                </label>
-                <input id={`${id}-file`} type="file" accept="image/webp" disabled={busy}
-                       className="input-field text-xs"
-                       onChange={(e) => {
-                         const file = e.target.files?.[0];
-                         if (file) upload(file);
-                         e.target.value = '';
-                       }} />
-              </>
             )}
-            {busy && <p className="mt-1 text-xs text-muted">Uploading…</p>}
-            {error && <p className="mt-1 text-xs text-danger" role="alert">{error}</p>}
+            {/* The native picker stays hidden; the button below opens it, so the
+                control is a real, visible button in every theme. */}
+            <input ref={fileRef} id={`${id}-file`} type="file" accept="image/webp"
+                   className="sr-only" tabIndex={-1} aria-hidden="true"
+                   onChange={(e) => {
+                     const file = e.target.files?.[0];
+                     if (file) upload(file);
+                     e.target.value = '';
+                   }} />
+            <div className="flex flex-wrap items-center gap-3">
+              {articleId ? (
+                <button type="button" className="btn-primary text-sm" disabled={busy}
+                        onClick={() => fileRef.current?.click()}>
+                  {busy ? 'Uploading…' : item.url ? 'Replace image' : 'Upload image'}
+                </button>
+              ) : (
+                <button type="button" className="btn-primary text-sm" onClick={onSaveDraft}
+                        disabled={!onSaveDraft}>
+                  Save draft to enable image upload
+                </button>
+              )}
+              <span className="text-xs text-muted">
+                WebP only, exactly 1536 × 1024 px.
+                {!articleId && ' A new article must be saved once before images can be uploaded.'}
+              </span>
+            </div>
+            {error && <p className="text-xs text-danger" role="alert">{error}</p>}
           </div>
           <div>
             <label className="label" htmlFor={`${id}-alt`}>Alt text (required)</label>
@@ -248,6 +268,7 @@ function SectionEditorV2({
   total,
   hasCallout,
   articleId,
+  onSaveDraft,
   onChange,
   onMove,
   onRemove,
@@ -257,6 +278,7 @@ function SectionEditorV2({
   total: number;
   hasCallout: boolean;
   articleId: string | null;
+  onSaveDraft?: () => void;
   onChange: (next: PlaybookSectionV2) => void;
   onMove: (delta: number) => void;
   onRemove: () => void;
@@ -340,6 +362,7 @@ function SectionEditorV2({
               item={item}
               id={`${id}-i${i}`}
               articleId={articleId}
+              onSaveDraft={onSaveDraft}
               set={(patch) => {
                 const items = [...section.items];
                 items[i] = { ...item, ...patch } as SectionItem;
@@ -380,7 +403,7 @@ function SectionEditorV2({
   );
 }
 
-export default function PlaybookBuilderV2({ value, onChange, articleId }: Props) {
+export default function PlaybookBuilderV2({ value, onChange, articleId, onSaveDraft }: Props) {
   const set = (patch: Partial<PlaybookBlocksV2>) => onChange({ ...value, ...patch });
   const hasCallout = countCallouts(value) > 0;
   const problems = playbookProblems(value);
@@ -433,6 +456,7 @@ export default function PlaybookBuilderV2({ value, onChange, articleId }: Props)
               total={value.sections.length}
               hasCallout={hasCallout}
               articleId={articleId}
+              onSaveDraft={onSaveDraft}
               onChange={(next) => {
                 const sections = [...value.sections];
                 sections[index] = next;
