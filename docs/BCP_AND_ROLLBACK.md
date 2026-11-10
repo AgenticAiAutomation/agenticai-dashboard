@@ -127,3 +127,27 @@ works exactly as on 2026-10-04.
 | Playbook converter fails at publish | Falls back to the legacy converter automatically | Flag off |
 
 Detail and deploy order: `docs/BLOG_PLAYBOOK.md`.
+
+### Blog Playbook v2
+
+Sub-flag `BLOG_PLAYBOOK_V2` (own drop-in `blog-playbook-v2.conf`). Off = writers
+see the v1 Playbook; v2 posts already published keep rendering (their HTML is
+in the published file).
+
+**Before deploy:** DB backup; note the current commit of both repos; run
+`node tests/playbook/*.test.mts`, `pytest tests/test_blog_playbook*.py` here and
+`pytest tests` in AgenticWeb. **Order:** migration 004 → API → web →
+AgenticWeb. Staging first, 3 sample articles end to end, then production.
+
+| Level | When | Do | Time |
+|---|---|---|---|
+| L1 | Any v2 problem | `bash /root/blog-playbook-flag.sh v2-off` | ~1 min |
+| L2 | L1 not enough | Redeploy the commits noted before deploy (both repos) | ~10 min |
+| L3 | Schema problem | `cd api && alembic downgrade 003_playbook_blocks` — drops only `author_best_pick`, `author_notice`, `author_must_do`; no old article loses data | ~2 min |
+
+| Problem | Fallback |
+|---|---|
+| v2 renderer error | `_publish_html` falls back to the legacy converter; never a failed publish |
+| Inline upload broken | Leave image items out (optional, no points lost); featured image is a separate route |
+| Homepage blog source unreadable | Section hidden, homepage still 200 |
+| Author columns missing | Read as empty; publish carries on |

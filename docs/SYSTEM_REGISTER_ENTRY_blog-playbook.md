@@ -37,3 +37,25 @@ then delete this file. If it truly does not exist, rename this file to
 | Date | Change | Ref | By |
 |---|---|---|---|
 | 2026-10-05 | Blog Playbook writer added behind `BLOG_PLAYBOOK_ENABLED` (off); skim route, `playbook_blocks` column, site filter. No scoring or publish-gate change. | `feat/blog-playbook` | Claude Code for Jai |
+
+---
+
+## Feature — Blog Playbook v2 (add beside the row above)
+
+| Field | Value |
+|---|---|
+| Feature | Blog Playbook v2: multi-item sections, one free-label callout, inline WebP upload, bold/links in H2 + FAQ, author Best pick / Notice / Must do, Skim skip, homepage Blog section |
+| Status | Built 2026-11-10 on `feat/blog-playbook-v2` (dashboard + AgenticWeb). Not deployed, not pushed. |
+| Flag | `BLOG_PLAYBOOK_V2` (default `false`), on top of `BLOG_PLAYBOOK_ENABLED` / `BLOG_PLAYBOOK_USERS` / access file. `ops/blog-playbook-flag.sh v2-on / v2-off` |
+| New routes | `POST /api/seo/articles/{id}/upload-inline-image`, `DELETE /api/seo/articles/{id}/inline-image?url=` |
+| Changed routes | `GET /api/seo/playbook` (+`v2`), `GET …/playbook` (+`author_extras`), save routes (+`author_extras`), `…/skim` (+`skipped`, `parameters_skipped`), score/publish `blocking_issues` (+Playbook rules, Playbook posts only) |
+| New columns | `seo_articles.author_best_pick JSONB NULL`, `author_notice TEXT NULL`, `author_must_do JSONB NULL` — Alembic `004_playbook_author_extras` (down drops only these) |
+| Website | `blog.py` (`pb-callout`, `latest()`), `templates/blog-post.html`, `templates/index.html`, `static/assets/css/components.css` |
+| Security | Upload validated on the server: real WebP magic bytes + Pillow decode + exactly 1536 × 1024; URL pattern pinned to the article's id before any delete; files written atomically under `SITE_MEDIA_DIR/inline/`. Link scheme filter: only `https://…` and `/…` (no `javascript:`, `data:`, `http:`, `//host`) in builder, renderer and FAQ/author HTML. FAQ answers and author fields are HTML-escaped before bold/links are applied. No new secrets, no new dependency. |
+| Guide | `docs/BLOG_PLAYBOOK.md` § v2 · rollback: `docs/BCP_AND_ROLLBACK.md` § Blog Playbook v2 |
+
+## §10 change log row — v2
+
+| Date | Change | Ref | By |
+|---|---|---|---|
+| 2026-11-10 | Blog Playbook v2 behind `BLOG_PLAYBOOK_V2` (off): bold/link root-cause fix, multi-item sections, inline WebP upload route, one-callout blocker, author extras (migration 004), Skim skip, homepage Blog section. No house-score or publish-gate change. | `feat/blog-playbook-v2` | Claude Code for Jai |

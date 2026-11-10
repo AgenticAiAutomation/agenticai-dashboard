@@ -17,15 +17,23 @@ import MarkdownEditor, {
 import { Card, ErrorBanner, Skeleton } from '@/components/ui';
 import { ScorePassing, ScorePath } from '@/components/ScorePath';
 import PlaybookBuilder from '@/components/PlaybookBuilder';
+import PlaybookBuilderV2 from '@/components/PlaybookBuilderV2';
+import FormatTextarea from '@/components/FormatTextarea';
 import {
   PlaybookBlocks,
+  PlaybookBlocksV2,
   blocksForBody,
+  blocksForBodyV2,
   compose,
+  composeV2,
   emptyBlocks,
+  emptyBlocksV2,
   normaliseBlocks,
+  normaliseBlocksV2,
 } from '@/lib/playbook';
 import {
   APPROVED_MATRIX,
+  AuthorExtras,
   COUNTRY_LABELS,
   Country,
   ManualFaqInput,
@@ -48,6 +56,7 @@ import {
  */
 
 const EMPTY_FAQ: ManualFaqInput = { question: '', answer: '', source_url: '' };
+const EMPTY_EXTRAS: AuthorExtras = { best_pick: null, notice: null, must_do: null };
 
 function ScoreDial({ label, score, grade }: {
   label: string;
@@ -175,6 +184,12 @@ function WriteArticlePage() {
   const [loaded, setLoaded] = useState<{ body: string; h1: string } | null>(null);
   const [skim, setSkim] = useState<SkimReport | null>(null);
   const [scoredSnapshot, setScoredSnapshot] = useState<string | null>(null);
+  /* Playbook v2 (BLOG_PLAYBOOK_V2): its own blocks and the author extras.
+     With v2 off none of this is used and the page is the v1 Playbook. */
+  const [v2, setV2] = useState(false);
+  const [blocksV2, setBlocksV2] = useState<PlaybookBlocksV2 | null>(null);
+  const [extras, setExtras] = useState<AuthorExtras>(EMPTY_EXTRAS);
+  const activeBlocks = v2 ? blocksV2 : blocks;
   // The H1 the composer writes: the title, or the keyword until there is one.
   const h1 = title || keyword;
 
@@ -218,14 +233,18 @@ function WriteArticlePage() {
   useEffect(() => {
     seoApi
       .playbookStatus()
-      .then(({ data }) => setPlaybookEnabled(data.enabled === true))
+      .then(({ data }) => {
+        setV2(data.v2 === true);
+        setPlaybookEnabled(data.enabled === true);
+      })
       .catch(() => setPlaybookEnabled(false));
   }, []);
 
   // Flag on + a new article: start in the Playbook, unless typing has begun.
   useEffect(() => {
     if (!playbookEnabled || existingId || body.trim()) return;
-    setBlocks(emptyBlocks());
+    if (v2) setBlocksV2(emptyBlocksV2());
+    else setBlocks(emptyBlocks());
     setMode('playbook');
     // Only when the flag resolves; later edits must not re-trigger this.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -239,14 +258,21 @@ function WriteArticlePage() {
     let cancelled = false;
     seoApi
       .getPlaybook(existingId)
-      .then(({ data }) => data.playbook_blocks as unknown)
+      .then(({ data }) => {
+        if (!cancelled && data.author_extras) setExtras(data.author_extras);
+        return data.playbook_blocks as unknown;
+      })
       .catch(() => null)
       .then((saved) => {
         if (cancelled) return;
         setSavedBlocks(saved);
-        const opened = blocksForBody(loaded.body, loaded.h1, saved);
+        // v2 also opens v1 blocks, converted in memory without changing the body.
+        const opened = v2
+          ? blocksForBodyV2(loaded.body, loaded.h1, saved)
+          : blocksForBody(loaded.body, loaded.h1, saved);
         if (opened) {
-          setBlocks(opened);
+          if (v2) setBlocksV2(opened as PlaybookBlocksV2);
+          else setBlocks(opened as PlaybookBlocks);
           setMode('playbook');
           setModeNote(null);
         } else {
@@ -262,15 +288,32 @@ function WriteArticlePage() {
     return () => {
       cancelled = true;
     };
-  }, [playbookEnabled, existingId, loaded]);
+  }, [playbookEnabled, existingId, loaded, v2]);
 
   // In Playbook mode the body is always the composition of the blocks.
   useEffect(() => {
-    if (mode !== 'playbook' || !blocks) return;
-    setBody(compose(blocks, h1));
-  }, [mode, blocks, h1]);
+    if (mode !== 'playbook') return;
+    if (v2 && blocksV2) setBody(composeV2(blocksV2, h1));
+    else if (!v2 && blocks) setBody(compose(blocks, h1));
+  }, [mode, blocks, blocksV2, v2, h1]);
 
   const switchToPlaybook = () => {
+    if (v2) {
+      const opened = body.trim()
+        ? blocksForBodyV2(body, h1, blocksV2 ?? savedBlocks)
+        : blocksV2 ?? emptyBlocksV2();
+      if (opened) {
+        setBlocksV2(opened);
+        setMode('playbook');
+        setModeNote(null);
+      } else {
+        setModeNote(
+          'This body does not follow the Playbook layout exactly, so it stays in ' +
+            'Raw Markdown — switching would rewrite it.',
+        );
+      }
+      return;
+    }
     if (!body.trim()) {
       setBlocks(blocks ?? emptyBlocks());
       setMode('playbook');
@@ -292,6 +335,14 @@ function WriteArticlePage() {
 
   /* Explicit, never automatic: replaces the body with the stored blocks. */
   const replaceWithSavedBlocks = () => {
+    if (v2) {
+      const normalisedV2 = normaliseBlocksV2(savedBlocks);
+      if (!normalisedV2) return;
+      setBlocksV2(normalisedV2);
+      setMode('playbook');
+      setModeNote(null);
+      return;
+    }
     const normalised = normaliseBlocks(savedBlocks);
     if (!normalised) return;
     setBlocks(normalised);
@@ -369,7 +420,7 @@ function WriteArticlePage() {
 
   /* Everything the export reads from the saved article, as one string. */
   const snapshot = JSON.stringify([
-    title, keyword, body, metaTitle, metaDescription, fromAuthor, imageAlt, faqs,
+    title, keyword, body, metaTitle, metaDescription, fromAuthor, imageAlt, faqs, extras,
   ]);
 
   const cleanFaqs = useCallback(
@@ -410,7 +461,8 @@ function WriteArticlePage() {
         featured_image_alt: imageAlt || null,
         faqs: cleanFaqs(),
         // Omitted entirely unless the Playbook is in use: undefined is not sent.
-        playbook_blocks: playbookEnabled && mode === 'playbook' ? blocks : undefined,
+        playbook_blocks: playbookEnabled && mode === 'playbook' ? activeBlocks : undefined,
+        author_extras: playbookEnabled && v2 ? extras : undefined,
       };
 
       if (articleId) {
@@ -445,7 +497,8 @@ function WriteArticlePage() {
         from_author_story: fromAuthor || null,
         featured_image_alt: imageAlt || null,
         faqs: cleanFaqs(),
-        playbook_blocks: playbookEnabled && mode === 'playbook' ? blocks : undefined,
+        playbook_blocks: playbookEnabled && mode === 'playbook' ? activeBlocks : undefined,
+        author_extras: playbookEnabled && v2 ? extras : undefined,
       });
       const scoredFrom = snapshot;
       const { data } = await seoApi.score(articleId);
@@ -653,9 +706,13 @@ function WriteArticlePage() {
             </div>
           )}
 
-          {playbookEnabled && mode === 'playbook' && blocks && (
+          {playbookEnabled && mode === 'playbook' && activeBlocks && (
             <>
-              <PlaybookBuilder value={blocks} onChange={setBlocks} />
+              {v2 && blocksV2 ? (
+                <PlaybookBuilderV2 value={blocksV2} onChange={setBlocksV2} articleId={articleId} />
+              ) : (
+                blocks && <PlaybookBuilder value={blocks} onChange={setBlocks} />
+              )}
               <Card
                 title="Body (composed)"
                 action={
@@ -682,7 +739,7 @@ function WriteArticlePage() {
           )}
 
           <Card
-            className={playbookEnabled && mode === 'playbook' && blocks ? 'hidden' : ''}
+            className={playbookEnabled && mode === 'playbook' && activeBlocks ? 'hidden' : ''}
             title="Body"
             action={
               <span className="text-xs text-muted tabular-nums">
@@ -779,6 +836,21 @@ function WriteArticlePage() {
                     }}
                   />
                   <label className="sr-only" htmlFor={`faq-a-${index}`}>Answer {index + 1}</label>
+                  {playbookEnabled && v2 ? (
+                    /* v2: bold and links allowed; the site gets safe HTML and the
+                       FAQ schema gets the plain text. */
+                    <FormatTextarea
+                      id={`faq-a-${index}`}
+                      rows={3}
+                      placeholder="Answer — 30 to 80 words is the featured-snippet range"
+                      value={faq.answer}
+                      onChange={(answer) => {
+                        const next = [...faqs];
+                        next[index] = { ...faq, answer };
+                        setFaqs(next);
+                      }}
+                    />
+                  ) : (
                   <textarea
                     id={`faq-a-${index}`}
                     className="input-field"
@@ -791,6 +863,7 @@ function WriteArticlePage() {
                       setFaqs(next);
                     }}
                   />
+                  )}
                   <label className="sr-only" htmlFor={`faq-s-${index}`}>Source URL {index + 1}</label>
                   <input
                     id={`faq-s-${index}`}
@@ -940,6 +1013,9 @@ function WriteArticlePage() {
               value={fromAuthor}
               onChange={(e) => setFromAuthor(e.target.value)}
             />
+            {playbookEnabled && v2 && (
+              <AuthorExtrasEditor value={extras} onChange={setExtras} />
+            )}
           </Card>
         </div>
 
@@ -1087,5 +1163,74 @@ function WriteArticlePage() {
         </div>
       </div>
     </Shell>
+  );
+}
+
+/* Playbook v2: Best pick, Notice from author, Must do. All optional; each is
+   shown on the post in its own box only when filled. They do not count
+   toward the 120 words of From the author. */
+function AuthorExtrasEditor({
+  value,
+  onChange,
+}: {
+  value: AuthorExtras;
+  onChange: (next: AuthorExtras) => void;
+}) {
+  const pick = value.best_pick ?? { option: '', reason: '' };
+  const mustDo = value.must_do?.length ? value.must_do : [''];
+  return (
+    <div className="mt-4 space-y-4 border-t border-line pt-4">
+      <p className="text-xs text-muted">
+        Optional — skipping them won&rsquo;t cost points, and they don&rsquo;t count toward the
+        From the author words.
+      </p>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div>
+          <label className="label" htmlFor="extra-pick">Best pick</label>
+          <input id="extra-pick" className="input-field" value={pick.option}
+                 placeholder="WATI on the Growth plan"
+                 onChange={(e) => onChange({ ...value, best_pick: { ...pick, option: e.target.value } })} />
+        </div>
+        <div>
+          <label className="label" htmlFor="extra-pick-why">Why (one line)</label>
+          <input id="extra-pick-why" className="input-field" value={pick.reason}
+                 onChange={(e) => onChange({ ...value, best_pick: { ...pick, reason: e.target.value } })} />
+        </div>
+      </div>
+      <div>
+        <label className="label" htmlFor="extra-notice">Notice from author</label>
+        <FormatTextarea id="extra-notice" rows={2} value={value.notice ?? ''}
+                        placeholder="An important note or disclaimer"
+                        onChange={(notice) => onChange({ ...value, notice })} />
+      </div>
+      <div>
+        <p className="label">Must do — what the business must act on (1–5 points)</p>
+        <div className="space-y-2">
+          {mustDo.map((point, i) => (
+            <div key={i} className="flex items-center gap-2">
+              <label className="sr-only" htmlFor={`extra-must-${i}`}>Must do {i + 1}</label>
+              <input id={`extra-must-${i}`} className="input-field" value={point}
+                     onChange={(e) => {
+                       const next = [...mustDo];
+                       next[i] = e.target.value;
+                       onChange({ ...value, must_do: next });
+                     }} />
+              {mustDo.length > 1 && (
+                <button type="button" className="shrink-0 text-xs text-danger"
+                        onClick={() => onChange({ ...value, must_do: mustDo.filter((_, k) => k !== i) })}>
+                  Remove
+                </button>
+              )}
+            </div>
+          ))}
+          {mustDo.length < 5 && (
+            <button type="button" className="btn-secondary text-xs"
+                    onClick={() => onChange({ ...value, must_do: [...mustDo, ''] })}>
+              Add point
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }

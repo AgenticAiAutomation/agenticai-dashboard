@@ -99,6 +99,11 @@ class Settings(BaseSettings):
     # Who admins have granted it to from the Users page. Relative to the API's
     # working directory (api/), next to the other desks' data in instance/.
     BLOG_PLAYBOOK_ACCESS_FILE: str = "instance/blog_playbook_access.json"
+    # Playbook v2 (multi-item sections, one free-label callout, inline WebP
+    # upload, author Best pick / Notice / Must do). Only applies to logins that
+    # already have the Playbook. False = today's v1 writer; v2 posts already
+    # published keep rendering either way.
+    BLOG_PLAYBOOK_V2: bool = False
 
     SERPAPI_KEY: Optional[str] = None
     # Shared secret required by /api/seo/cron/* so only the box can trigger them.

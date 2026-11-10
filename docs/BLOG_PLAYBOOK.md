@@ -185,3 +185,60 @@ render that file, so both languages test the same bytes. Refresh it with
 `002`. Whichever lands second must point its `down_revision` at the other.
 
 Rollback: see `docs/BCP_AND_ROLLBACK.md` → *Blog Playbook*.
+
+---
+
+## v2 (`BLOG_PLAYBOOK_V2`, built 2026-11-10, branch `feat/blog-playbook-v2`)
+
+Sub-flag on top of the access above: v2 is used only by logins that already
+have the Playbook **and** while `BLOG_PLAYBOOK_V2=true`. Off = the v1 writer
+exactly as before. Spec: `BLOG_PLAYBOOK_V2_CHANGES.md`. Why bold/links failed:
+`docs/FEATURE_LOG.md` (2026-11-10).
+
+| # | Block | v2 |
+|---|---|---|
+| 4 | Question H2 sections (3+) | Lead answer + ordered items: paragraph, steps, flow, tables (any number, caption + text below each), image upload (WebP 1536 × 1024, alt required), real example, cost table, callout. At least one visual each. B / Link toolbar. |
+| 5 | Real example | Optional item inside any section (more than once allowed) + optional description |
+| 6 | Cost & time table | Optional item, columns renamed / added / removed (min 2) |
+| 7 | Callout | Exactly one per article, free label ≤ 30 chars; reserved: TL;DR, Who this is for, Real example, Before, After, Flow, Next step |
+| 8 | FAQ | Bold + links in answers (page gets HTML, FAQ schema gets plain text) |
+| 9 | From the author | + optional Best pick, Notice from author, Must do (1–5) — own boxes on the post, not counted in the 120 words |
+
+Code: `web/lib/playbook.ts` (`composeV2`, `parseV2`, `toV2`,
+`normaliseBlocksV2`, `blocksForBodyV2`, `playbookProblems`, `isAllowedUrl`),
+`web/components/PlaybookBuilderV2.tsx`, `web/components/FormatTextarea.tsx`,
+`api/app/seo/services/playbook_render.py` (`to_html(md, v2=True)`,
+`inline_html`, `inline_plain`, `safe_url`), `api/app/seo/routes/articles.py`
+(inline image routes, `_playbook_blocking_issues`, `_site_faqs`,
+`_site_author_extras`), `api/app/seo/playbook.py` (`v2_enabled_for`, author
+extras), migration `004_playbook_author_extras`.
+
+**Opening v1 articles.** The old fixed real example and cost table become
+their own trailing sections holding a `real_example` / `cost_table` item, so
+`composeV2(toV2(v1)) === compose(v1)` byte for byte and an old article opens
+without its body changing (spec said "last H2 section"; a separate section was
+chosen because it keeps the never-rewrite guarantee). Nothing is saved until
+the writer saves.
+
+**Known parse limit.** A cost table with renamed columns is the same Markdown
+as a table, so a body re-parsed without its saved blocks reopens it as a
+`table` item. The body is unchanged; saved blocks keep the real type.
+
+**Scoring.** House score, Rank Math, 80 and every existing blocker unchanged.
+Skim: no real example / no table → skipped, not zero. Half-filled optional
+blocks and the callout rule are Playbook blockers (no points). Path to 80 is
+the house scorer and never mentions optional blocks.
+
+**Website.** `blog.py`: any non-reserved label in a Playbook post →
+`pb-callout`; `latest(3)` with a 10-minute cache for the homepage.
+`blog-post.html`: author boxes, FAQ `answer_html`. `index.html`: "Latest from
+the blog" before the FAQ, hidden when empty or on error. CSS in
+`static/assets/css/components.css`. `/blog` is the Flask renderer in this repo
+(the WordPress note at the top of `app.py` is out of date — see its NOTE).
+
+**Tests.** `node tests/playbook/v2.test.mts` · `pytest tests/test_blog_playbook_v2.py`
+(here; `sample.v1.html` is the pre-v2 renderer's output, for the "same HTML"
+check) · `pytest tests/test_blog_playbook_v2.py` (AgenticWeb). Refresh the v2
+fixture with `node tests/playbook/v2.test.mts --write-fixture`.
+
+**Deploy / rollback:** `docs/BCP_AND_ROLLBACK.md` → *Blog Playbook v2*.

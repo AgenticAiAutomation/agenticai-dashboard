@@ -2,7 +2,8 @@
 
 It checks the Blog Playbook format: a TL;DR up top, short question sections,
 something visual at least every 300 words, a real example with numbers, a cost
-table and a call to action.
+table and a call to action. The real example and the table are optional: when
+the post has none, the check is skipped (out of the denominator), not zeroed.
 
 Advisory means exactly that. This module is never imported by scoring.py or
 rankmath.py, and the publish route never reads it, so a low skim score cannot
@@ -133,6 +134,12 @@ def _check(key: str, label: str, available: float, points: float, detail: str) -
             "points_earned": points, "passed": points >= available, "detail": detail}
 
 
+def _skipped(key: str, label: str, detail: str) -> Dict[str, Any]:
+    """An optional block the writer left out: 0 of 0, not 0 of N."""
+    return {"key": key, "label": label, "points_available": 0, "points_earned": 0,
+            "passed": True, "skipped": True, "detail": detail}
+
+
 def _body(blocks: List[Block]) -> List[Block]:
     """Everything after the H1, or everything if there is no H1."""
     for index, block in enumerate(blocks):
@@ -215,8 +222,9 @@ def check_real_example(markdown: str, blocks: List[Block]) -> Dict[str, Any]:
             return _check("real_example", label, 15, 0,
                           "The [REAL EXAMPLE: ...] placeholder is still there — "
                           "the author fills it with a real client.")
-        return _check("real_example", label, 15, 0,
-                      "No '> **Real example:**' block. Add a real client with numbers.")
+        # Optional (Playbook v2): leaving it out costs nothing.
+        return _skipped("real_example", label,
+                        "No real example — optional, skipped (no deduction).")
     numbers = _NUMBER.findall(strip_markdown(quote.text))
     if len(numbers) >= 2:
         return _check("real_example", label, 15, 15, f"{len(numbers)} numbers in the example")
@@ -225,9 +233,10 @@ def check_real_example(markdown: str, blocks: List[Block]) -> Dict[str, Any]:
 
 
 def check_table(blocks: List[Block]) -> Dict[str, Any]:
-    present = any(b.kind == "table" for b in blocks)
-    return _check("table", "A table (cost & time)", 10, 10 if present else 0,
-                  "table present" if present else "Add the cost & time table.")
+    if not any(b.kind == "table" for b in blocks):
+        return _skipped("table", "A table (cost & time)",
+                        "No table — optional, skipped (no deduction).")
+    return _check("table", "A table (cost & time)", 10, 10, "table present")
 
 
 def check_cta(markdown: str, blocks: List[Block]) -> Dict[str, Any]:
@@ -262,11 +271,15 @@ def score(markdown: str, primary_keyword: str = "") -> Dict[str, Any]:
         check_cta(markdown, blocks),
         check_first_paragraph(blocks),
     ]
-    total = round(sum(c["points_earned"] for c in checks))
+    # Skipped optional checks leave the denominator, like the house score.
+    available = sum(c["points_available"] for c in checks)
+    earned = sum(c["points_earned"] for c in checks)
+    total = round(earned / available * 100) if available else 0
     return {
         "total_score": total,
         "max_score": 100,
         "advisory": True,
         "note": "Advisory — does not block publish",
         "checks": checks,
+        "parameters_skipped": [c["label"] for c in checks if c.get("skipped")],
     }

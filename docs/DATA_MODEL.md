@@ -82,3 +82,25 @@ The column is deliberately **not mapped** on `SeoArticle`. `app/seo/playbook.py`
 reads and writes it with plain SQL, and only when the flag is on. The API
 therefore runs the same whether or not the migration has been applied, or after
 it has been rolled back.
+
+Playbook v2 stores `PlaybookBlocksV2` (`version: 2`) in the same column:
+`{tldr, who, sections[{question, body, items[]}], cta, cta_text}`, where an
+item is one of `text · steps · flow · table · image · real_example ·
+cost_table · callout`. Version 1 documents are still read and converted in
+memory (`normaliseBlocksV2` / `toV2`); nothing is rewritten until the writer
+saves.
+
+### Playbook v2 author extras (PostgreSQL, `seo_articles`)
+
+| Column | Type | Null | Added by |
+|---|---|---|---|
+| `author_best_pick` | `JSONB` `{option, reason}` | yes | Alembic `004_playbook_author_extras` |
+| `author_notice` | `TEXT` | yes | same |
+| `author_must_do` | `JSONB` list of 1–5 strings | yes | same |
+
+No existing field fitted (`from_author_story` is the scored 120-word story and
+must not change). Same pattern as `playbook_blocks`: not mapped on
+`SeoArticle`, read/written with plain SQL in `app/seo/playbook.py`, only when
+`BLOG_PLAYBOOK_V2` is on for the caller. If the columns are missing the read
+returns empty and publishing carries on. Down-migration drops only these three
+columns.

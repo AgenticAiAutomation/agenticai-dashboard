@@ -263,3 +263,17 @@ One screen for every website: today's links / approved / pending / sent back /
 points / queries per site and who did them, a 14-day heat grid, and per-person
 totals across all sites. Use it for the daily check instead of switching
 projects. Read-only — nothing to configure.
+
+## Blog Playbook v2 — switching it on and off
+
+On the VPS, as root (the Playbook itself must already be on for the login):
+
+```
+bash /root/blog-playbook-flag.sh v2-on    # writers with the Playbook get v2
+bash /root/blog-playbook-flag.sh v2-off   # back to v1 (rollback L1, ~1 min)
+bash /root/blog-playbook-flag.sh off      # whole Playbook off (also removes v2)
+```
+
+Copy the updated `ops/blog-playbook-flag.sh` to `/root` first. Published v2
+posts keep rendering with v2 off. Full rollback ladder:
+`BCP_AND_ROLLBACK.md` → *Blog Playbook v2*.

@@ -189,6 +189,15 @@ export interface SkimCheck {
   points_earned: number;
   passed: boolean;
   detail: string;
+  /* Optional block left out (Playbook v2): 0 of 0, no deduction. */
+  skipped?: boolean;
+}
+
+/* Playbook v2 "From the author" extras. */
+export interface AuthorExtras {
+  best_pick: { option: string; reason: string } | null;
+  notice: string | null;
+  must_do: string[] | null;
 }
 
 export interface SkimReport {
@@ -408,10 +417,26 @@ export const seoApi = {
   score: (id: string) => api.post<ScoreReport>(`/api/seo/articles/${id}/score`),
   /* Blog Playbook. Both article routes answer 404 while the flag is off for
      this login; callers treat any failure as "feature not available". */
-  playbookStatus: () => api.get<{ enabled: boolean }>('/api/seo/playbook'),
+  /* v2 is present (true) only when BLOG_PLAYBOOK_V2 is on for this login. */
+  playbookStatus: () => api.get<{ enabled: boolean; v2?: boolean }>('/api/seo/playbook'),
   getPlaybook: (id: string) =>
-    api.get<{ article_id: string; playbook_blocks: Record<string, unknown> | null }>(
-      `/api/seo/articles/${id}/playbook`,
+    api.get<{
+      article_id: string;
+      playbook_blocks: Record<string, unknown> | null;
+      author_extras?: AuthorExtras | null;
+    }>(`/api/seo/articles/${id}/playbook`),
+  /* Playbook v2 section images: WebP, exactly 1536×1024 (checked on the server). */
+  uploadInlineImage: (id: string, file: File) => {
+    const form = new FormData();
+    form.append('file', file);
+    return api.post<{ url: string; bytes: number }>(
+      `/api/seo/articles/${id}/upload-inline-image`, form,
+      { headers: { 'Content-Type': 'multipart/form-data' } },
+    );
+  },
+  deleteInlineImage: (id: string, url: string) =>
+    api.delete<{ file_removed: boolean; note?: string }>(
+      `/api/seo/articles/${id}/inline-image`, { params: { url } },
     ),
   skim: (id: string) => api.get<SkimReport>(`/api/seo/articles/${id}/skim`),
   /* The finished article as one HTML file. 409 below the publish threshold. */

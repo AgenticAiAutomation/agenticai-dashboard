@@ -33,7 +33,7 @@ type Props = {
   onChange: (next: PlaybookBlocks) => void;
 };
 
-function ListEditor({
+export function ListEditor({
   items,
   onChange,
   placeholder,
@@ -88,17 +88,20 @@ function ListEditor({
   );
 }
 
-function TableEditor({
+export function TableEditor({
   header,
   rows,
   onChange,
   fixedHeader = false,
+  removableColumns = false,
   idPrefix,
 }: {
   header: string[];
   rows: string[][];
   onChange: (header: string[], rows: string[][]) => void;
   fixedHeader?: boolean;
+  /* v2 cost table: a remove button on every column (minimum two). */
+  removableColumns?: boolean;
   idPrefix: string;
 }) {
   const width = header.length;
@@ -128,6 +131,19 @@ function TableEditor({
                           onChange(next, rows);
                         }}
                       />
+                      {removableColumns && width > 2 && (
+                        <button
+                          type="button"
+                          className="mt-1 text-xs text-danger"
+                          aria-label={`Remove column ${c + 1}`}
+                          onClick={() => onChange(
+                            header.filter((_, i) => i !== c),
+                            rows.map((r) => r.filter((_, i) => i !== c)),
+                          )}
+                        >
+                          Remove column
+                        </button>
+                      )}
                     </>
                   )}
                 </th>
@@ -186,7 +202,7 @@ function TableEditor({
             >
               Add column
             </button>
-            {width > 2 && (
+            {width > 2 && !removableColumns && (
               <button
                 className="btn-secondary text-xs"
                 onClick={() =>

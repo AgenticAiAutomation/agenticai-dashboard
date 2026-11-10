@@ -157,6 +157,30 @@ Changed, additively:
 - `POST /api/seo/articles/generate` uses the Playbook prompt when on and stores
   the model's `playbook_blocks`.
 
+### Playbook v2 (`BLOG_PLAYBOOK_V2`, on top of the Playbook access above)
+
+| Method | Path | Does |
+|---|---|---|
+| POST | `/api/seo/articles/{id}/upload-inline-image` | Multipart `file`. Must be a real WebP (bytes `RIFF....WEBP`, Pillow agrees) of exactly 1536 × 1024, else **400** `"Upload a WebP image of exactly 1536 × 1024."` Stored via `storage.put_object` (key `<article_id>/<token>.webp`) plus a public copy in `SITE_MEDIA_DIR/inline/`. Returns `{url, bytes}` — `url` is `/static/blog/inline/<article_id>-<token>.webp` for `![alt](url)`. Never touches `featured_image_path`. Audit `seo.article.inline_image_uploaded`. 404 when v2 is off. |
+| DELETE | `/api/seo/articles/{id}/inline-image?url=` | Removes both files for an inline image of **this** article (else 422). On a published article the files are kept (`file_removed: false`) until the next publish. Audit `seo.article.inline_image_removed`. |
+
+Changed, additively (only with v2 on for the caller):
+
+- `GET /api/seo/playbook` adds `"v2": true`. With v2 off the key is absent.
+- `GET /api/seo/articles/{id}/playbook` adds `author_extras`
+  `{best_pick: {option, reason} | null, notice | null, must_do: [..] | null}`.
+- `POST /api/seo/articles` and `PUT /api/seo/articles/{id}/write` accept an
+  optional `author_extras` object (same shape; must_do ≤ 5, each field
+  ≤ 2,000 chars, else 422). `playbook_blocks` may now be `version: 2`.
+- `GET /api/seo/articles/{id}/skim`: checks may carry `skipped: true` (0 of
+  0); the response adds `parameters_skipped`.
+- Score / publish `blocking_issues` add the Playbook rules for Playbook posts
+  (callout 0 / > 1, real example with no numbers, inline image without alt,
+  link that is not `https://…` or `/…`).
+- Publish file (`schema_version` still 1): each FAQ may carry `answer_html`
+  (then `answer` is plain text, for the FAQPage JSON-LD); optional
+  `author_extras {best_pick: {option, reason_html}, notice_html, must_do_html[]}`.
+
 ## Article HTML export — `/api/seo/articles` (SEO login)
 
 | Method | Path | Does |

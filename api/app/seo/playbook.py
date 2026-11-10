@@ -127,3 +127,71 @@ def save_blocks(db: Session, article_id: UUID, blocks: Dict[str, Any]) -> None:
              "WHERE id = :id"),
         {"blocks": encoded, "id": str(article_id)},
     )
+
+
+# --------------------------------------------------------------------------
+# Playbook v2
+# --------------------------------------------------------------------------
+def v2_enabled_for(user: Any) -> bool:
+    """v2 needs the Playbook for this login AND the BLOG_PLAYBOOK_V2 switch."""
+    return bool(settings.BLOG_PLAYBOOK_V2) and enabled_for(user)
+
+
+MUST_DO_MAX = 5
+
+
+def clean_author_extras(raw: Any) -> Dict[str, Any]:
+    """Coerce the writer's input to {best_pick: {option, reason}, notice, must_do}.
+
+    Raises ValueError on anything over the limits, so the route can answer 422.
+    """
+    raw = raw if isinstance(raw, dict) else {}
+    pick = raw.get("best_pick") if isinstance(raw.get("best_pick"), dict) else {}
+    option = str(pick.get("option") or "").strip()
+    reason = str(pick.get("reason") or "").strip()
+    notice = str(raw.get("notice") or "").strip()
+    must_do = [str(x).strip() for x in (raw.get("must_do") or []) if str(x).strip()]
+    if len(must_do) > MUST_DO_MAX:
+        raise ValueError(f"Must do takes at most {MUST_DO_MAX} points.")
+    if any(len(v) > 2000 for v in [option, reason, notice, *must_do]):
+        raise ValueError("An author field is longer than 2,000 characters.")
+    return {
+        "best_pick": {"option": option, "reason": reason} if option or reason else None,
+        "notice": notice or None,
+        "must_do": must_do or None,
+    }
+
+
+def load_author_extras(db: Session, article_id: UUID) -> Dict[str, Any]:
+    """The three v2 author fields. Columns missing (migration 004 rolled back)
+    reads as empty, so publishing never fails on them."""
+    empty = {"best_pick": None, "notice": None, "must_do": None}
+    try:
+        with db.begin_nested():
+            row = db.execute(
+                text("SELECT author_best_pick, author_notice, author_must_do "
+                     "FROM seo_articles WHERE id = :id"),
+                {"id": str(article_id)},
+            ).first()
+    except Exception:
+        return empty
+    if row is None:
+        return empty
+
+    def decode(value: Any) -> Any:
+        return json.loads(value) if isinstance(value, str) else value
+
+    return {"best_pick": decode(row[0]), "notice": row[1], "must_do": decode(row[2])}
+
+
+def save_author_extras(db: Session, article_id: UUID, extras: Dict[str, Any]) -> None:
+    """Store cleaned extras (see clean_author_extras). The caller commits."""
+    db.execute(
+        text("UPDATE seo_articles SET author_best_pick = CAST(:pick AS JSONB), "
+             "author_notice = :notice, author_must_do = CAST(:must AS JSONB) "
+             "WHERE id = :id"),
+        {"pick": json.dumps(extras["best_pick"]) if extras["best_pick"] else None,
+         "notice": extras["notice"],
+         "must": json.dumps(extras["must_do"]) if extras["must_do"] else None,
+         "id": str(article_id)},
+    )

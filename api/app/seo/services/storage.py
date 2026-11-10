@@ -165,5 +165,13 @@ def delete_object(path: Optional[str]) -> bool:
     return False
 
 
+def path_for(article_id: str, filename: str) -> str:
+    """The path put_object returned for <article_id>/<filename> (current backend)."""
+    key = f"{article_id}/{filename}"
+    if _minio_configured():
+        return f"minio://{settings.MINIO_BUCKET}/{key}"
+    return f"file://{os.path.join(LOCAL_FALLBACK_DIR, key)}"
+
+
 def filename_for(path: str) -> str:
     return os.path.basename(path) or "featured-image.jpg"

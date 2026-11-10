@@ -16,6 +16,67 @@ before it lands.
 
 ---
 
+## 2026-11-10 · Blog Playbook v2 (flagged) — built, not deployed
+
+Behind the new sub-flag `BLOG_PLAYBOOK_V2` (default `false`), on top of the
+existing Playbook access. Branch `feat/blog-playbook-v2` here (from
+`feat/blog-playbook`) and in AgenticWeb (from `main`). Spec:
+`BLOG_PLAYBOOK_V2_CHANGES.md`. Guide: `docs/BLOG_PLAYBOOK.md` § v2.
+
+**Root cause — bold and links "not accepted":**
+1. *H2 sections:* the builder kept `**…**` and `[..](..)` in `body_md` fine,
+   and inline bold already reached the site as `<strong>`. But both Markdown
+   normalisers (`playbook_render.normalise` and the legacy
+   `_normalise_markdown`) promote any line that is **entirely** bold to an
+   `### H3`. A bold lead sentence on its own line — the usual way writers use
+   bold — therefore came out as a heading, never as bold. The builder also
+   offered no bold control and only mentioned links.
+2. *FAQ answers:* answers are not part of `body_md`. The publisher sends them
+   to the site as plain text and `blog-post.html` prints `{{ f.answer }}`
+   autoescaped, so `**` and `[..](..)` showed literally. (`_faq_html()` in
+   `routes/articles.py` was not on this path at all — nothing calls it.)
+
+Fix: the v2 renderer (`to_html(md, v2=True)`) does not promote bold lines;
+FAQ answers are converted (bold + links only, everything else escaped) to
+`answer_html` for the page, and `answer` becomes plain text for the FAQPage
+JSON-LD. v1 output is byte-identical (snapshot test).
+
+Changes:
+- Writer: B (Ctrl+B) / Link toolbar on H2 paragraphs, table text-below, real
+  example description, callout and FAQ answers. Not on the TL;DR. Links must
+  be `https://…` or `/…`; `javascript:` etc. are refused in the builder and
+  stripped by the renderer. External links get `target="_blank" rel="noopener"`.
+- Sections hold many ordered items: paragraph, steps, flow, table (any number,
+  each with caption + text below), image, real example, cost table (editable
+  columns), callout. Reorder up/down, remove.
+- Images: upload only, WebP exactly 1536 × 1024, checked on the server (magic
+  bytes + Pillow). `POST /api/seo/articles/{id}/upload-inline-image`,
+  `DELETE /api/seo/articles/{id}/inline-image?url=` (kept while live).
+  Rendered as `<figure>` with fixed width/height. Featured image unchanged.
+- Callout: exactly one per article, free-text label ≤ 30 chars, reserved
+  labels refused. Playbook blocker: 0 → "Add one callout before submitting.",
+  > 1 → "Only one callout per article." Also blocks: real example with no
+  numbers, inline image with no alt, a disallowed link. No score points move.
+- From the author: optional Best pick, Notice from author, Must do (1–5).
+  Nullable columns, migration `004_playbook_author_extras`. Not counted in the
+  120 words.
+- Skim (advisory): no real example / no table → check skipped (0 of 0), total
+  = earned ÷ available; `parameters_skipped` returned.
+- v1 articles open in v2 with no body change: the old fixed example / cost
+  blocks become their own trailing sections (`toV2`), nothing is written until
+  the writer saves.
+- Website: callout class for any non-reserved label, figures, author boxes,
+  FAQ `answer_html`, homepage "Latest from the blog" (3 posts, 10-min cache,
+  hidden on error).
+- **Unchanged:** `scoring.py`, `rankmath.py`, 80 rule, every existing publish
+  blocker. Old articles score and render as before.
+
+Flag / rollback: `bash /root/blog-playbook-flag.sh v2-off` (L1) → redeploy
+previous commits (L2) → `alembic downgrade 003_playbook_blocks` (L3, drops only
+the three new nullable columns). See `docs/BCP_AND_ROLLBACK.md`.
+
+- 2026-11-10T00:00:00Z · blog-playbook-v2 · build (flag off, not deployed) · feat/blog-playbook-v2 · by claude-code
+
 ## 2026-10-13 · Per-site levels, Daily Tracker, Idea Board, /articles removed — built, not deployed
 
 - Team-visible once the flags go on: each associate's Backlink Ops score becomes **their own

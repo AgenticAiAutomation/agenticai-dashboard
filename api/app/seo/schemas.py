@@ -72,6 +72,9 @@ class ArticleManualCreate(BaseModel):
     # The Playbook writer's structured form of body_md. Stored as-is when the
     # flag is on for the caller, ignored otherwise. body_md stays the article.
     playbook_blocks: Optional[Dict[str, Any]] = None
+    # Playbook v2 "From the author" extras: {best_pick: {option, reason},
+    # notice, must_do: [..]}. Stored only when v2 is on for the caller.
+    author_extras: Optional[Dict[str, Any]] = None
 
 
 class ArticleManualUpdate(BaseModel):
@@ -95,8 +98,9 @@ class ArticleManualUpdate(BaseModel):
     # model that has not seen it.
     featured_image_alt: Optional[str] = None
     faqs: Optional[List[ManualFaq]] = None
-    # See ArticleManualCreate.playbook_blocks.
+    # See ArticleManualCreate.playbook_blocks / author_extras.
     playbook_blocks: Optional[Dict[str, Any]] = None
+    author_extras: Optional[Dict[str, Any]] = None
 
 
 class ArticleTeamEdit(BaseModel):

@@ -230,12 +230,12 @@ export default function ScoringGuidePage() {
                     ['Title / H1', 'Keyword plus a number or an outcome'],
                     ['TL;DR', '3 bullets, keyword in bullet 1'],
                     ['Who it’s for', 'One line'],
-                    ['Question H2 sections (3+)', 'Each 250 words or fewer, one visual each: steps, table, flow, callout or image'],
-                    ['Real example', 'Real client type, before/after, 2–3 real numbers — never invented'],
-                    ['Cost & time table', 'Item · One-time · Monthly · Time'],
-                    ['Callouts', 'Tip / Watch out / Pro tip'],
-                    ['FAQ', '5–8 questions, 30–80 word answers, a source URL each'],
-                    ['From the author', '120+ words, a real story'],
+                    ['Question H2 sections (3+)', 'Each 250 words or fewer, at least one visual each: steps, tables (as many as you need, each with optional text below), flow, image (upload a WebP, exactly 1536 × 1024, alt text required) — can hold the real example and the cost table. Bold and links allowed'],
+                    ['Real example', 'Optional, inside any H2 section: real client type, before/after, 2–3 real numbers — never invented — plus an optional description'],
+                    ['Cost & time table', 'Optional, inside any H2 section. Columns are yours to rename, add or remove (default Item · One-time · Monthly · Time)'],
+                    ['Callout', 'Exactly 1 per article, required. Your own label (30 characters max), e.g. “Clinic tip”'],
+                    ['FAQ', '5–8 questions, 30–80 word answers, a source URL each. Bold and links allowed in answers'],
+                    ['From the author', '120+ words, a real story. Optional: Best pick, Notice from author, Must do'],
                     ['CTA', 'Calendly, WhatsApp, or the WhatsApp plan funnel'],
                   ].map(([block, rule], i) => (
                     <tr key={block} className="border-t border-line align-top">
@@ -252,8 +252,19 @@ export default function ScoringGuidePage() {
               density 0.8–2%, and 2+ internal and 2+ external links.
             </p>
 
+            <p className="mt-2 text-xs text-muted">
+              Optional blocks you leave out are skipped in the Skim score, not deducted.
+              A half-filled one (a real example with no numbers, an image with no alt text, a
+              table with a header but no rows) blocks submitting.
+            </p>
+
             <Note title="Writing it in Raw Markdown">
-              <p>Use blockquotes with a bold lead-in. No HTML — the scorer would count the tags as words.</p>
+              <p>
+                Use blockquotes with a bold lead-in. No HTML — the scorer would count the tags as
+                words. Links must be https://… or a site path /…. These labels are reserved and
+                cannot be a callout: TL;DR, Who this is for, Real example, Before, After, Flow,
+                Next step.
+              </p>
               <pre className="overflow-x-auto rounded border border-line bg-raised p-3 font-mono text-[12px] leading-relaxed text-slate-200">
 {`> **TL;DR**
 >
@@ -263,7 +274,7 @@ export default function ScoringGuidePage() {
 
 > **Who this is for:** clinic owners with 30+ appointments a day.
 
-> **Tip:** …    > **Watch out:** …    > **Pro tip:** …
+> **Your label:** … (one callout per article)
 > **Flow:** Booking → Reminder → Visit
 > **Real example:** a 3-doctor dental clinic …
 > **Next step:** [Book a free 30-minute call](https://calendly.com/agenticaiautomation)`}
@@ -275,7 +286,9 @@ export default function ScoringGuidePage() {
                 After <Screen>Save &amp; score</Screen>, a third dial shows how skimmable the post
                 is (out of 100): TL;DR 20, short sections 20, something visual every 300 words 20,
                 real example with numbers 15, table 10, CTA 10, first paragraph of 60 words or
-                fewer 5. It <strong className="text-slate-100">never blocks publishing</strong> —
+                fewer 5. No real example or no table? That check is skipped and the score is out
+                of what is left — never a deduction. It{' '}
+                <strong className="text-slate-100">never blocks publishing</strong> —
                 only the house score and the blockers do.
               </p>
             </Note>

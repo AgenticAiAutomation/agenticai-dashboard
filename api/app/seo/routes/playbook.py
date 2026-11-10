@@ -33,7 +33,10 @@ def _require_enabled(user: User) -> None:
 @router.get("/api/seo/playbook")
 def playbook_status(current_user: User = Depends(seo_user)):
     """Whether the Playbook writer is switched on for the calling login."""
-    return {"enabled": playbook.enabled_for(current_user)}
+    status = {"enabled": playbook.enabled_for(current_user)}
+    if playbook.v2_enabled_for(current_user):   # absent = v1, as before v2 existed
+        status["v2"] = True
+    return status
 
 
 class PlaybookAccessUpdate(BaseModel):
@@ -114,8 +117,11 @@ def get_playbook_blocks(
 ):
     """The saved builder document for this article, or null if there is none."""
     _require_enabled(current_user)
-    return {"article_id": str(article.id),
-            "playbook_blocks": playbook.load_blocks(db, article.id)}
+    result = {"article_id": str(article.id),
+              "playbook_blocks": playbook.load_blocks(db, article.id)}
+    if playbook.v2_enabled_for(current_user):
+        result["author_extras"] = playbook.load_author_extras(db, article.id)
+    return result
 
 
 @router.get("/api/seo/articles/{article_id}/skim")

@@ -1,4 +1,6 @@
 """Article lifecycle: generate -> team edit -> score -> author review -> publish."""
+import html as html_lib
+import os
 import re
 from datetime import datetime, timezone
 from typing import List, Optional
@@ -31,7 +33,7 @@ from app.seo.schemas import (
 from app.config import settings
 from app.seo.services import (ServiceUnavailable, ai_detection, claude, export_html,
                               indexnow, playbook_render, publisher, rankmath, scoring,
-                              storage)
+                              skim, storage)
 
 router = APIRouter(prefix="/api/seo/articles", tags=["seo-articles"])
 
@@ -82,6 +84,16 @@ def _store_playbook_blocks(db: Session, article: SeoArticle, blocks, user: User)
         raise HTTPException(status_code=422, detail=str(exc))
 
 
+def _store_author_extras(db: Session, article: SeoArticle, extras, user: User) -> None:
+    """Playbook v2 Best pick / Notice / Must do. Ignored unless v2 is on."""
+    if extras is None or not playbook.v2_enabled_for(user):
+        return
+    try:
+        playbook.save_author_extras(db, article.id, playbook.clean_author_extras(extras))
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+
+
 @router.post("", response_model=ArticleDetailResponse, status_code=201)
 def create_article_manually(
     payload: ArticleManualCreate,
@@ -121,6 +133,7 @@ def create_article_manually(
     if payload.faqs:
         _replace_faqs(db, article, payload.faqs)
     _store_playbook_blocks(db, article, payload.playbook_blocks, current_user)
+    _store_author_extras(db, article, payload.author_extras, current_user)
 
     log_event(db, "seo.article.created_manually", current_user, request,
               target_type="seo_article", target_id=article.id,
@@ -179,6 +192,7 @@ def save_manual_draft(
     if payload.faqs is not None:
         _replace_faqs(db, article, payload.faqs)
     _store_playbook_blocks(db, article, payload.playbook_blocks, current_user)
+    _store_author_extras(db, article, payload.author_extras, current_user)
 
     log_event(db, "seo.article.saved", current_user, request,
               target_type="seo_article", target_id=article.id, commit=False)
@@ -541,6 +555,43 @@ def _blocking_issues(article: SeoArticle, score: Optional[int]) -> List[str]:
         issues.append("The featured image alt caption is missing.")
     if not article.featured_image_path:
         issues.append("No featured image uploaded.")
+    if settings.BLOG_PLAYBOOK_V2:
+        issues += _playbook_blocking_issues(
+            article.final_md or article.team_edit_md or article.author_draft_md or "")
+    return issues
+
+
+_RESERVED_LABELS = {"tl;dr", "who this is for", "real example", "before", "after",
+                    "flow", "next step"}
+_IMAGE_NO_ALT = re.compile(r"!\[\s*\]\(")
+_MD_LINK_URL = re.compile(r"(?<!!)\[[^\]]*\]\(([^)\s]*)\)")
+
+
+def _playbook_blocking_issues(md: str) -> List[str]:
+    """Playbook v2 rules, for Playbook posts only (body opens with a TL;DR)
+    and only while BLOG_PLAYBOOK_V2 is on. No score points move; these sit
+    beside the house blockers above, which are unchanged."""
+    if not settings.BLOG_PLAYBOOK_V2 or not playbook_render.is_playbook(md):
+        return []
+    blocks = skim.parse_blocks(md)
+    callouts = [b for b in blocks if b.kind == "quote" and b.label
+                and b.label not in _RESERVED_LABELS]
+    issues = []
+    if not callouts:
+        issues.append("Add one callout before submitting.")
+    elif len(callouts) > 1:
+        issues.append("Only one callout per article.")
+    for b in blocks:
+        # Numbers in Before / After / metrics; the client line does not count.
+        figures = b.text.partition("\n")[2]
+        if b.label == "real example" and not re.search(r"\d", figures):
+            issues.append("A real example has no numbers.")
+            break
+    if _IMAGE_NO_ALT.search(md):
+        issues.append("An inline image has no alt text.")
+    bad = [u for u in _MD_LINK_URL.findall(md) if not playbook_render.safe_url(u)]
+    if bad:
+        issues.append(f"Links must be https://… or /… — fix: {', '.join(bad[:3])}")
     return issues
 
 
@@ -705,6 +756,99 @@ def delete_article_image(
         "note": ("Image and alt text cleared. Publishing is blocked until both "
                  "are supplied again."),
     }
+
+
+# --------------------------------------------------------------------------
+# Inline images (Playbook v2). Separate from the featured image on purpose:
+# upload-image replaces featured_image_path, these never touch it.
+# --------------------------------------------------------------------------
+INLINE_SIZE_MESSAGE = "Upload a WebP image of exactly 1536 × 1024."
+_INLINE_URL = re.compile(
+    r"^/static/blog/inline/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})"
+    r"-([0-9a-f]{32})\.webp$")
+
+
+def webp_size(content: bytes) -> Optional[tuple]:
+    """(width, height) of a real WebP file, or None for anything else.
+
+    Magic bytes first (RIFF....WEBP), then Pillow must agree it is WebP, so a
+    renamed PNG or a forged header is refused, not only a wrong extension.
+    """
+    if len(content) < 16 or content[:4] != b"RIFF" or content[8:12] != b"WEBP":
+        return None
+    try:
+        import io
+        from PIL import Image
+        with Image.open(io.BytesIO(content)) as image:
+            return image.size if image.format == "WEBP" else None
+    except Exception:
+        return None
+
+
+@router.post("/{article_id}/upload-inline-image")
+async def upload_inline_image(
+    request: Request,
+    file: UploadFile = File(...),
+    article: SeoArticle = Depends(get_article),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(seo_user),
+):
+    """Store one section image and return the public URL for ![alt](url)."""
+    if not playbook.v2_enabled_for(current_user):
+        raise HTTPException(status_code=404, detail="Playbook v2 is not enabled.")
+    content = await file.read()
+    if webp_size(content) != playbook_render.INLINE_IMAGE_SIZE:
+        raise HTTPException(status_code=400, detail=INLINE_SIZE_MESSAGE)
+    try:
+        path = storage.put_object(str(article.id), content, "image/webp")
+    except ServiceUnavailable as exc:
+        raise service_error(exc)
+
+    token = os.path.splitext(os.path.basename(path))[0]
+    filename = f"{article.id}-{token}.webp"
+    try:
+        publisher.write_inline_image(filename, content)
+    except ServiceUnavailable as exc:
+        storage.delete_object(path)
+        raise service_error(exc)
+
+    url = f"{playbook_render.INLINE_IMAGE_PREFIX}{filename}"
+    log_event(db, "seo.article.inline_image_uploaded", current_user, request,
+              target_type="seo_article", target_id=article.id,
+              detail=f"{file.filename} -> {url}", commit=False)
+    db.commit()
+    return {"url": url, "bytes": len(content)}
+
+
+@router.delete("/{article_id}/inline-image")
+def delete_inline_image(
+    request: Request,
+    url: str = Query(...),
+    article: SeoArticle = Depends(get_article),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(seo_user),
+):
+    """Remove an inline image's files when the writer removes its item.
+
+    Kept while the article is live: the published page still points at it
+    until the next publish.
+    """
+    if not playbook.v2_enabled_for(current_user):
+        raise HTTPException(status_code=404, detail="Playbook v2 is not enabled.")
+    match = _INLINE_URL.match(url)
+    if not match or match.group(1) != str(article.id):
+        raise HTTPException(status_code=422, detail="Not an inline image of this article.")
+    if article.status == enums.ArticleStatus.published.value:
+        return {"file_removed": False,
+                "note": "Kept: the live post uses it until you publish again."}
+
+    token = match.group(2)
+    removed = storage.delete_object(storage.path_for(str(article.id), f"{token}.webp"))
+    public = publisher.delete_inline_image(f"{article.id}-{token}.webp")
+    log_event(db, "seo.article.inline_image_removed", current_user, request,
+              target_type="seo_article", target_id=article.id,
+              detail=f"{url} (stored {removed}, public {public})")
+    return {"file_removed": removed or public}
 
 
 @router.post("/{article_id}/generate-alt")
@@ -891,10 +1035,34 @@ def _publish_html(md: str, user: User) -> str:
     """
     if playbook.enabled_for(user) and playbook_render.is_playbook(md):
         try:
-            return playbook_render.to_html(md)
+            return playbook_render.to_html(md, v2=playbook.v2_enabled_for(user))
         except Exception:
             pass
     return _markdown_to_html(md)
+
+
+def _site_faqs(faqs, v2: bool) -> List[dict]:
+    """v1: exactly as before. v2: answer becomes plain text (the FAQPage
+    JSON-LD reads it) and answer_html carries the bold/links for the page."""
+    if not v2:
+        return [{"question": f.question, "answer": f.answer} for f in faqs]
+    return [{"question": f.question,
+             "answer": playbook_render.inline_plain(f.answer or ""),
+             "answer_html": playbook_render.inline_html(f.answer or "")} for f in faqs]
+
+
+def _site_author_extras(extras: dict) -> Optional[dict]:
+    """Best pick / Notice / Must do as the site renders them, or None if empty."""
+    pick = extras.get("best_pick") or {}
+    out = {
+        "best_pick": ({"option": pick.get("option") or "",
+                       "reason_html": playbook_render.inline_html(pick.get("reason") or "")}
+                      if pick.get("option") or pick.get("reason") else None),
+        "notice_html": playbook_render.inline_html(extras.get("notice") or "") or None,
+        "must_do_html": [playbook_render.inline_html(x) for x in extras.get("must_do") or []]
+                        or None,
+    }
+    return out if any(out.values()) else None
 
 
 def _faq_html(db: Session, article: SeoArticle) -> str:
@@ -904,8 +1072,9 @@ def _faq_html(db: Session, article: SeoArticle) -> str:
         return ""
     parts = ["<h2>Frequently asked questions</h2>"]
     for faq in faqs:
-        parts.append(f"<h3>{faq.question}</h3>")
-        parts.append(f"<p>{faq.answer or ''}</p>")
+        parts.append(f"<h3>{html_lib.escape(faq.question or '')}</h3>")
+        # Answers may carry **bold** and [links](https://…) (Playbook v2).
+        parts.append(playbook_render.inline_html(faq.answer or "") or "<p></p>")
         if faq.source_url:
             parts.append(
                 f'<p class="faq-source"><small>Asked on '
@@ -1150,7 +1319,9 @@ def publish_article(
             meta_title=article.meta_title,
             meta_description=article.meta_description,
             primary_keyword=article.primary_keyword,
-            faqs=[{"question": f.question, "answer": f.answer} for f in faqs],
+            faqs=_site_faqs(faqs, playbook.v2_enabled_for(current_user)),
+            author_extras=(_site_author_extras(playbook.load_author_extras(db, article.id))
+                           if playbook.v2_enabled_for(current_user) else None),
             featured_image_path=article.featured_image_path,
             featured_image_alt=article.featured_image_alt,
             author="Agentic AI Automation Editorial",

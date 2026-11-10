@@ -104,6 +104,27 @@ def _copy_image(article_id: str, slug: str, image_path: Optional[str]) -> Option
     return f"blog/{filename}"
 
 
+INLINE_DIR = "inline"
+
+
+def write_inline_image(filename: str, content: bytes) -> None:
+    """Public copy of a Playbook v2 inline image: SITE_MEDIA_DIR/inline/<name>,
+    served by the site as /static/blog/inline/<name>. The caller has already
+    validated filename against a strict pattern."""
+    directory = os.path.join(settings.SITE_MEDIA_DIR, INLINE_DIR)
+    _ensure_dir(directory)
+    _write_atomic(os.path.join(directory, filename), content)
+
+
+def delete_inline_image(filename: str) -> bool:
+    """Best effort, never raises."""
+    try:
+        os.remove(os.path.join(settings.SITE_MEDIA_DIR, INLINE_DIR, filename))
+        return True
+    except OSError:
+        return False
+
+
 def publish(
     *,
     article_id: str,
@@ -120,6 +141,7 @@ def publish(
     from_author_story: Optional[str],
     published_at: Optional[datetime] = None,
     is_draft: bool = False,
+    author_extras: Optional[Dict[str, Any]] = None,
 ) -> PublishedArticle:
     """Write one article to the output directory. Overwrites any previous version."""
     _ensure_dir(settings.SITE_CONTENT_DIR)
@@ -152,7 +174,10 @@ def publish(
         # accordion and the FAQPage schema from one source, which is what stops
         # the two drifting apart into a cloaking penalty.
         "faqs": [
-            {"question": f.get("question") or "", "answer": f.get("answer") or ""}
+            {"question": f.get("question") or "", "answer": f.get("answer") or "",
+             # Playbook v2 only: the answer's bold/links as safe HTML. "answer"
+             # is then plain text, which the FAQPage JSON-LD reads.
+             **({"answer_html": f["answer_html"]} if f.get("answer_html") else {})}
             for f in faqs if (f.get("question") or "").strip()
         ],
         "featured_image": image_relative,
@@ -165,6 +190,9 @@ def publish(
         # them from the index and the sitemap and marks them noindex.
         "is_draft": is_draft,
     }
+    # Additive (schema_version stays 1): an older site simply ignores it.
+    if author_extras:
+        document["author_extras"] = author_extras
 
     payload = json.dumps(document, ensure_ascii=False, indent=2).encode("utf-8")
     path = os.path.join(settings.SITE_CONTENT_DIR, f"{slug}.json")
