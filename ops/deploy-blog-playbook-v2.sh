@@ -179,6 +179,6 @@ for _ in $(seq 1 6); do
 done
 [ "$PAGE" = 200 ] || { printf '\n!!! The writer page answered %s from outside (wanted 200).\n    Send this output to Claude.\n' "$PAGE" >&2; exit 2; }
 
-say "Done — Blog Playbook v2 deployed with BLOG_PLAYBOOK_V2 OFF"
+say "Done — Blog Playbook v2 code deployed (BLOG_PLAYBOOK_V2 left as it was: $(systemctl show dashboard-api -p Environment | grep -o "BLOG_PLAYBOOK_V2=[a-z]*" || echo off))"
 echo "    Score comparison: $BK/parity-*.json"
 echo "    Next: the website step, then bash /root/blog-playbook-flag.sh v2-on"
