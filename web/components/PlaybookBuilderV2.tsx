@@ -45,6 +45,46 @@ type Props = {
 
 type Patch<T extends SectionItem> = (patch: Partial<T>) => void;
 
+const INLINE_W = 1536;
+const INLINE_H = 1024;
+
+/**
+ * The file to upload for a section image: exactly 1536 × 1024, as WebP.
+ * A JPG/PNG of the right size is converted in the browser; a wrong size is
+ * refused with its real dimensions. The server checks both again.
+ */
+async function toInlineWebp(file: File): Promise<File> {
+  let bitmap: ImageBitmap;
+  try {
+    bitmap = await createImageBitmap(file);
+  } catch {
+    throw new Error(`“${file.name}” is not an image this browser can read.`);
+  }
+  const { width, height } = bitmap;
+  if (width !== INLINE_W || height !== INLINE_H) {
+    bitmap.close();
+    throw new Error(
+      `“${file.name}” is ${width} × ${height} px. Section images must be exactly ` +
+        `${INLINE_W} × ${INLINE_H} px — resize or crop it and upload again.`,
+    );
+  }
+  if (file.type === 'image/webp') {
+    bitmap.close();
+    return file;
+  }
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  canvas.getContext('2d')!.drawImage(bitmap, 0, 0);
+  bitmap.close();
+  const blob = await new Promise<Blob | null>((resolve) =>
+    canvas.toBlob(resolve, 'image/webp', 0.9));
+  if (!blob || blob.type !== 'image/webp') {
+    throw new Error('This browser cannot convert to WebP. Save the image as WebP and upload it again.');
+  }
+  return new File([blob], file.name.replace(/\.[^.]+$/, '') + '.webp', { type: 'image/webp' });
+}
+
 function ItemEditor({
   item,
   id,
@@ -111,8 +151,16 @@ function ItemEditor({
         if (!articleId) return;
         setBusy(true);
         setError(null);
+        let ready: File;
         try {
-          const { data } = await seoApi.uploadInlineImage(articleId, file);
+          ready = await toInlineWebp(file);
+        } catch (err) {
+          setError(err instanceof Error ? err.message : String(err));
+          setBusy(false);
+          return;
+        }
+        try {
+          const { data } = await seoApi.uploadInlineImage(articleId, ready);
           set({ url: data.url });
           // Replacing: the old file goes (kept server-side while the post is live).
           if (previous.startsWith(INLINE_PREFIX)) {
@@ -136,7 +184,9 @@ function ItemEditor({
             )}
             {/* The native picker stays hidden; the button below opens it, so the
                 control is a real, visible button in every theme. */}
-            <input ref={fileRef} id={`${id}-file`} type="file" accept="image/webp"
+            {/* Any image is selectable (a WebP-only filter showed writers an
+                empty folder); toInlineWebp checks the size and converts. */}
+            <input ref={fileRef} id={`${id}-file`} type="file" accept="image/*"
                    className="sr-only" tabIndex={-1} aria-hidden="true"
                    onChange={(e) => {
                      const file = e.target.files?.[0];
@@ -156,7 +206,7 @@ function ItemEditor({
                 </button>
               )}
               <span className="text-xs text-muted">
-                WebP only, exactly 1536 × 1024 px.
+                Exactly 1536 × 1024 px. JPG or PNG is converted to WebP for you.
                 {!articleId && ' A new article must be saved once before images can be uploaded.'}
               </span>
             </div>
